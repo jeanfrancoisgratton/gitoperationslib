@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,23 @@ func repoName(t *testing.T) string {
 	return RepoPrefix + hex.EncodeToString(b)
 }
 
+// retryConflict retries fn while it fails with HTTP 409: GitHub returns it
+// while a just-created repository is still being initialised.
+func retryConflict(ctx context.Context, t *testing.T, fn func() error) error {
+	for delay := time.Second; ; delay *= 2 {
+		err := fn()
+		if gitoperationslib.StatusCode(err) != http.StatusConflict || delay > 16*time.Second {
+			return err
+		}
+		t.Logf("conflict, retrying in %s: %v", delay, err)
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(delay):
+		}
+	}
+}
+
 // cleanup deletes owner/*name at the end of the test; name is a pointer so
 // renames are followed.
 func cleanup(t *testing.T, c gitoperationslib.Client, owner string, name *string) {
@@ -62,9 +80,10 @@ func cleanup(t *testing.T, c gitoperationslib.Client, owner string, name *string
 			t.Errorf("refusing to delete %s/%s: missing %q prefix", owner, *name, RepoPrefix)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		if err := c.Repos().Delete(ctx, owner, *name); err != nil && !gitoperationslib.IsNotFound(err) {
+		err := retryConflict(ctx, t, func() error { return c.Repos().Delete(ctx, owner, *name) })
+		if err != nil && !gitoperationslib.IsNotFound(err) {
 			t.Errorf("cleanup %s/%s: %v", owner, *name, err)
 		}
 	})
@@ -98,7 +117,11 @@ func orgRepoLifecycle(t *testing.T, env Env) {
 		Owner: env.Org, Description: "gitoperationslib integration test",
 		AutoInit: true, Gitignores: []string{"Go"}, License: "MIT",
 	})
-	if created.Owner != env.Org || created.Name != *name || created.Visibility != gitoperationslib.VisibilityPrivate {
+	// Fatal, so cleanup runs at once if a test repo was exposed publicly.
+	if created.Visibility != gitoperationslib.VisibilityPrivate {
+		t.Fatalf("created with visibility %q, want private", created.Visibility)
+	}
+	if !strings.EqualFold(created.Owner, env.Org) || created.Name != *name {
 		t.Errorf("created = %+v", created)
 	}
 	_, second := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org})
@@ -128,8 +151,12 @@ func orgRepoLifecycle(t *testing.T, env Env) {
 	}
 
 	newName := *name + "-renamed"
-	edited, err := repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{
-		Name: &newName, Description: gitoperationslib.Ptr("edited"), Website: gitoperationslib.Ptr("https://example.com"),
+	var edited *gitoperationslib.Repo
+	err = retryConflict(ctx, t, func() (err error) {
+		edited, err = repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{
+			Name: &newName, Description: gitoperationslib.Ptr("edited"), Website: gitoperationslib.Ptr("https://example.com"),
+		})
+		return err
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +166,7 @@ func orgRepoLifecycle(t *testing.T, env Env) {
 		t.Errorf("edited = %+v", edited)
 	}
 
-	if err := repos.Delete(ctx, env.Org, newName); err != nil {
+	if err := retryConflict(ctx, t, func() error { return repos.Delete(ctx, env.Org, newName) }); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repos.Get(ctx, env.Org, newName); !gitoperationslib.IsNotFound(err) {

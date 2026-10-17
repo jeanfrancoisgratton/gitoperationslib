@@ -130,6 +130,20 @@ func TestCreateRepoBody(t *testing.T) {
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("body = %v\nwant   %v", got, want)
 	}
+
+	// Public/private must use the private flag: user-owned creates ignore
+	// the visibility field.
+	for vis, want := range map[gitoperationslib.Visibility]bool{
+		gitoperationslib.VisibilityPrivate: true,
+		gitoperationslib.VisibilityPublic:  false,
+	} {
+		if _, err := c.Repos().Create(context.Background(), gitoperationslib.CreateRepoOptions{Name: "widget", Visibility: vis}); err != nil {
+			t.Fatal(err)
+		}
+		if _, hasVis := got["visibility"]; got["private"] != want || hasVis {
+			t.Errorf("%s: body = %v", vis, got)
+		}
+	}
 }
 
 func TestCreateRepoRejected(t *testing.T) {
@@ -178,7 +192,7 @@ func TestGetEditDeleteRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fmt.Sprint(editBody) != fmt.Sprint(map[string]any{"description": "", "homepage": "https://w", "visibility": "public", "is_template": false}) {
+	if fmt.Sprint(editBody) != fmt.Sprint(map[string]any{"description": "", "homepage": "https://w", "private": false, "is_template": false}) {
 		t.Errorf("edit body = %v", editBody)
 	}
 	if err := c.Repos().Delete(ctx, "acme", "widget"); err != nil {
@@ -189,9 +203,10 @@ func TestGetEditDeleteRepo(t *testing.T) {
 		t.Errorf("requests = %v\nwant       %v", requests, want)
 	}
 
-	bad := gitoperationslib.Visibility("secret")
-	if _, err := c.Repos().Edit(ctx, "acme", "widget", gitoperationslib.EditRepoOptions{Visibility: &bad}); err == nil {
-		t.Error("invalid visibility accepted")
+	for _, bad := range []gitoperationslib.Visibility{"secret", ""} {
+		if _, err := c.Repos().Edit(ctx, "acme", "widget", gitoperationslib.EditRepoOptions{Visibility: &bad}); err == nil {
+			t.Errorf("invalid visibility %q accepted", bad)
+		}
 	}
 }
 

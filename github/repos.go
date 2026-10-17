@@ -40,15 +40,22 @@ func toRepo(r *gh.Repository) gitoperationslib.Repo {
 	}
 }
 
-// visibility validates v for a request; empty means "server default" (nil).
-func visibility(v gitoperationslib.Visibility, op string) (*string, error) {
-	if v == "" {
-		return nil, nil
+// visibilityFields maps v to the request fields. Public and private use the
+// private flag, because the visibility field is ignored when creating a
+// repository for a user (it only applies to organisations); internal can
+// only be expressed through visibility. Empty means "server default".
+func visibilityFields(v gitoperationslib.Visibility, op string) (private *bool, visibility *string, err error) {
+	switch v {
+	case "":
+		return nil, nil, nil
+	case gitoperationslib.VisibilityPublic:
+		return gh.Ptr(false), nil, nil
+	case gitoperationslib.VisibilityPrivate:
+		return gh.Ptr(true), nil, nil
+	case gitoperationslib.VisibilityInternal:
+		return nil, gh.Ptr(string(v)), nil
 	}
-	if !v.Valid() {
-		return nil, fmt.Errorf("github: %s: invalid visibility %q", op, v)
-	}
-	return gh.Ptr(string(v)), nil
+	return nil, nil, fmt.Errorf("github: %s: invalid visibility %q", op, v)
 }
 
 // nonEmpty returns nil for "", so the field is omitted from the request.
@@ -121,7 +128,7 @@ func (r repos) Create(ctx context.Context, opts gitoperationslib.CreateRepoOptio
 	if len(opts.Gitignores) > 1 {
 		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "at most one gitignore template")
 	}
-	vis, err := visibility(opts.Visibility, op)
+	private, vis, err := visibilityFields(opts.Visibility, op)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +140,7 @@ func (r repos) Create(ctx context.Context, opts gitoperationslib.CreateRepoOptio
 	req := gh.CreateRepositoryRequest{
 		Name:            opts.Name,
 		Description:     nonEmpty(opts.Description),
+		Private:         private,
 		Visibility:      vis,
 		IsTemplate:      gh.Ptr(opts.Template),
 		AutoInit:        gh.Ptr(opts.AutoInit),
@@ -182,10 +190,14 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 		IsTemplate:    opts.Template,
 	}
 	if opts.Visibility != nil {
-		if !opts.Visibility.Valid() {
-			return nil, fmt.Errorf("github: repos.edit: invalid visibility %q", *opts.Visibility)
+		if *opts.Visibility == "" {
+			return nil, errors.New(`github: repos.edit: invalid visibility ""`)
 		}
-		body.Visibility = gh.Ptr(string(*opts.Visibility))
+		private, vis, err := visibilityFields(*opts.Visibility, "repos.edit")
+		if err != nil {
+			return nil, err
+		}
+		body.Private, body.Visibility = private, vis
 	}
 	repo, _, err := r.c.gh.Repositories.Edit(ctx, owner, name, body)
 	if err != nil {

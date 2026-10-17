@@ -13,6 +13,8 @@ Deferred items and open questions. Remove entries when done; note the increment 
 ## Transport (GitHub)
 
 - [ ] Rate-limit handling: go-github returns `RateLimitError` (converted to `APIError` with reset time); consider waiting/retrying or exposing the reset time as a field.
+- [ ] GitHub returns 409 "conflicting repository operation is still in progress" for edits/deletes right after a create with `AutoInit`. Contract tests retry; decide whether the library should retry itself.
+- [ ] Org-repo endpoints with an actual GitHub org are untested (the test account uses the personal namespace as "org"); unit tests cover the `/orgs/{org}/repos` path.
 - [ ] `DefaultBranch` on create returns `ErrNotSupported`; possible emulation (create with `AutoInit`, then rename branch) if needed.
 
 ## API surface
@@ -39,5 +41,5 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 - [x] Integration tests: `-tags integration` + `GITOPSLIB_FORGEJO_{URL,TOKEN,ORG}`; repos prefixed `gitopslib-it-`, cleanup deletes only those. Added in increment 3.
 - [x] Shared contract checks in `internal/contracttest`, run by both backends' integration tests. Added in increment 4.
-- [ ] GitHub user-namespace contract checks (need a token able to create repos in a personal account).
+- [x] GitHub user-namespace: covered by setting `GITOPSLIB_GITHUB_ORG` to the account's own login. Increment 4.
 - [ ] CI job running integration tests against a disposable Forgejo container.
