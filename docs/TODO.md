@@ -10,6 +10,11 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [ ] Retries / backoff on transient errors (5xx, connection reset). Forgejo sends no rate-limit headers.
 - [ ] `/api/forgejo/v1` namespace client, for Forgejo-only endpoints. Its swagger was not found at `/api/forgejo/v1/swagger.json` on 15.0.2; locate it.
 
+## Transport (GitHub)
+
+- [ ] Rate-limit handling: go-github returns `RateLimitError` (converted to `APIError` with reset time); consider waiting/retrying or exposing the reset time as a field.
+- [ ] `DefaultBranch` on create returns `ErrNotSupported`; possible emulation (create with `AutoInit`, then rename branch) if needed.
+
 ## API surface
 
 - [ ] Optional interfaces for Forgejo extras: mirrors, push mirrors, migrate (`CapMirrors`, `CapMigrate` already declared).
@@ -26,11 +31,13 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [ ] Forgejo `mergeable` semantics and merge request body fields.
 - [ ] Forgejo asset upload limits and content-type handling.
 - [ ] Changes to Forgejo user/org/team endpoints in recent majors (quota APIs etc.).
-- [ ] `go-github` current major version and pinning policy.
+- [x] `go-github`: pinned at v93.0.0 (declares go 1.26.0). New majors change the import path; review periodically. Resolved in increment 4.
 - [x] Minimum Go version: 1.27.2. Minimum Forgejo version: 11.0.10.
 - [ ] Exact set of "Other" areas beyond the five priorities.
 
 ## Testing
 
 - [x] Integration tests: `-tags integration` + `GITOPSLIB_FORGEJO_{URL,TOKEN,ORG}`; repos prefixed `gitopslib-it-`, cleanup deletes only those. Added in increment 3.
+- [x] Shared contract checks in `internal/contracttest`, run by both backends' integration tests. Added in increment 4.
+- [ ] GitHub user-namespace contract checks (need a token able to create repos in a personal account).
 - [ ] CI job running integration tests against a disposable Forgejo container.

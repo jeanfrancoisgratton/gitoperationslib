@@ -16,7 +16,7 @@ type Repo struct {
 	Mirror        bool
 	Archived      bool
 	Template      bool
-	Empty         bool
+	Empty         bool // not reported by GitHub (always false there)
 	HTMLURL       string
 	CloneURL      string
 	SSHURL        string
