@@ -27,6 +27,14 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [ ] `List` filters (Forgejo `draft`, `pre-release`, `q`) are not exposed.
 - [ ] Tags are kept when a release is deleted; deleting tags belongs to a future branches/tags area.
 
+## Pull requests
+
+- [x] Pull requests (list, get, create, edit, close/reopen, merge, is-merged), review requests and reviews on both backends. Increment 7.
+- [ ] GitHub: changing draft status and auto-merge need the GraphQL API (`ErrNotSupported` today).
+- [ ] Forgejo drafts rely on the default `WORK_IN_PROGRESS_PREFIXES` (`WIP:`, `[WIP]`); a mismatch is reported, not worked around.
+- [ ] Not exposed yet: line-level review comments, diff/patch, changed files, commits, update-branch, labels/milestones/assignees (wait for the issues area), `ListPROptions` head/base filters (GitHub only).
+- [ ] `IsMerged` reports false for a pull request that does not exist (both servers answer 404).
+
 ## API surface
 
 - [ ] Optional interfaces for Forgejo extras: mirrors, push mirrors, migrate (`CapMirrors`, `CapMigrate` already declared).
@@ -47,10 +55,10 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 ## Open items from DESIGN-NOTES §8
 
-- [ ] Forgejo draft PR support (swagger).
+- [x] Forgejo draft PRs: a title prefix (`WIP:`/`[WIP]`), no API field; drafts cannot be merged (405). Increment 7.
+- [x] Forgejo `mergeable` is a plain bool, set immediately; GitHub's is nullable (`PullRequest.Mergeable *bool`). Increment 7.
 - [x] Forgejo pagination: `page`/`limit`, `Link` + `X-Total-Count` headers; defaults are instance settings (`/api/v1/settings/api`: 30 default, 50 max on git.famillegratton.net). Resolved in increment 2.
 - [ ] Webhook signature header names, algorithm and prefix, Forgejo vs GitHub, tested against real deliveries.
-- [ ] Forgejo `mergeable` semantics and merge request body fields.
 - [ ] Forgejo asset upload limits and content-type handling.
 - [ ] Changes to Forgejo user/org/team endpoints in recent majors (quota APIs etc.).
 - [x] `go-github`: pinned at v93.0.0 (declares go 1.26.0). New majors change the import path; review periodically. Resolved in increment 4.

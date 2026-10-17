@@ -53,6 +53,11 @@ func (v OwnerVisibility) Valid() bool {
 // MergeMethod is the strategy used to merge a pull request.
 // Values match Forgejo's "Do" field; the GitHub backend supports only
 // MergeMethodMerge, MergeMethodSquash and MergeMethodRebase.
+//
+// MergeMethodRebase replays the commits without a merge commit;
+// MergeMethodRebaseMerge rebases and then adds a merge commit;
+// MergeMethodManuallyMerged only marks a pull request whose commits are
+// already in the base branch as merged.
 type MergeMethod string
 
 const (

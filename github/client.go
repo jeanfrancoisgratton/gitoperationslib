@@ -87,7 +87,7 @@ func New(token string, opts ...Option) (*Client, error) {
 func (c *Client) Backend() gitoperationslib.Backend { return gitoperationslib.BackendGitHub }
 
 func (c *Client) Capabilities() gitoperationslib.Capability {
-	return gitoperationslib.CapRepos | gitoperationslib.CapReleases
+	return gitoperationslib.CapRepos | gitoperationslib.CapReleases | gitoperationslib.CapPullRequests
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }

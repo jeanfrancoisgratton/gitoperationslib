@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/contracttest"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
 )
 
 // adminEnv returns an admin client for the disposable test instance. It
@@ -478,5 +480,101 @@ func TestIntegrationAdminTeams(t *testing.T) {
 	}
 	if _, err := teams.Get(ctx, devs.ID); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get after delete: err = %v, want 404", err)
+	}
+}
+
+// TestIntegrationAdminPullRequestReviews covers what the contract checks
+// cannot do with one account: review requests and approvals by another user.
+// The reviewer signs in with a password, which also exercises BasicAuth.
+func TestIntegrationAdminPullRequestReviews(t *testing.T) {
+	ctx, c := adminEnv(t)
+	admin, err := c.currentLogin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reviewer, password := testLogin(t), "Integration-Test-1234"
+	cleanupUser(t, c, &reviewer)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: reviewer, Email: reviewer + "@example.invalid", Password: password, MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	repo := contracttest.RepoPrefix + "reviews"
+	t.Cleanup(func() { c.Repos().Delete(context.Background(), admin, repo) })
+	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Name: repo, AutoInit: true, Visibility: gitoperationslib.VisibilityPrivate}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.api.Do(ctx, http.MethodPut, forgejoapi.Path("repos", admin, repo, "collaborators", reviewer), nil,
+		map[string]string{"permission": "write"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.createBranch(ctx, admin, repo, "feature", "feature.txt", "x\n"); err != nil {
+		t.Fatal(err)
+	}
+	base, err := c.Repos().Get(ctx, admin, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prs := c.PullRequests()
+	pr, err := prs.Create(ctx, admin, repo, gitoperationslib.CreatePROptions{Title: "Needs review", Head: "feature", Base: base.DefaultBranch})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hasState := func(state gitoperationslib.ReviewState) bool {
+		page, err := prs.ListReviews(ctx, admin, repo, pr.Number, gitoperationslib.ListOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range page.Items {
+			if r.Reviewer == reviewer && r.State == state {
+				return true
+			}
+		}
+		return false
+	}
+
+	if err := prs.RequestReviewers(ctx, admin, repo, pr.Number, []string{reviewer}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !hasState(gitoperationslib.ReviewRequested) {
+		t.Error("review request not listed")
+	}
+	if err := prs.RemoveReviewers(ctx, admin, repo, pr.Number, []string{reviewer}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if hasState(gitoperationslib.ReviewRequested) {
+		t.Error("review request still listed after RemoveReviewers")
+	}
+
+	rc, err := New(ctx, os.Getenv("GITOPSLIB_TESTENV_URL"), BasicAuth(reviewer, password))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes, err := rc.PullRequests().CreateReview(ctx, admin, repo, pr.Number, gitoperationslib.CreateReviewOptions{
+		Event: gitoperationslib.ReviewEventRequestChanges, Body: "Please fix",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changes.State != gitoperationslib.ReviewChangesRequested || changes.Reviewer != reviewer {
+		t.Errorf("changes = %+v", changes)
+	}
+	approval, err := rc.PullRequests().CreateReview(ctx, admin, repo, pr.Number, gitoperationslib.CreateReviewOptions{
+		Event: gitoperationslib.ReviewEventApprove, Body: "Thanks", CommitID: pr.Head.SHA,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approval.State != gitoperationslib.ReviewApproved || approval.CommitID != pr.Head.SHA || approval.SubmittedAt.IsZero() {
+		t.Errorf("approval = %+v", approval)
+	}
+	if !hasState(gitoperationslib.ReviewApproved) {
+		t.Error("approval not listed")
+	}
+
+	if err := prs.Merge(ctx, admin, repo, pr.Number, gitoperationslib.MergeOptions{Method: gitoperationslib.MergeMethodSquash, DeleteBranch: true}); err != nil {
+		t.Fatal(err)
 	}
 }

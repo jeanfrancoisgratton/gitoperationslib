@@ -12,11 +12,14 @@ package forgejo
 
 import (
 	"context"
+	"encoding/base64"
+	"net/http"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/contracttest"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
 )
 
 func integrationEnv(t *testing.T) contracttest.Env {
@@ -37,7 +40,7 @@ func integrationEnv(t *testing.T) contracttest.Env {
 		t.Fatal(err)
 	}
 	t.Logf("Forgejo %s, user %s, org %s", c.Version(), login, org)
-	return contracttest.Env{Client: c, Org: org, Login: login, UserRepos: true}
+	return contracttest.Env{Client: c, Org: org, Login: login, UserRepos: true, CreateBranch: c.createBranch}
 }
 
 func TestIntegrationRepos(t *testing.T) {
@@ -46,4 +49,20 @@ func TestIntegrationRepos(t *testing.T) {
 
 func TestIntegrationReleases(t *testing.T) {
 	contracttest.Releases(t, integrationEnv(t))
+}
+
+func TestIntegrationPullRequests(t *testing.T) {
+	contracttest.PullRequests(t, integrationEnv(t))
+}
+
+// createBranch creates branch from the default branch with one commit adding
+// file, through the contents API.
+func (c *Client) createBranch(ctx context.Context, owner, repo, branch, file, content string) error {
+	body := map[string]string{
+		"content":    base64.StdEncoding.EncodeToString([]byte(content)),
+		"message":    "Add " + file,
+		"new_branch": branch,
+	}
+	_, err := c.api.Do(ctx, http.MethodPost, forgejoapi.Path("repos", owner, repo, "contents", file), nil, body, nil)
+	return err
 }

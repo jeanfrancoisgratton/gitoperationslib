@@ -26,6 +26,10 @@ type Env struct {
 	// UserRepos enables checks that create repositories in the user's own
 	// namespace (not possible with an org-scoped GitHub token).
 	UserRepos bool
+	// CreateBranch creates branch from the default branch of owner/repo
+	// with one commit adding file. Pull request checks need it; the library
+	// has no branch or contents API yet.
+	CreateBranch func(ctx context.Context, owner, repo, branch, file, content string) error
 }
 
 // Repos runs the repository checks.

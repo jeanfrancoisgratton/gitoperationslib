@@ -14,6 +14,28 @@ type Client interface {
 	Capabilities() Capability
 	Repos() Repos
 	Releases() Releases
+	PullRequests() PullRequests
+}
+
+// PullRequests manages pull requests and their reviews.
+type PullRequests interface {
+	List(ctx context.Context, owner, repo string, opts ListPROptions) (Page[PullRequest], error)
+	Get(ctx context.Context, owner, repo string, number int) (*PullRequest, error)
+	// Create opens a pull request. If the server does not honour Draft
+	// (Forgejo with custom work-in-progress prefixes), the pull request is
+	// returned together with an error matching ErrNotSupported.
+	Create(ctx context.Context, owner, repo string, opts CreatePROptions) (*PullRequest, error)
+	// Edit changes a pull request; see EditPROptions. A Draft change the
+	// server does not honour is reported as in Create.
+	Edit(ctx context.Context, owner, repo string, number int, opts EditPROptions) (*PullRequest, error)
+	// Merge merges a pull request. Drafts cannot be merged.
+	Merge(ctx context.Context, owner, repo string, number int, opts MergeOptions) error
+	IsMerged(ctx context.Context, owner, repo string, number int) (bool, error)
+
+	RequestReviewers(ctx context.Context, owner, repo string, number int, users, teams []string) error
+	RemoveReviewers(ctx context.Context, owner, repo string, number int, users, teams []string) error
+	ListReviews(ctx context.Context, owner, repo string, number int, opts ListOptions) (Page[Review], error)
+	CreateReview(ctx context.Context, owner, repo string, number int, opts CreateReviewOptions) (*Review, error)
 }
 
 // Releases manages releases and their assets.
