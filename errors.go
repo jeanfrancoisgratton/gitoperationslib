@@ -33,6 +33,18 @@ func NotSupported(backend Backend, operation, reason string) error {
 	return &NotSupportedError{Backend: backend, Operation: operation, Reason: reason}
 }
 
+// UnsupportedVersionError is returned when a server is older than the
+// minimum version the library supports.
+type UnsupportedVersionError struct {
+	Backend Backend
+	Version string
+	Minimum string
+}
+
+func (e *UnsupportedVersionError) Error() string {
+	return fmt.Sprintf("%s: server version %s is below the minimum supported version %s", e.Backend, e.Version, e.Minimum)
+}
+
 // APIError is the normalised form of an error response from either backend.
 type APIError struct {
 	Backend    Backend

@@ -63,6 +63,13 @@ func TestAPIError(t *testing.T) {
 	}
 }
 
+func TestUnsupportedVersionError(t *testing.T) {
+	err := &UnsupportedVersionError{Backend: BackendForgejo, Version: "10.0.1", Minimum: "11.0.10"}
+	if got, want := err.Error(), "forgejo: server version 10.0.1 is below the minimum supported version 11.0.10"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
 func TestCapability(t *testing.T) {
 	c := CapRepos | CapWebhooks
 	if !c.Has(CapRepos) || !c.Has(CapRepos|CapWebhooks) || c.Has(CapAdmin) || c.Has(CapRepos|CapAdmin) {
