@@ -133,14 +133,7 @@ func (r repos) List(ctx context.Context, owner string, opts gitoperationslib.Lis
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Repo]{}, err
 	}
-	page := gitoperationslib.Page[gitoperationslib.Repo]{
-		Items:    make([]gitoperationslib.Repo, len(out)),
-		NextPage: resp.NextPage,
-	}
-	for i := range out {
-		page.Items[i] = out[i].toRepo()
-	}
-	return page, nil
+	return toPage(resp, out, (*repoJSON).toRepo), nil
 }
 
 func (r repos) Create(ctx context.Context, opts gitoperationslib.CreateRepoOptions) (*gitoperationslib.Repo, error) {

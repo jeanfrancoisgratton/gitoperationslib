@@ -186,3 +186,153 @@ func TestIntegrationAdminDeleteNeedsPurge(t *testing.T) {
 		t.Fatalf("delete with purge: %v", err)
 	}
 }
+
+// cleanupOrg deletes the organisation *name and its repositories at the end
+// of the test. Only used against the disposable instance.
+func cleanupOrg(t *testing.T, c *Client, name *string) {
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		for repo, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
+			return c.Repos().List(ctx, *name, o)
+		}) {
+			if gitoperationslib.IsNotFound(err) {
+				return
+			}
+			if err != nil {
+				t.Errorf("cleanup org %s: %v", *name, err)
+				return
+			}
+			if err := c.Repos().Delete(ctx, *name, repo.Name); err != nil {
+				t.Errorf("cleanup repo %s/%s: %v", *name, repo.Name, err)
+			}
+		}
+		if err := c.Orgs().Delete(ctx, *name); err != nil && !gitoperationslib.IsNotFound(err) {
+			t.Errorf("cleanup org %s: %v", *name, err)
+		}
+	})
+}
+
+func contains[T any](t *testing.T, ctx context.Context, fetch func(context.Context, gitoperationslib.ListOptions) (gitoperationslib.Page[T], error), match func(T) bool) bool {
+	t.Helper()
+	for item, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: 1}, fetch) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if match(item) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestIntegrationAdminOrgs(t *testing.T) {
+	ctx, c := adminEnv(t)
+	orgs := c.Orgs()
+	admin, err := c.currentLogin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Registered first, so it runs after the org cleanups.
+	user := testLogin(t)
+	cleanupUser(t, c, &user)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: user, Email: user + "@example.invalid", Password: "Integration-Test-1234", MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	own, theirs := testLogin(t)+"-o", testLogin(t)+"-o"
+	cleanupOrg(t, c, &own)
+	cleanupOrg(t, c, &theirs)
+
+	created, err := orgs.Create(ctx, gitoperationslib.CreateOrgOptions{
+		Name: own, FullName: "Integration Org", Description: "d", Visibility: gitoperationslib.OwnerVisibilityPrivate,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Name != own || created.FullName != "Integration Org" || created.Visibility != gitoperationslib.OwnerVisibilityPrivate {
+		t.Errorf("created = %+v", created)
+	}
+	if _, err := orgs.Create(ctx, gitoperationslib.CreateOrgOptions{Name: theirs, Owner: user}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := orgs.Get(ctx, own); err != nil || got.ID != created.ID {
+		t.Fatalf("Get = %+v, %v", got, err)
+	}
+	byName := func(name string) func(gitoperationslib.Org) bool {
+		return func(o gitoperationslib.Org) bool { return o.Name == name }
+	}
+	if !contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
+		return orgs.List(ctx, "", o)
+	}, byName(own)) {
+		t.Error("List(\"\") is missing the admin's org")
+	}
+	if !contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
+		return orgs.List(ctx, user, o)
+	}, byName(theirs)) {
+		t.Error("List(user) is missing the org created for the user")
+	}
+	for _, name := range []string{own, theirs} {
+		if !contains(t, ctx, orgs.ListAll, byName(name)) {
+			t.Errorf("ListAll is missing %s", name)
+		}
+	}
+
+	// Unlike users, organisations can be switched back to public.
+	public := gitoperationslib.OwnerVisibilityPublic
+	edited, err := orgs.Edit(ctx, own, gitoperationslib.EditOrgOptions{Description: gitoperationslib.Ptr("edited"), Visibility: &public})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edited.Description != "edited" || edited.Visibility != public {
+		t.Errorf("edited = %+v", edited)
+	}
+
+	if !contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+		return orgs.Members(ctx, theirs, o)
+	}, func(u gitoperationslib.User) bool { return u.Login == user }) {
+		t.Error("Members is missing the owner")
+	}
+	for _, tt := range []struct {
+		org, user string
+		want      bool
+	}{{theirs, user, true}, {theirs, admin, false}, {own, admin, true}, {own, "gitopslib-no-such-user", false}} {
+		if got, err := orgs.IsMember(ctx, tt.org, tt.user); err != nil || got != tt.want {
+			t.Errorf("IsMember(%s, %s) = %v, %v; want %v", tt.org, tt.user, got, err, tt.want)
+		}
+	}
+	if err := orgs.RemoveMember(ctx, theirs, user); err == nil {
+		t.Error("removing the last owner succeeded")
+	} else {
+		t.Logf("remove last owner: %v", err)
+	}
+
+	// Deleting an organisation that owns repositories fails.
+	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Owner: own, Name: contracttest.RepoPrefix + "org-owned"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := orgs.Delete(ctx, own); err == nil {
+		t.Fatal("deleting an org that owns repositories succeeded")
+	} else {
+		t.Logf("delete org with repos: %v", err)
+	}
+	if err := c.Repos().Delete(ctx, own, contracttest.RepoPrefix+"org-owned"); err != nil {
+		t.Fatal(err)
+	}
+
+	renamed := own + "-r"
+	if err := orgs.Rename(ctx, own, renamed); err != nil {
+		t.Fatal(err)
+	}
+	own = renamed
+	if err := orgs.Delete(ctx, own); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := orgs.Get(ctx, own); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get after delete: err = %v, want 404", err)
+	}
+}

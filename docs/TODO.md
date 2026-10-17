@@ -28,7 +28,8 @@ Deferred items and open questions. Remove entries when done; note the increment 
 ## Admin (Forgejo)
 
 - [x] 5a Users: list, get, create, edit, rename, delete (purge). Increment 5a.
-- [ ] 5b Orgs and members.
+- [x] 5b Orgs (get, list, list all, create incl. for another user, edit, rename, delete) and members (list, check, remove). Increment 5b.
+- [ ] Forgejo returns HTTP 500 (not 4xx) for "org still owns repositories" and "last member of owner team". Consider mapping these to a typed error, or reporting upstream.
 - [ ] 5c Teams, team members and team repos.
 - [ ] Forgejo 15.0.x bug: `PATCH /admin/users/{u}` ignores `"visibility":"public"` (zero value of its enum). `Users.Edit` returns `ErrNotSupported` with the updated user when the server keeps the old value. Consider reporting upstream at codeberg.org/forgejo/forgejo.
 - [ ] `Admin` gains `Orgs()` and `Teams()` in 5b/5c: adding interface methods breaks external implementations (mocks); acceptable before the first tagged release.

@@ -110,14 +110,7 @@ func (u users) List(ctx context.Context, opts gitoperationslib.ListOptions) (git
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.User]{}, err
 	}
-	page := gitoperationslib.Page[gitoperationslib.User]{
-		Items:    make([]gitoperationslib.User, len(out)),
-		NextPage: resp.NextPage,
-	}
-	for i := range out {
-		page.Items[i] = out[i].toUser()
-	}
-	return page, nil
+	return toPage(resp, out, (*userJSON).toUser), nil
 }
 
 func (u users) Create(ctx context.Context, opts gitoperationslib.CreateUserOptions) (*gitoperationslib.User, error) {

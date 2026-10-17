@@ -53,7 +53,10 @@ type Client struct {
 	login string // authenticated user, cached by currentLogin
 }
 
-var _ gitoperationslib.Client = (*Client)(nil)
+var (
+	_ gitoperationslib.Client = (*Client)(nil)
+	_ gitoperationslib.Admin  = (*Client)(nil)
+)
 
 // New connects to the Forgejo instance at baseURL (the instance root, or its
 // /api/v1 endpoint) and checks that its version is at least MinimumVersion,
@@ -96,7 +99,9 @@ func (c *Client) Version() Version { return c.version }
 
 func (c *Client) Backend() gitoperationslib.Backend { return gitoperationslib.BackendForgejo }
 
-func (c *Client) Capabilities() gitoperationslib.Capability { return gitoperationslib.CapRepos }
+func (c *Client) Capabilities() gitoperationslib.Capability {
+	return gitoperationslib.CapRepos | gitoperationslib.CapAdmin
+}
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }
 
@@ -124,4 +129,13 @@ func (c *Client) isOrg(ctx context.Context, name string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// toPage converts one page of API items.
+func toPage[J, T any](resp *forgejoapi.Response, items []J, convert func(*J) T) gitoperationslib.Page[T] {
+	page := gitoperationslib.Page[T]{Items: make([]T, len(items)), NextPage: resp.NextPage}
+	for i := range items {
+		page.Items[i] = convert(&items[i])
+	}
+	return page
 }

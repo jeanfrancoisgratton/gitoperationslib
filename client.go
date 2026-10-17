@@ -16,6 +16,7 @@ type Client interface {
 // with a type assertion (client.(gitoperationslib.Admin)) or CapAdmin.
 type Admin interface {
 	Users() Users
+	Orgs() Orgs
 }
 
 // Users manages user accounts. All methods except Get require a site-admin
@@ -32,6 +33,34 @@ type Users interface {
 	// new one, so Get(oldLogin) returns the renamed user.
 	Rename(ctx context.Context, login, newLogin string) error
 	Delete(ctx context.Context, login string, opts DeleteUserOptions) error
+}
+
+// Orgs manages organisations and their membership. Members join an
+// organisation through its teams; there is no direct "add member".
+type Orgs interface {
+	Get(ctx context.Context, name string) (*Org, error)
+	// List returns the organisations user belongs to. Empty user means the
+	// authenticated user.
+	List(ctx context.Context, user string, opts ListOptions) (Page[Org], error)
+	// ListAll returns every organisation visible to the authenticated user
+	// (all of them for a site admin).
+	ListAll(ctx context.Context, opts ListOptions) (Page[Org], error)
+	Create(ctx context.Context, opts CreateOrgOptions) (*Org, error)
+	Edit(ctx context.Context, name string, opts EditOrgOptions) (*Org, error)
+	// Rename changes an organisation's name. The old name keeps redirecting
+	// to the new one.
+	Rename(ctx context.Context, name, newName string) error
+	// Delete removes an organisation. It fails while the organisation still
+	// owns repositories.
+	Delete(ctx context.Context, name string) error
+
+	Members(ctx context.Context, org string, opts ListOptions) (Page[User], error)
+	// IsMember reports whether user belongs to org. A user that does not
+	// exist is reported as not a member.
+	IsMember(ctx context.Context, org, user string) (bool, error)
+	// RemoveMember removes user from org and all its teams. Removing the last
+	// owner fails.
+	RemoveMember(ctx context.Context, org, user string) error
 }
 
 // Repos manages repositories.
