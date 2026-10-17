@@ -21,6 +21,12 @@ func TestVisibilityValid(t *testing.T) {
 	}
 }
 
+func TestOwnerVisibilityValid(t *testing.T) {
+	if !OwnerVisibilityLimited.Valid() || OwnerVisibility("").Valid() || OwnerVisibility("internal").Valid() {
+		t.Error("OwnerVisibility.Valid gave wrong results")
+	}
+}
+
 func TestMergeMethodValid(t *testing.T) {
 	if !MergeMethodFastForwardOnly.Valid() {
 		t.Error("fast-forward-only should be valid")

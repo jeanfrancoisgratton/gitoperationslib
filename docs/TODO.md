@@ -25,6 +25,14 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [ ] Cache user-vs-org lookups (`GET /orgs/{name}`), currently one extra request per `Create`/`List` with an owner.
 - [ ] Renaming a repo leaves a redirect on Forgejo; check whether `Get` on the old name should be documented.
 
+## Admin (Forgejo)
+
+- [x] 5a Users: list, get, create, edit, rename, delete (purge). Increment 5a.
+- [ ] 5b Orgs and members.
+- [ ] 5c Teams, team members and team repos.
+- [ ] Forgejo 15.0.x bug: `PATCH /admin/users/{u}` ignores `"visibility":"public"` (zero value of its enum). `Users.Edit` returns `ErrNotSupported` with the updated user when the server keeps the old value. Consider reporting upstream at codeberg.org/forgejo/forgejo.
+- [ ] `Admin` gains `Orgs()` and `Teams()` in 5b/5c: adding interface methods breaks external implementations (mocks); acceptable before the first tagged release.
+
 ## Open items from DESIGN-NOTES §8
 
 - [ ] Forgejo draft PR support (swagger).
@@ -42,4 +50,5 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] Integration tests: `-tags integration` + `GITOPSLIB_FORGEJO_{URL,TOKEN,ORG}`; repos prefixed `gitopslib-it-`, cleanup deletes only those. Added in increment 3.
 - [x] Shared contract checks in `internal/contracttest`, run by both backends' integration tests. Added in increment 4.
 - [x] GitHub user-namespace: covered by setting `GITOPSLIB_GITHUB_ORG` to the account's own login. Increment 4.
-- [ ] CI job running integration tests against a disposable Forgejo container.
+- [x] Disposable Forgejo for admin tests: `scripts/forgejo-testenv.sh start|stop` (Docker, loopback only, writes `.env.testenv`). Admin tests refuse non-loopback URLs. Increment 5a.
+- [ ] CI job running integration tests against the disposable container (script is reusable); also run the repo contract checks there.

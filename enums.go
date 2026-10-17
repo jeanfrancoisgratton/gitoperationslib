@@ -30,6 +30,26 @@ func (v Visibility) Valid() bool {
 	return false
 }
 
+// OwnerVisibility is the visibility of a user or organisation profile.
+// The zero value means "use the backend default" in option structs.
+type OwnerVisibility string
+
+const (
+	OwnerVisibilityPublic OwnerVisibility = "public"
+	// OwnerVisibilityLimited is visible to signed-in users only.
+	OwnerVisibilityLimited OwnerVisibility = "limited"
+	OwnerVisibilityPrivate OwnerVisibility = "private"
+)
+
+// Valid reports whether v is one of the named owner visibilities.
+func (v OwnerVisibility) Valid() bool {
+	switch v {
+	case OwnerVisibilityPublic, OwnerVisibilityLimited, OwnerVisibilityPrivate:
+		return true
+	}
+	return false
+}
+
 // MergeMethod is the strategy used to merge a pull request.
 // Values match Forgejo's "Do" field; the GitHub backend supports only
 // MergeMethodMerge, MergeMethodSquash and MergeMethodRebase.
