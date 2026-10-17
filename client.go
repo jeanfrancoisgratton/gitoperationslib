@@ -16,7 +16,8 @@ type Client interface {
 type Repos interface {
 	Get(ctx context.Context, owner, name string) (*Repo, error)
 	// List returns repositories owned by owner (a user or organisation).
-	// Empty owner lists the authenticated user's repositories.
+	// Empty owner lists every repository the authenticated user can access,
+	// including those of organisations they belong to.
 	List(ctx context.Context, owner string, opts ListOptions) (Page[Repo], error)
 	Create(ctx context.Context, opts CreateRepoOptions) (*Repo, error)
 	Edit(ctx context.Context, owner, name string, opts EditRepoOptions) (*Repo, error)

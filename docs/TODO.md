@@ -14,7 +14,9 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 - [ ] Optional interfaces for Forgejo extras: mirrors, push mirrors, migrate (`CapMirrors`, `CapMigrate` already declared).
 - [ ] Forgejo-only create options (`trust_model`, `object_format`, `readme`) on `CreateRepoOptions`.
-- [ ] Confirm Forgejo repos have no `internal` visibility; Forgejo backend should then return `ErrNotSupported` for `VisibilityInternal`.
+- [x] Forgejo repo create/edit options only have `private`; `VisibilityInternal` returns `ErrNotSupported`. Responses carry a read-only `internal` flag, mapped to `VisibilityInternal`. Resolved in increment 3.
+- [ ] Cache user-vs-org lookups (`GET /orgs/{name}`), currently one extra request per `Create`/`List` with an owner.
+- [ ] Renaming a repo leaves a redirect on Forgejo; check whether `Get` on the old name should be documented.
 
 ## Open items from DESIGN-NOTES §8
 
@@ -30,4 +32,5 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 ## Testing
 
-- [ ] Integration tests: opt-in build tag + env vars (URL, credentials), confined to a dedicated throwaway user/org on the instance; delete only what they create.
+- [x] Integration tests: `-tags integration` + `GITOPSLIB_FORGEJO_{URL,TOKEN,ORG}`; repos prefixed `gitopslib-it-`, cleanup deletes only those. Added in increment 3.
+- [ ] CI job running integration tests against a disposable Forgejo container.

@@ -4,6 +4,7 @@ package forgejo
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
@@ -47,7 +48,12 @@ func WithUserAgent(ua string) Option { return func(cfg *config) { cfg.userAgent 
 type Client struct {
 	api     *forgejoapi.Client
 	version Version
+
+	mu    sync.Mutex
+	login string // authenticated user, cached by currentLogin
 }
+
+var _ gitoperationslib.Client = (*Client)(nil)
 
 // New connects to the Forgejo instance at baseURL (the instance root, or its
 // /api/v1 endpoint) and checks that its version is at least MinimumVersion,
@@ -87,3 +93,35 @@ func New(ctx context.Context, baseURL string, creds Credentials, opts ...Option)
 
 // Version returns the server version detected by New.
 func (c *Client) Version() Version { return c.version }
+
+func (c *Client) Backend() gitoperationslib.Backend { return gitoperationslib.BackendForgejo }
+
+func (c *Client) Capabilities() gitoperationslib.Capability { return gitoperationslib.CapRepos }
+
+func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }
+
+// currentLogin returns the authenticated user's login, fetching it once.
+func (c *Client) currentLogin(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.login != "" {
+		return c.login, nil
+	}
+	var u struct {
+		Login string `json:"login"`
+	}
+	if _, err := c.api.Do(ctx, http.MethodGet, "user", nil, nil, &u); err != nil {
+		return "", err
+	}
+	c.login = u.Login
+	return c.login, nil
+}
+
+// isOrg reports whether name is an organisation (as opposed to a user).
+func (c *Client) isOrg(ctx context.Context, name string) (bool, error) {
+	_, err := c.api.Do(ctx, http.MethodGet, forgejoapi.Path("orgs", name), nil, nil, nil)
+	if gitoperationslib.IsNotFound(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
