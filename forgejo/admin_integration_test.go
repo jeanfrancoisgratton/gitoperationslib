@@ -336,3 +336,147 @@ func TestIntegrationAdminOrgs(t *testing.T) {
 		t.Errorf("Get after delete: err = %v, want 404", err)
 	}
 }
+
+func TestIntegrationAdminTeams(t *testing.T) {
+	ctx, c := adminEnv(t)
+	teams := c.Teams()
+
+	user := testLogin(t)
+	cleanupUser(t, c, &user)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: user, Email: user + "@example.invalid", Password: "Integration-Test-1234", MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	org := testLogin(t) + "-o"
+	cleanupOrg(t, c, &org)
+	if _, err := c.Orgs().Create(ctx, gitoperationslib.CreateOrgOptions{Name: org}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The owner team is protected.
+	owners, err := teams.GetByName(ctx, org, "owners")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owners.Permission != gitoperationslib.TeamPermissionOwner || owners.Org != org {
+		t.Errorf("owners = %+v", owners)
+	}
+	if err := teams.Delete(ctx, owners.ID); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
+		t.Fatalf("delete owner team: err = %v, want ErrOwnerTeam", err)
+	}
+	if _, err := teams.Get(ctx, owners.ID); err != nil {
+		t.Fatalf("owner team gone after refused delete: %v", err)
+	}
+	if _, err := teams.GetByName(ctx, org, "no-such-team"); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("GetByName missing: err = %v, want 404", err)
+	}
+
+	units := map[gitoperationslib.TeamUnit]gitoperationslib.TeamPermission{
+		gitoperationslib.TeamUnitCode:   gitoperationslib.TeamPermissionWrite,
+		gitoperationslib.TeamUnitIssues: gitoperationslib.TeamPermissionRead,
+	}
+	devs, err := teams.Create(ctx, org, gitoperationslib.CreateTeamOptions{
+		Name: "devs", Description: "integration", Access: gitoperationslib.TeamAccess{Units: units}, CanCreateOrgRepo: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if devs.Units[gitoperationslib.TeamUnitCode] != gitoperationslib.TeamPermissionWrite ||
+		devs.Units[gitoperationslib.TeamUnitIssues] != gitoperationslib.TeamPermissionRead || !devs.CanCreateOrgRepo {
+		t.Errorf("devs = %+v", devs)
+	}
+
+	writers, err := teams.Create(ctx, org, gitoperationslib.CreateTeamOptions{Name: "writers", Access: gitoperationslib.TeamAccess{Permission: gitoperationslib.TeamPermissionWrite}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range gitoperationslib.AllTeamUnits {
+		if writers.Units[u] != gitoperationslib.TeamPermissionWrite {
+			t.Errorf("write shorthand: %s = %q", u, writers.Units[u])
+		}
+	}
+
+	// Raise to admin, then lower back to per-unit access.
+	raised, err := teams.Edit(ctx, devs.ID, gitoperationslib.EditTeamOptions{Access: &gitoperationslib.TeamAccess{Permission: gitoperationslib.TeamPermissionAdmin}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raised.Permission != gitoperationslib.TeamPermissionAdmin {
+		t.Errorf("raised = %+v", raised)
+	}
+	lowered, err := teams.Edit(ctx, devs.ID, gitoperationslib.EditTeamOptions{Access: &gitoperationslib.TeamAccess{Units: map[gitoperationslib.TeamUnit]gitoperationslib.TeamPermission{
+		gitoperationslib.TeamUnitCode: gitoperationslib.TeamPermissionRead,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lowered.Permission == gitoperationslib.TeamPermissionAdmin || lowered.Units[gitoperationslib.TeamUnitCode] != gitoperationslib.TeamPermissionRead {
+		t.Errorf("lowered = %+v", lowered)
+	}
+	described, err := teams.Edit(ctx, devs.ID, gitoperationslib.EditTeamOptions{Name: gitoperationslib.Ptr("developers"), Description: gitoperationslib.Ptr("edited")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if described.Name != "developers" || described.Description != "edited" || described.Units[gitoperationslib.TeamUnitCode] != gitoperationslib.TeamPermissionRead {
+		t.Errorf("described = %+v (access should be unchanged)", described)
+	}
+
+	if !contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Team], error) {
+		return teams.List(ctx, org, o)
+	}, func(tm gitoperationslib.Team) bool { return tm.ID == devs.ID }) {
+		t.Error("List is missing the team")
+	}
+
+	// Membership through the team also makes the user an org member.
+	if err := teams.AddMember(ctx, devs.ID, user); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := teams.IsMember(ctx, devs.ID, user); err != nil || !ok {
+		t.Errorf("team IsMember = %v, %v", ok, err)
+	}
+	if ok, err := c.Orgs().IsMember(ctx, org, user); err != nil || !ok {
+		t.Errorf("org IsMember after team add = %v, %v", ok, err)
+	}
+	if !contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+		return teams.Members(ctx, devs.ID, o)
+	}, func(u gitoperationslib.User) bool { return u.Login == user }) {
+		t.Error("Members is missing the user")
+	}
+
+	repo := contracttest.RepoPrefix + "team"
+	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Owner: org, Name: repo}); err != nil {
+		t.Fatal(err)
+	}
+	if err := teams.AddRepo(ctx, devs.ID, org, repo); err != nil {
+		t.Fatal(err)
+	}
+	hasRepo := func() bool {
+		return contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
+			return teams.Repos(ctx, devs.ID, o)
+		}, func(r gitoperationslib.Repo) bool { return r.Name == repo })
+	}
+	if !hasRepo() {
+		t.Error("Repos is missing the added repo")
+	}
+	if err := teams.RemoveRepo(ctx, devs.ID, org, repo); err != nil {
+		t.Fatal(err)
+	}
+	if hasRepo() {
+		t.Error("repo still listed after RemoveRepo")
+	}
+
+	if err := teams.RemoveMember(ctx, devs.ID, user); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := teams.IsMember(ctx, devs.ID, user); err != nil || ok {
+		t.Errorf("IsMember after remove = %v, %v", ok, err)
+	}
+
+	if err := teams.Delete(ctx, devs.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := teams.Get(ctx, devs.ID); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get after delete: err = %v, want 404", err)
+	}
+}

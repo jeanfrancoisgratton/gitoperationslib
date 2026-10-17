@@ -14,6 +14,7 @@ const (
 	CapSystemWebhooks
 	CapReleases
 	CapPullRequests
+	CapExternalAssets
 )
 
 var capabilityNames = []struct {
@@ -28,6 +29,7 @@ var capabilityNames = []struct {
 	{CapSystemWebhooks, "system-webhooks"},
 	{CapReleases, "releases"},
 	{CapPullRequests, "pull-requests"},
+	{CapExternalAssets, "external-assets"},
 }
 
 // Has reports whether c includes every capability in want.

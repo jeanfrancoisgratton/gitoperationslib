@@ -1,6 +1,9 @@
 package gitoperationslib
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // Client is the entry point to a forge backend.
 //
@@ -10,6 +13,45 @@ type Client interface {
 	Backend() Backend
 	Capabilities() Capability
 	Repos() Repos
+	Releases() Releases
+}
+
+// Releases manages releases and their assets.
+//
+// Asset methods take the release ID as well as the asset ID: Forgejo needs
+// both, GitHub ignores the release ID.
+type Releases interface {
+	List(ctx context.Context, owner, repo string, opts ListOptions) (Page[Release], error)
+	Get(ctx context.Context, owner, repo string, id int64) (*Release, error)
+	GetByTag(ctx context.Context, owner, repo, tag string) (*Release, error)
+	// Latest returns the most recent published release that is not a
+	// prerelease.
+	Latest(ctx context.Context, owner, repo string) (*Release, error)
+	Create(ctx context.Context, owner, repo string, opts CreateReleaseOptions) (*Release, error)
+	Edit(ctx context.Context, owner, repo string, id int64, opts EditReleaseOptions) (*Release, error)
+	// Delete removes a release. Its tag is kept.
+	Delete(ctx context.Context, owner, repo string, id int64) error
+
+	ListAssets(ctx context.Context, owner, repo string, releaseID int64, opts ListOptions) (Page[Asset], error)
+	GetAsset(ctx context.Context, owner, repo string, releaseID, assetID int64) (*Asset, error)
+	// UploadAsset streams size bytes from r as a new asset called name.
+	// size must be exact. An empty contentType is guessed from the name's
+	// extension, falling back to application/octet-stream.
+	UploadAsset(ctx context.Context, owner, repo string, releaseID int64, name string, r io.Reader, size int64, contentType string) (*Asset, error)
+	EditAsset(ctx context.Context, owner, repo string, releaseID, assetID int64, opts EditAssetOptions) (*Asset, error)
+	DeleteAsset(ctx context.Context, owner, repo string, releaseID, assetID int64) error
+	// DownloadAsset streams an uploaded asset's content; the caller must
+	// close it. External assets are not downloaded: fetch their DownloadURL.
+	DownloadAsset(ctx context.Context, owner, repo string, releaseID, assetID int64) (io.ReadCloser, error)
+}
+
+// ExternalAssets adds release assets that link to files hosted elsewhere.
+// Only the Forgejo backend implements it (CapExternalAssets), on the value
+// returned by Releases():
+//
+//	ext, ok := client.Releases().(gitoperationslib.ExternalAssets)
+type ExternalAssets interface {
+	AddExternalAsset(ctx context.Context, owner, repo string, releaseID int64, name, url string) (*Asset, error)
 }
 
 // Admin manages accounts. Only the Forgejo backend implements it; detect it
@@ -17,6 +59,7 @@ type Client interface {
 type Admin interface {
 	Users() Users
 	Orgs() Orgs
+	Teams() Teams
 }
 
 // Users manages user accounts. All methods except Get require a site-admin
@@ -61,6 +104,33 @@ type Orgs interface {
 	// RemoveMember removes user from org and all its teams. Removing the last
 	// owner fails.
 	RemoveMember(ctx context.Context, org, user string) error
+}
+
+// Teams manages an organisation's teams, their members and repositories.
+// Teams are addressed by ID; use GetByName to look one up.
+type Teams interface {
+	List(ctx context.Context, org string, opts ListOptions) (Page[Team], error)
+	Get(ctx context.Context, id int64) (*Team, error)
+	// GetByName returns the team of org with exactly that name
+	// (case-insensitive), or a 404 *APIError.
+	GetByName(ctx context.Context, org, name string) (*Team, error)
+	Create(ctx context.Context, org string, opts CreateTeamOptions) (*Team, error)
+	// Edit changes a team. Renaming the owner team or changing its access
+	// returns ErrOwnerTeam.
+	Edit(ctx context.Context, id int64, opts EditTeamOptions) (*Team, error)
+	// Delete removes a team. Deleting the owner team returns ErrOwnerTeam.
+	Delete(ctx context.Context, id int64) error
+
+	Members(ctx context.Context, id int64, opts ListOptions) (Page[User], error)
+	IsMember(ctx context.Context, id int64, user string) (bool, error)
+	// AddMember adds user to the team, which also makes them a member of
+	// the organisation.
+	AddMember(ctx context.Context, id int64, user string) error
+	RemoveMember(ctx context.Context, id int64, user string) error
+
+	Repos(ctx context.Context, id int64, opts ListOptions) (Page[Repo], error)
+	AddRepo(ctx context.Context, id int64, owner, repo string) error
+	RemoveRepo(ctx context.Context, id int64, owner, repo string) error
 }
 
 // Repos manages repositories.

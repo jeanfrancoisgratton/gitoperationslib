@@ -45,3 +45,7 @@ func integrationEnv(t *testing.T) contracttest.Env {
 func TestIntegrationRepos(t *testing.T) {
 	contracttest.Repos(t, integrationEnv(t))
 }
+
+func TestIntegrationReleases(t *testing.T) {
+	contracttest.Releases(t, integrationEnv(t))
+}

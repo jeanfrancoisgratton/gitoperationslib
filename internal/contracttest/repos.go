@@ -72,6 +72,25 @@ func retryConflict(ctx context.Context, t *testing.T, fn func() error) error {
 	}
 }
 
+// eventually polls cond for up to 15 seconds, for endpoints that are only
+// eventually consistent.
+func eventually(ctx context.Context, cond func() bool) bool {
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if cond() {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(time.Second):
+		}
+	}
+}
+
 // cleanup deletes owner/*name at the end of the test; name is a pointer so
 // renames are followed.
 func cleanup(t *testing.T, c gitoperationslib.Client, owner string, name *string) {

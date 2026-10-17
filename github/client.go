@@ -41,6 +41,9 @@ func WithEnterpriseURL(baseURL, uploadURL string) Option {
 // Client is a GitHub backend client.
 type Client struct {
 	gh *gh.Client
+	// downloads follows asset redirects to the storage host. It never
+	// carries the token: go-github adds that per request.
+	downloads *http.Client
 
 	mu    sync.Mutex
 	login string // authenticated user, cached by currentLogin
@@ -74,12 +77,18 @@ func New(token string, opts ...Option) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("github: %w", err)
 	}
-	return &Client{gh: c}, nil
+	downloads := cfg.httpClient
+	if downloads == nil {
+		downloads = http.DefaultClient
+	}
+	return &Client{gh: c, downloads: downloads}, nil
 }
 
 func (c *Client) Backend() gitoperationslib.Backend { return gitoperationslib.BackendGitHub }
 
-func (c *Client) Capabilities() gitoperationslib.Capability { return gitoperationslib.CapRepos }
+func (c *Client) Capabilities() gitoperationslib.Capability {
+	return gitoperationslib.CapRepos | gitoperationslib.CapReleases
+}
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }
 

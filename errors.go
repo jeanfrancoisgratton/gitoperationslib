@@ -11,6 +11,11 @@ import (
 // backend cannot perform an operation, instead of silently degrading.
 var ErrNotSupported = errors.New("operation not supported")
 
+// ErrOwnerTeam is returned when an operation would delete an organisation's
+// owner team, rename it, or change its permissions. Forgejo allows deleting
+// it, which leaves the organisation without owners.
+var ErrOwnerTeam = errors.New("refusing to delete, rename or change the permissions of an owner team")
+
 // NotSupportedError describes which operation a backend refused.
 type NotSupportedError struct {
 	Backend   Backend

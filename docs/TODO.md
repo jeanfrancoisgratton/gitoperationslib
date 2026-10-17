@@ -17,6 +17,16 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [ ] Org-repo endpoints with an actual GitHub org are untested (the test account uses the personal namespace as "org"); unit tests cover the `/orgs/{org}/repos` path.
 - [ ] `DefaultBranch` on create returns `ErrNotSupported`; possible emulation (create with `AutoInit`, then rename branch) if needed.
 
+- [ ] Secondary rate limit on content creation: running the full GitHub integration suite several times in a row blocks repo creation for ~20 minutes. Consider fewer repos per run (e.g. one shared repo per suite).
+- [ ] GitHub list endpoints are eventually consistent (a just-created release may be missing from `List` for a second or two); contract tests poll.
+
+## Releases
+
+- [x] Releases and assets on both backends, streamed upload/download, external assets (Forgejo), backend-specific options. Increment 6.
+- [ ] Asset `label` (GitHub) and editing an external asset's URL (Forgejo) are not exposed.
+- [ ] `List` filters (Forgejo `draft`, `pre-release`, `q`) are not exposed.
+- [ ] Tags are kept when a release is deleted; deleting tags belongs to a future branches/tags area.
+
 ## API surface
 
 - [ ] Optional interfaces for Forgejo extras: mirrors, push mirrors, migrate (`CapMirrors`, `CapMigrate` already declared).
@@ -30,9 +40,10 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] 5a Users: list, get, create, edit, rename, delete (purge). Increment 5a.
 - [x] 5b Orgs (get, list, list all, create incl. for another user, edit, rename, delete) and members (list, check, remove). Increment 5b.
 - [ ] Forgejo returns HTTP 500 (not 4xx) for "org still owns repositories" and "last member of owner team". Consider mapping these to a typed error, or reporting upstream.
-- [ ] 5c Teams, team members and team repos.
+- [x] 5c Teams (list, get, get by name, create, edit, delete), members and repos. `TeamAccess` hides Forgejo's permission/units_map interplay; owner team protected by `ErrOwnerTeam`. Increment 5c.
+- [ ] Forgejo lets an admin delete an org's owner team (204) and rename it; the library refuses both. Consider reporting upstream.
 - [ ] Forgejo 15.0.x bug: `PATCH /admin/users/{u}` ignores `"visibility":"public"` (zero value of its enum). `Users.Edit` returns `ErrNotSupported` with the updated user when the server keeps the old value. Consider reporting upstream at codeberg.org/forgejo/forgejo.
-- [ ] `Admin` gains `Orgs()` and `Teams()` in 5b/5c: adding interface methods breaks external implementations (mocks); acceptable before the first tagged release.
+- [ ] Interfaces grow as areas are added (e.g. `Admin` gained `Orgs()`/`Teams()`): breaks external implementations such as mocks. Acceptable before the first tagged release; freeze after.
 
 ## Open items from DESIGN-NOTES §8
 
