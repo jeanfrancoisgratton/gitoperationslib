@@ -105,15 +105,16 @@ func PullRequests(t *testing.T, env Env) {
 	if err := prs.Merge(ctx, owner, *repo, draft.Number, gitoperationslib.MergeOptions{}); err == nil {
 		t.Error("merging a draft succeeded")
 	}
+	// Draft status changes (Forgejo: title prefix; GitHub: GraphQL).
 	ready, err := prs.Edit(ctx, owner, *repo, draft.Number, gitoperationslib.EditPROptions{Draft: gitoperationslib.Ptr(false)})
-	switch {
-	case isForgejo:
-		check(err)
-		if ready.Draft || ready.Title != "Feature 2" {
-			t.Errorf("ready = %+v", ready)
-		}
-	case !errors.Is(err, gitoperationslib.ErrNotSupported):
-		t.Errorf("Draft edit on %s: err = %v, want ErrNotSupported", env.Client.Backend(), err)
+	check(err)
+	if ready.Draft || ready.Title != "Feature 2" {
+		t.Errorf("ready = %+v", ready)
+	}
+	redraft, err := prs.Edit(ctx, owner, *repo, draft.Number, gitoperationslib.EditPROptions{Draft: gitoperationslib.Ptr(true)})
+	check(err)
+	if !redraft.Draft {
+		t.Errorf("back to draft = %+v", redraft)
 	}
 
 	// Close and reopen.
@@ -129,6 +130,30 @@ func PullRequests(t *testing.T, env Env) {
 	}
 	_, err = prs.Edit(ctx, owner, *repo, draft.Number, gitoperationslib.EditPROptions{State: gitoperationslib.Ptr(gitoperationslib.PRStateClosed)})
 	check(err)
+
+	// Auto-merge. Forgejo schedules it even without status checks. GitHub
+	// only accepts it while a required check is pending, which needs branch
+	// protection (public repositories on free plans): here only its
+	// refusal is checked to be reported cleanly.
+	auto := open("auto-merge", gitoperationslib.CreatePROptions{Title: "Auto-merge"})
+	err = prs.Merge(ctx, owner, *repo, auto.Number, gitoperationslib.MergeOptions{WhenChecksSucceed: true})
+	if isForgejo {
+		check(err)
+		check(prs.CancelAutoMerge(ctx, owner, *repo, auto.Number))
+		if err := prs.CancelAutoMerge(ctx, owner, *repo, auto.Number); !gitoperationslib.IsNotFound(err) {
+			t.Errorf("second cancel: err = %v, want 404", err)
+		}
+	} else {
+		var apiErr *gitoperationslib.APIError
+		if !errors.As(err, &apiErr) || apiErr.Message == "" {
+			t.Errorf("GitHub auto-merge without required checks: err = %v, want a clear API error", err)
+		}
+		t.Logf("GitHub auto-merge refused: %v", err)
+	}
+	if cur, err := prs.Get(ctx, owner, *repo, auto.Number); err == nil && cur.State == gitoperationslib.PRStateOpen {
+		_, err = prs.Edit(ctx, owner, *repo, auto.Number, gitoperationslib.EditPROptions{State: gitoperationslib.Ptr(gitoperationslib.PRStateClosed)})
+		check(err)
+	}
 
 	// Every merge method the backend supports, each on a fresh branch.
 	methods := []gitoperationslib.MergeMethod{gitoperationslib.MergeMethodMerge, gitoperationslib.MergeMethodSquash, gitoperationslib.MergeMethodRebase}
@@ -168,8 +193,8 @@ func PullRequests(t *testing.T, env Env) {
 	if !eventually(ctx, func() bool {
 		page, err := prs.List(ctx, owner, *repo, gitoperationslib.ListPROptions{State: gitoperationslib.PRStateClosed})
 		check(err)
-		return len(page.Items) == len(methods)+1
+		return len(page.Items) == len(methods)+2
 	}) {
-		t.Errorf("List(closed) did not return %d pull requests", len(methods)+1)
+		t.Errorf("List(closed) did not return %d pull requests", len(methods)+2)
 	}
 }

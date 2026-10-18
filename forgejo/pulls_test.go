@@ -228,3 +228,17 @@ func TestPullsRejected(t *testing.T) {
 		t.Error("invalid review event accepted")
 	}
 }
+
+func TestCancelAutoMerge(t *testing.T) {
+	var got string
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		got = r.Method + " " + r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := c.PullRequests().CancelAutoMerge(context.Background(), "acme", "widget", 3); err != nil {
+		t.Fatal(err)
+	}
+	if got != "DELETE /api/v1/repos/acme/widget/pulls/3/merge" {
+		t.Errorf("request = %q", got)
+	}
+}

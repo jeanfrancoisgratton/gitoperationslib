@@ -291,6 +291,11 @@ func (p pulls) Merge(ctx context.Context, owner, repo string, number int, opts g
 	return err
 }
 
+func (p pulls) CancelAutoMerge(ctx context.Context, owner, repo string, number int) error {
+	_, err := p.c.api.Do(ctx, http.MethodDelete, pullsPath(owner, repo, strconv.Itoa(number), "merge"), nil, nil, nil)
+	return err
+}
+
 func (p pulls) IsMerged(ctx context.Context, owner, repo string, number int) (bool, error) {
 	_, err := p.c.api.Do(ctx, http.MethodGet, pullsPath(owner, repo, strconv.Itoa(number), "merge"), nil, nil, nil)
 	if gitoperationslib.IsNotFound(err) {

@@ -16,6 +16,9 @@ func toBranch(b *gh.PullRequestBranch) gitoperationslib.PRBranch {
 }
 
 func toPR(p *gh.PullRequest) gitoperationslib.PullRequest {
+	if p == nil {
+		return gitoperationslib.PullRequest{}
+	}
 	return gitoperationslib.PullRequest{
 		Number:         p.GetNumber(),
 		Title:          p.GetTitle(),
@@ -115,9 +118,6 @@ func (p pulls) Create(ctx context.Context, owner, repo string, opts gitoperation
 
 func (p pulls) Edit(ctx context.Context, owner, repo string, number int, opts gitoperationslib.EditPROptions) (*gitoperationslib.PullRequest, error) {
 	const op = "pulls.edit"
-	if opts.Draft != nil {
-		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "changing draft status needs the GraphQL API")
-	}
 	body := &gh.PullRequest{
 		Title:               opts.Title,
 		Body:                opts.Body,
@@ -132,7 +132,42 @@ func (p pulls) Edit(ctx context.Context, owner, repo string, number int, opts gi
 		}
 		body.State = (*string)(opts.State)
 	}
-	return singlePR(p.c.gh.PullRequests.Edit(ctx, owner, repo, number, body))
+	restChange := opts.Title != nil || opts.Body != nil || opts.Base != nil || opts.State != nil || opts.AllowMaintainerEdit != nil
+
+	var pr *gh.PullRequest
+	var err error
+	if restChange {
+		if pr, _, err = p.c.gh.PullRequests.Edit(ctx, owner, repo, number, body); err != nil {
+			return nil, convertError(err)
+		}
+	}
+	// Draft status can only be changed through GraphQL.
+	if opts.Draft != nil {
+		if pr == nil {
+			if pr, _, err = p.c.gh.PullRequests.Get(ctx, owner, repo, number); err != nil {
+				return nil, convertError(err)
+			}
+		}
+		if pr.GetDraft() != *opts.Draft {
+			mutation := `mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { clientMutationId } }`
+			if *opts.Draft {
+				mutation = `mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { clientMutationId } }`
+			}
+			if err := p.c.graphql(ctx, mutation, map[string]any{"id": pr.GetNodeID()}, nil); err != nil {
+				return nil, fmt.Errorf("%s: %w", op, err)
+			}
+			if pr, _, err = p.c.gh.PullRequests.Get(ctx, owner, repo, number); err != nil {
+				return nil, convertError(err)
+			}
+		}
+	}
+	if pr == nil { // nothing to change
+		if pr, _, err = p.c.gh.PullRequests.Get(ctx, owner, repo, number); err != nil {
+			return nil, convertError(err)
+		}
+	}
+	out := toPR(pr)
+	return &out, nil
 }
 
 func (p pulls) Merge(ctx context.Context, owner, repo string, number int, opts gitoperationslib.MergeOptions) error {
@@ -150,7 +185,7 @@ func (p pulls) Merge(ctx context.Context, owner, repo string, number int, opts g
 		return gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, fmt.Sprintf("merge method %q", method))
 	}
 	if opts.WhenChecksSucceed {
-		return gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "auto-merge needs the GraphQL API")
+		return p.enableAutoMerge(ctx, owner, repo, number, method, opts)
 	}
 
 	var head string
@@ -176,6 +211,50 @@ func (p pulls) Merge(ctx context.Context, owner, repo string, number int, opts g
 		if _, err := p.c.gh.Git.DeleteRef(ctx, owner, repo, "heads/"+head); err != nil {
 			return fmt.Errorf("github: %s: merged, but deleting branch %q failed: %w", op, head, convertError(err))
 		}
+	}
+	return nil
+}
+
+// enableAutoMerge schedules the merge through GraphQL. GitHub accepts it
+// only while the pull request is waiting for something (e.g. a required
+// status check), and only in repositories that allow auto-merge.
+func (p pulls) enableAutoMerge(ctx context.Context, owner, repo string, number int, method gitoperationslib.MergeMethod, opts gitoperationslib.MergeOptions) error {
+	const op = "pulls.merge"
+	if opts.DeleteBranch {
+		return gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op,
+			"deleting the branch after an auto-merge (use the repository's delete-branch-on-merge setting)")
+	}
+	pr, _, err := p.c.gh.PullRequests.Get(ctx, owner, repo, number)
+	if err != nil {
+		return convertError(err)
+	}
+	vars := map[string]any{"id": pr.GetNodeID(), "method": strings.ToUpper(string(method))}
+	if opts.Title != "" {
+		vars["title"] = opts.Title
+	}
+	if opts.Message != "" {
+		vars["body"] = opts.Message
+	}
+	if opts.HeadSHA != "" {
+		vars["sha"] = opts.HeadSHA
+	}
+	const mutation = `mutation($id: ID!, $method: PullRequestMergeMethod!, $title: String, $body: String, $sha: GitObjectID) {
+  enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method, commitHeadline: $title, commitBody: $body, expectedHeadOid: $sha}) { clientMutationId }
+}`
+	if err := p.c.graphql(ctx, mutation, vars, nil); err != nil {
+		return fmt.Errorf("%s: auto-merge: %w", op, err)
+	}
+	return nil
+}
+
+func (p pulls) CancelAutoMerge(ctx context.Context, owner, repo string, number int) error {
+	pr, _, err := p.c.gh.PullRequests.Get(ctx, owner, repo, number)
+	if err != nil {
+		return convertError(err)
+	}
+	const mutation = `mutation($id: ID!) { disablePullRequestAutoMerge(input: {pullRequestId: $id}) { clientMutationId } }`
+	if err := p.c.graphql(ctx, mutation, map[string]any{"id": pr.GetNodeID()}, nil); err != nil {
+		return fmt.Errorf("pulls.cancel_auto_merge: %w", err)
 	}
 	return nil
 }

@@ -71,7 +71,7 @@ type EditPROptions struct {
 	// State closes (PRStateClosed) or reopens (PRStateOpen) the pull request.
 	State *PRState
 	// Draft converts to or from a draft. Forgejo adds or removes the title
-	// prefix; GitHub cannot do it through its REST API (ErrNotSupported).
+	// prefix; GitHub uses its GraphQL API.
 	Draft               *bool
 	AllowMaintainerEdit *bool
 }
@@ -88,8 +88,10 @@ type MergeOptions struct {
 	HeadSHA string
 	// DeleteBranch deletes the head branch after a successful merge.
 	DeleteBranch bool
-	// WhenChecksSucceed schedules the merge for when status checks pass
-	// (Forgejo only).
+	// WhenChecksSucceed schedules the merge for when status checks pass;
+	// cancel it with CancelAutoMerge. GitHub (through GraphQL) accepts it
+	// only in repositories that allow auto-merge, while the pull request
+	// still waits for a required check, and not together with DeleteBranch.
 	WhenChecksSucceed bool
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v93/github"
@@ -149,21 +150,142 @@ func TestPullsRejected(t *testing.T) {
 	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected request %s %s", r.Method, r.URL) })
 	ctx := context.Background()
 	prs := c.PullRequests()
-	if _, err := prs.Edit(ctx, "acme", "widget", 3, gitoperationslib.EditPROptions{Draft: gitoperationslib.Ptr(false)}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
-		t.Errorf("draft edit: err = %v", err)
-	}
 	for _, m := range []gitoperationslib.MergeMethod{gitoperationslib.MergeMethodRebaseMerge, gitoperationslib.MergeMethodFastForwardOnly, gitoperationslib.MergeMethodManuallyMerged} {
 		if err := prs.Merge(ctx, "acme", "widget", 3, gitoperationslib.MergeOptions{Method: m}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("%s: err = %v", m, err)
 		}
 	}
-	if err := prs.Merge(ctx, "acme", "widget", 3, gitoperationslib.MergeOptions{WhenChecksSucceed: true}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
-		t.Errorf("auto-merge: err = %v", err)
+	if err := prs.Merge(ctx, "acme", "widget", 3, gitoperationslib.MergeOptions{WhenChecksSucceed: true, DeleteBranch: true}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("auto-merge with branch deletion: err = %v", err)
 	}
 	if err := prs.Merge(ctx, "acme", "widget", 3, gitoperationslib.MergeOptions{Method: "octopus"}); err == nil || errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("invalid method: err = %v, want a validation error", err)
 	}
 	if _, err := prs.Create(ctx, "acme", "widget", gitoperationslib.CreatePROptions{Head: "f", Base: "main"}); err == nil {
 		t.Error("missing title accepted")
+	}
+}
+
+// graphqlServer answers REST pull request lookups with draft state *draft and
+// records GraphQL requests; respond gives the GraphQL response body.
+func graphqlServer(t *testing.T, draft *bool, respond func(query string) string) (*Client, *[]map[string]any) {
+	t.Helper()
+	var calls []map[string]any
+	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/graphql":
+			if r.Header.Get("Authorization") != "Bearer pat" {
+				t.Error("GraphQL request without the token")
+			}
+			var req map[string]any
+			json.NewDecoder(r.Body).Decode(&req)
+			calls = append(calls, req)
+			body := respond(req["query"].(string))
+			if strings.Contains(req["query"].(string), "markPullRequestReadyForReview") {
+				*draft = false
+			} else if strings.Contains(req["query"].(string), "convertPullRequestToDraft") {
+				*draft = true
+			}
+			io.WriteString(w, body)
+		case r.URL.Path == "/api/v3/repos/acme/widget/pulls/3":
+			fmt.Fprintf(w, `{"number":3,"node_id":"PR_node3","draft":%v,"title":"t","state":"open"}`, *draft)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL)
+		}
+	})
+	return c, &calls
+}
+
+func TestEditDraftViaGraphQL(t *testing.T) {
+	draft := true
+	c, calls := graphqlServer(t, &draft, func(string) string { return `{"data":{"x":{"clientMutationId":null}}}` })
+	ctx := context.Background()
+	prs := c.PullRequests()
+
+	pr, err := prs.Edit(ctx, "acme", "widget", 3, gitoperationslib.EditPROptions{Draft: gitoperationslib.Ptr(false)})
+	if err != nil || pr.Draft {
+		t.Fatalf("ready = %+v, %v", pr, err)
+	}
+	pr, err = prs.Edit(ctx, "acme", "widget", 3, gitoperationslib.EditPROptions{Draft: gitoperationslib.Ptr(true)})
+	if err != nil || !pr.Draft {
+		t.Fatalf("to draft = %+v, %v", pr, err)
+	}
+	// Already a draft: no mutation is sent.
+	if _, err := prs.Edit(ctx, "acme", "widget", 3, gitoperationslib.EditPROptions{Draft: gitoperationslib.Ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != 2 {
+		t.Fatalf("GraphQL calls = %d, want 2", len(*calls))
+	}
+	for i, want := range []string{"markPullRequestReadyForReview", "convertPullRequestToDraft"} {
+		q := (*calls)[i]["query"].(string)
+		vars := (*calls)[i]["variables"].(map[string]any)
+		if !strings.Contains(q, want) || vars["id"] != "PR_node3" {
+			t.Errorf("call %d = %v", i, (*calls)[i])
+		}
+	}
+}
+
+func TestAutoMergeViaGraphQL(t *testing.T) {
+	draft := false
+	c, calls := graphqlServer(t, &draft, func(string) string { return `{"data":{"x":{"clientMutationId":null}}}` })
+	ctx := context.Background()
+	prs := c.PullRequests()
+
+	if err := prs.Merge(ctx, "acme", "widget", 3, gitoperationslib.MergeOptions{
+		Method: gitoperationslib.MergeMethodSquash, Title: "T", Message: "M", HeadSHA: "abc", WhenChecksSucceed: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := prs.CancelAutoMerge(ctx, "acme", "widget", 3); err != nil {
+		t.Fatal(err)
+	}
+	enable, disable := (*calls)[0], (*calls)[1]
+	if !strings.Contains(enable["query"].(string), "enablePullRequestAutoMerge") ||
+		fmt.Sprint(enable["variables"]) != "map[body:M id:PR_node3 method:SQUASH sha:abc title:T]" {
+		t.Errorf("enable = %v", enable)
+	}
+	if !strings.Contains(disable["query"].(string), "disablePullRequestAutoMerge") || disable["variables"].(map[string]any)["id"] != "PR_node3" {
+		t.Errorf("disable = %v", disable)
+	}
+}
+
+func TestGraphQLErrors(t *testing.T) {
+	draft := false
+	for _, tt := range []struct {
+		body   string
+		status int
+		msg    string
+	}{
+		{`{"data":null,"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a node"}]}`, 404, "Could not resolve to a node"},
+		{`{"errors":[{"type":"FORBIDDEN","message":"Resource not accessible"},{"message":"second"}]}`, 403, "Resource not accessible"},
+		{`{"errors":[{"message":"Pull request is in clean status"}]}`, 422, "Pull request is in clean status"},
+	} {
+		c, _ := graphqlServer(t, &draft, func(string) string { return tt.body })
+		err := c.PullRequests().Merge(context.Background(), "acme", "widget", 3, gitoperationslib.MergeOptions{WhenChecksSucceed: true})
+		var apiErr *gitoperationslib.APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != tt.status || apiErr.Message != tt.msg {
+			t.Errorf("%s: err = %v", tt.body, err)
+		}
+	}
+}
+
+func TestGraphQLURL(t *testing.T) {
+	for base, want := range map[string]string{
+		"":                                "https://api.github.com/graphql",
+		"https://ghe.example.com":         "https://ghe.example.com/api/graphql",
+		"https://ghe.example.com/api/v3/": "https://ghe.example.com/api/graphql",
+	} {
+		var opts []Option
+		if base != "" {
+			opts = append(opts, WithEnterpriseURL(base, ""))
+		}
+		c, err := New("", opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := c.graphqlURL(); got != want {
+			t.Errorf("base %q: graphqlURL = %q, want %q", base, got, want)
+		}
 	}
 }

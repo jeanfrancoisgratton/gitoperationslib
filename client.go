@@ -45,8 +45,11 @@ type PullRequests interface {
 	// Edit changes a pull request; see EditPROptions. A Draft change the
 	// server does not honour is reported as in Create.
 	Edit(ctx context.Context, owner, repo string, number int, opts EditPROptions) (*PullRequest, error)
-	// Merge merges a pull request. Drafts cannot be merged.
+	// Merge merges a pull request. Drafts cannot be merged. With
+	// MergeOptions.WhenChecksSucceed the merge is scheduled instead.
 	Merge(ctx context.Context, owner, repo string, number int, opts MergeOptions) error
+	// CancelAutoMerge cancels a merge scheduled with WhenChecksSucceed.
+	CancelAutoMerge(ctx context.Context, owner, repo string, number int) error
 	IsMerged(ctx context.Context, owner, repo string, number int) (bool, error)
 
 	RequestReviewers(ctx context.Context, owner, repo string, number int, users, teams []string) error

@@ -204,7 +204,7 @@ func (r releases) DeleteAsset(ctx context.Context, owner, repo string, _, assetI
 }
 
 func (r releases) DownloadAsset(ctx context.Context, owner, repo string, _, assetID int64) (io.ReadCloser, error) {
-	rc, _, err := r.c.gh.Repositories.DownloadReleaseAsset(ctx, owner, repo, assetID, r.c.downloads)
+	rc, _, err := r.c.gh.Repositories.DownloadReleaseAsset(ctx, owner, repo, assetID, r.c.http)
 	if err != nil {
 		return nil, convertError(err)
 	}

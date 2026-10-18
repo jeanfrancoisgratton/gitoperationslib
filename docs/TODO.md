@@ -30,7 +30,8 @@ Deferred items and open questions. Remove entries when done; note the increment 
 ## Pull requests
 
 - [x] Pull requests (list, get, create, edit, close/reopen, merge, is-merged), review requests and reviews on both backends. Increment 7.
-- [ ] GitHub: changing draft status and auto-merge need the GraphQL API (`ErrNotSupported` today).
+- [x] GitHub draft status changes and auto-merge via a minimal GraphQL client; `CancelAutoMerge` on both backends. Enhancement 1.
+- [ ] GitHub auto-merge success path is unit-tested only: it needs a required status check, i.e. branch protection (public repositories on free plans).
 - [ ] Forgejo drafts rely on the default `WORK_IN_PROGRESS_PREFIXES` (`WIP:`, `[WIP]`); a mismatch is reported, not worked around.
 - [ ] Not exposed yet: line-level review comments, diff/patch, changed files, commits, update-branch, labels/milestones/assignees (wait for the issues area), `ListPROptions` head/base filters (GitHub only).
 - [ ] `IsMerged` reports false for a pull request that does not exist (both servers answer 404).
