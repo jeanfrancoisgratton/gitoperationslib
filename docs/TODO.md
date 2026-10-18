@@ -59,7 +59,6 @@ Deferred items and open questions. Remove entries when done; note the increment 
 ## Issues
 
 - [x] Issues (list without pull requests, get, create, edit, close/reopen, delete), labels on issues and pull requests, comments, repository labels and milestones on both backends. Enhancement 2c.
-- [ ] Production Forgejo test token needs the `write:issue` scope to run the issue contract checks on testorg (verified on the disposable instance meanwhile).
 - [ ] Forgejo resolves label names to IDs with one label listing per call; organisation-level labels are not found by name.
 - [ ] Forgejo does not paginate issue comments (`ListComments` returns them all).
 - [ ] Not exposed yet: issue locking, reactions, timeline, attachments, due dates, pinned issues, issue types/fields (GitHub), state reasons (GitHub).
@@ -97,8 +96,8 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 ## Testing
 
-- [x] Integration tests: `-tags integration` + `GITOPSLIB_FORGEJO_{URL,TOKEN,ORG}`; repos prefixed `gitopslib-it-`, cleanup deletes only those. Added in increment 3.
+- [x] Integration tests: `-tags integration` + `GITOPSLIB_FORGEJO_{URL,TOKEN,ORG}` (token scopes: repository, organization, user, issue — read and write); repos prefixed `gitopslib-it-`, cleanup deletes only those. Added in increment 3.
 - [x] Shared contract checks in `internal/contracttest`, run by both backends' integration tests. Added in increment 4.
 - [x] GitHub user-namespace: covered by setting `GITOPSLIB_GITHUB_ORG` to the account's own login. Increment 4.
 - [x] Disposable Forgejo for admin tests: `scripts/forgejo-testenv.sh start|stop` (Docker, loopback only, writes `.env.testenv`). Admin tests refuse non-loopback URLs. Increment 5a.
-- [ ] CI job running integration tests against the disposable container (script is reusable); also run the repo contract checks there.
+- [ ] CI — **on hold until really needed** (no Forgejo/GitHub Actions for now). When picked up: (1) checks: gofmt, go vet (with and without the integration tag), go test -race; (2) Forgejo integration against the disposable container only, never production (testenv script would also create a CI org and write `GITOPSLIB_FORGEJO_*`); (3) GitHub integration on manual trigger only (token as a CI secret; rate limits; public repo for protection checks). Platform undecided (Jenkins, Forgejo Actions, GitHub Actions).
