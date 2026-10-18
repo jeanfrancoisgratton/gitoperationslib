@@ -48,7 +48,10 @@ Deferred items and open questions. Remove entries when done; note the increment 
 ## Branches and tags
 
 - [x] Branches (list with default flag, get, create from branch/tag/commit, rename, delete) and tags (list, get, create lightweight or annotated, delete) on both backends. Enhancement 2a.
-- [ ] Next: branch and tag protection (shared subset + Forgejo-only options; GitHub needs public repositories on free plans).
+- [x] Branch and tag protection: Forgejo protection rules, GitHub rulesets (shared subset + backend-specific options). GitHub tested on a short-lived public repository (free plans offer rulesets only there). Enhancement 2b.
+- [ ] GitHub rulesets: individual users cannot be exempted (teams only, organisations only); exempted teams bypass every rule of the ruleset, not just pushes.
+- [ ] GitHub: rulesets targeting several patterns, `~DEFAULT_BRANCH`, or set at organisation level are listed but cannot be addressed by pattern. Classic branch protection is not used.
+- [ ] Forgejo tag protection requires at least one allowed user or team.
 - [ ] Forgejo reports the commit message as `message` for lightweight tags; the library keeps it only for annotated tags (tag object ID differs from the commit).
 - [ ] GitHub `Tags.List` does not report annotations (one extra request per tag); use `Get`.
 - [ ] The integration tests' `CreateBranch` helpers could add their file commit through a future contents API.

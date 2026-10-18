@@ -18,6 +18,27 @@ type Client interface {
 	Webhooks() Webhooks
 	Branches() Branches
 	Tags() Tags
+	BranchProtections() BranchProtections
+	TagProtections() TagProtections
+}
+
+// BranchProtections manages branch protection rules, addressed by pattern.
+// Update replaces a rule entirely: Get it, change it, then Update.
+type BranchProtections interface {
+	List(ctx context.Context, owner, repo string) ([]BranchProtection, error)
+	Get(ctx context.Context, owner, repo, pattern string) (*BranchProtection, error)
+	Create(ctx context.Context, owner, repo string, rule BranchProtection) (*BranchProtection, error)
+	Update(ctx context.Context, owner, repo, pattern string, rule BranchProtection) (*BranchProtection, error)
+	Delete(ctx context.Context, owner, repo, pattern string) error
+}
+
+// TagProtections manages tag protection rules, addressed by pattern.
+type TagProtections interface {
+	List(ctx context.Context, owner, repo string) ([]TagProtection, error)
+	Get(ctx context.Context, owner, repo, pattern string) (*TagProtection, error)
+	Create(ctx context.Context, owner, repo string, rule TagProtection) (*TagProtection, error)
+	Update(ctx context.Context, owner, repo, pattern string, rule TagProtection) (*TagProtection, error)
+	Delete(ctx context.Context, owner, repo, pattern string) error
 }
 
 // Branches manages repository branches. The default branch is changed with

@@ -46,7 +46,7 @@ func integrationEnv(t *testing.T) contracttest.Env {
 		t.Fatal(err)
 	}
 	t.Logf("GitHub user %s, org %s", login, org)
-	return contracttest.Env{Client: c, Org: org, Login: login, CreateBranch: c.createBranch, CheckPing: c.checkPingDelivery}
+	return contracttest.Env{Client: c, Org: org, Login: login, CreateBranch: c.createBranch, CheckPing: c.checkPingDelivery, PublicProtectionRepo: true}
 }
 
 func TestIntegrationRepos(t *testing.T) {
@@ -133,4 +133,8 @@ func (c *Client) checkPingDelivery(t *testing.T, ctx context.Context, owner, rep
 
 func TestIntegrationBranchesAndTags(t *testing.T) {
 	contracttest.BranchesAndTags(t, integrationEnv(t))
+}
+
+func TestIntegrationProtections(t *testing.T) {
+	contracttest.Protections(t, integrationEnv(t))
 }

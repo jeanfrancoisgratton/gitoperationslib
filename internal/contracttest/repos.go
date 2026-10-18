@@ -30,6 +30,10 @@ type Env struct {
 	// with one commit adding file. Pull request checks need it; the library
 	// has no branch or contents API yet.
 	CreateBranch func(ctx context.Context, owner, repo, branch, file, content string) error
+	// PublicProtectionRepo runs the protection checks in a public
+	// repository (GitHub free plans offer rulesets only there). It contains
+	// only the initial README and is deleted at the end of the test.
+	PublicProtectionRepo bool
 	// CheckPing, when set, is called after a successful webhook ping, e.g.
 	// to verify the recorded delivery's signature against secret.
 	CheckPing func(t *testing.T, ctx context.Context, owner, repo string, hookID int64, secret []byte)

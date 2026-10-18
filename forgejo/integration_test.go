@@ -74,3 +74,7 @@ func TestIntegrationWebhooks(t *testing.T) {
 func TestIntegrationBranchesAndTags(t *testing.T) {
 	contracttest.BranchesAndTags(t, integrationEnv(t))
 }
+
+func TestIntegrationProtections(t *testing.T) {
+	contracttest.Protections(t, integrationEnv(t))
+}
