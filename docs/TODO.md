@@ -106,3 +106,40 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] GitHub user-namespace: covered by setting `GITOPSLIB_GITHUB_ORG` to the account's own login. Increment 4.
 - [x] Disposable Forgejo for admin tests: `scripts/forgejo-testenv.sh start|stop` (Docker, loopback only, writes `.env.testenv`). Admin tests refuse non-loopback URLs. Increment 5a.
 - [ ] CI — **on hold until really needed** (no Forgejo/GitHub Actions for now). When picked up: (1) checks: gofmt, go vet (with and without the integration tag), go test -race; (2) Forgejo integration against the disposable container only, never production (testenv script would also create a CI org and write `GITOPSLIB_FORGEJO_*`); (3) GitHub integration on manual trigger only (token as a CI secret; rate limits; public repo for protection checks). Platform undecided (Jenkins, Forgejo Actions, GitHub Actions).
+
+## Very long term: more forges
+
+Not planned; no accounts or test environments yet. Assessment from API knowledge, not verified against current docs (points marked "verify" especially).
+
+### GitLab
+
+- [ ] GitLab backend. Maps well: projects, branches, tags, issues, labels, milestones, comments, merge requests (drafts = `Draft:` title prefix, approvals), releases tied to tags, admin users/groups (self-managed), and a token API (personal, project and group tokens: create, rotate, revoke) that fits the planned `Tokens` interface better than GitHub.
+- Needs adapting:
+  - nested groups (`acme/platform/backend`); projects addressed by encoded path or numeric ID; listing by owner and the user/organisation lookup differ.
+  - merge methods (merge commit, semi-linear, fast-forward) are a project setting, not a per-merge choice; squash is a per-merge flag. `MergeOptions.Method` would mostly be `ErrNotSupported` or need a project-level setting.
+  - release assets are links; files are uploaded separately (package registry or project uploads), so `UploadAsset` would be two steps.
+  - no teams: access via group/project membership with roles (Developer, Maintainer…). `Teams` would be `ErrNotSupported` or need a membership interface.
+  - protection: protected branches/tags with role-based access levels; approval rules are paid-tier.
+  - webhooks: traditionally a plain secret in `X-Gitlab-Token`, not an HMAC (newer versions may sign: verify); the `webhook` package needs a GitLab path.
+- Official Go SDK: `gitlab.com/gitlab-org/api/client-go` (could be used like go-github).
+- Testing: GitLab CE runs in Docker like the Forgejo test container (heavier: ~4 GB RAM, minutes to start); a free gitlab.com account covers the hosted side.
+
+### Bitbucket
+
+- [ ] Bitbucket Cloud and Bitbucket Data Center have different APIs (REST 2.0 vs REST 1.0): two backends.
+- Gaps (Cloud): no releases (only a "Downloads" area); no labels or milestones on pull requests; minimal issue tracker (Jira is pushed instead); merge strategies merge commit, squash, fast-forward; draft PRs only recently (verify); three-level structure workspace / project / repository (`owner` = workspace); branch permissions and merge checks map partially to the protection model; webhooks: different event header (`X-Event-Key`) and payloads, HMAC signing added fairly recently (verify).
+- Many shared interfaces would return `ErrNotSupported`: acceptable with capabilities, but limited value as a common backend.
+- Testing: Cloud with a free account; Data Center needs a licence (evaluation licences and a Docker image exist, heavy and time-limited).
+
+### Design impact
+
+- A GitLab backend would likely push shared types to become less GitHub/Forgejo-shaped: `MergeMethod`, `TeamAccess`, `HookEvent`.
+- Suggested order if ever done: GitLab first; Bitbucket Cloud maybe; Data Center only on real demand.
+
+### Decision grid
+
+| Backend | Fit | Effort | Testable locally |
+|---|---|---|---|
+| GitLab | good | ≈ one backend (like Forgejo or GitHub) | ✅ GitLab CE in Docker |
+| Bitbucket Cloud | partial (no releases, labels, milestones) | medium, many gaps | free account |
+| Bitbucket Data Center | partial, separate API | medium-large | evaluation licence |
