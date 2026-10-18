@@ -70,3 +70,7 @@ func (c *Client) createBranch(ctx context.Context, owner, repo, branch, file, co
 func TestIntegrationWebhooks(t *testing.T) {
 	contracttest.Webhooks(t, integrationEnv(t))
 }
+
+func TestIntegrationBranchesAndTags(t *testing.T) {
+	contracttest.BranchesAndTags(t, integrationEnv(t))
+}

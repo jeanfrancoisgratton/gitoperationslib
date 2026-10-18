@@ -90,7 +90,8 @@ func New(token string, opts ...Option) (*Client, error) {
 func (c *Client) Backend() gitoperationslib.Backend { return gitoperationslib.BackendGitHub }
 
 func (c *Client) Capabilities() gitoperationslib.Capability {
-	return gitoperationslib.CapRepos | gitoperationslib.CapReleases | gitoperationslib.CapPullRequests | gitoperationslib.CapWebhooks
+	return gitoperationslib.CapRepos | gitoperationslib.CapReleases | gitoperationslib.CapPullRequests | gitoperationslib.CapWebhooks |
+		gitoperationslib.CapBranches | gitoperationslib.CapTags
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }

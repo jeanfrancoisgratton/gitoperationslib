@@ -25,7 +25,8 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] Releases and assets on both backends, streamed upload/download, external assets (Forgejo), backend-specific options. Increment 6.
 - [ ] Asset `label` (GitHub) and editing an external asset's URL (Forgejo) are not exposed.
 - [ ] `List` filters (Forgejo `draft`, `pre-release`, `q`) are not exposed.
-- [ ] Tags are kept when a release is deleted; deleting tags belongs to a future branches/tags area.
+- [ ] Tags are kept when a release is deleted; delete them with `Tags().Delete`.
+- [ ] Undecided, much later: a `Tags().Release(tag, opts)` shortcut. `Releases().Create` with `TagName` already creates the tag if needed or releases an existing one.
 
 ## Pull requests
 
@@ -43,6 +44,14 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [ ] The production instance has default webhooks (Mattermost, Jenkins) copied into every new repository, including test repositories: integration tests trigger them.
 - [ ] Not exposed yet: Forgejo user-level hooks (`/user/hooks`), git hooks (`/hooks/git`), delivery history/redelivery, GitHub `insecure_ssl`, wildcard event subscriptions.
 - [ ] Typed payloads beyond push/pull_request/release (issues, comments, reviews, create/delete). Forgejo review events arrive under Forgejo-specific names; check before typing them.
+
+## Branches and tags
+
+- [x] Branches (list with default flag, get, create from branch/tag/commit, rename, delete) and tags (list, get, create lightweight or annotated, delete) on both backends. Enhancement 2a.
+- [ ] Next: branch and tag protection (shared subset + Forgejo-only options; GitHub needs public repositories on free plans).
+- [ ] Forgejo reports the commit message as `message` for lightweight tags; the library keeps it only for annotated tags (tag object ID differs from the commit).
+- [ ] GitHub `Tags.List` does not report annotations (one extra request per tag); use `Get`.
+- [ ] The integration tests' `CreateBranch` helpers could add their file commit through a future contents API.
 
 ## API surface
 

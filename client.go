@@ -16,6 +16,29 @@ type Client interface {
 	Releases() Releases
 	PullRequests() PullRequests
 	Webhooks() Webhooks
+	Branches() Branches
+	Tags() Tags
+}
+
+// Branches manages repository branches. The default branch is changed with
+// Repos().Edit.
+type Branches interface {
+	// List returns the branches; IsDefault marks the default one.
+	List(ctx context.Context, owner, repo string, opts ListOptions) (Page[Branch], error)
+	Get(ctx context.Context, owner, repo, name string) (*Branch, error)
+	Create(ctx context.Context, owner, repo string, opts CreateBranchOptions) (*Branch, error)
+	// Rename renames a branch. Open pull requests and protection rules
+	// follow it.
+	Rename(ctx context.Context, owner, repo, name, newName string) (*Branch, error)
+	Delete(ctx context.Context, owner, repo, name string) error
+}
+
+// Tags manages repository tags. Releases are managed with Releases().
+type Tags interface {
+	List(ctx context.Context, owner, repo string, opts ListOptions) (Page[Tag], error)
+	Get(ctx context.Context, owner, repo, name string) (*Tag, error)
+	Create(ctx context.Context, owner, repo string, opts CreateTagOptions) (*Tag, error)
+	Delete(ctx context.Context, owner, repo, name string) error
 }
 
 // Webhooks manages repository and organisation webhooks. Receiving and

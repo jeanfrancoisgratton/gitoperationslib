@@ -130,3 +130,7 @@ func (c *Client) checkPingDelivery(t *testing.T, ctx context.Context, owner, rep
 	}
 	t.Logf("verified GitHub ping delivery %s", ev.Delivery)
 }
+
+func TestIntegrationBranchesAndTags(t *testing.T) {
+	contracttest.BranchesAndTags(t, integrationEnv(t))
+}
