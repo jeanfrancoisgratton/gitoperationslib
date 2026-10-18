@@ -20,6 +20,47 @@ type Client interface {
 	Tags() Tags
 	BranchProtections() BranchProtections
 	TagProtections() TagProtections
+	Issues() Issues
+	Labels() Labels
+	Milestones() Milestones
+}
+
+// Issues manages issues and their comments. Label and comment methods also
+// accept pull request numbers.
+type Issues interface {
+	List(ctx context.Context, owner, repo string, opts ListIssuesOptions) (Page[Issue], error)
+	Get(ctx context.Context, owner, repo string, number int) (*Issue, error)
+	Create(ctx context.Context, owner, repo string, opts CreateIssueOptions) (*Issue, error)
+	Edit(ctx context.Context, owner, repo string, number int, opts EditIssueOptions) (*Issue, error)
+	// Delete removes an issue permanently (repository admins only; GitHub
+	// through GraphQL).
+	Delete(ctx context.Context, owner, repo string, number int) error
+
+	AddLabels(ctx context.Context, owner, repo string, number int, labels []string) error
+	RemoveLabel(ctx context.Context, owner, repo string, number int, label string) error
+
+	ListComments(ctx context.Context, owner, repo string, number int, opts ListOptions) (Page[Comment], error)
+	CreateComment(ctx context.Context, owner, repo string, number int, body string) (*Comment, error)
+	EditComment(ctx context.Context, owner, repo string, id int64, body string) (*Comment, error)
+	DeleteComment(ctx context.Context, owner, repo string, id int64) error
+}
+
+// Labels manages repository labels, addressed by name.
+type Labels interface {
+	List(ctx context.Context, owner, repo string, opts ListOptions) (Page[Label], error)
+	Get(ctx context.Context, owner, repo, name string) (*Label, error)
+	Create(ctx context.Context, owner, repo string, label Label) (*Label, error)
+	Edit(ctx context.Context, owner, repo, name string, opts EditLabelOptions) (*Label, error)
+	Delete(ctx context.Context, owner, repo, name string) error
+}
+
+// Milestones manages repository milestones, addressed by Milestone.ID.
+type Milestones interface {
+	List(ctx context.Context, owner, repo string, state MilestoneState, opts ListOptions) (Page[Milestone], error)
+	Get(ctx context.Context, owner, repo string, id int64) (*Milestone, error)
+	Create(ctx context.Context, owner, repo string, opts CreateMilestoneOptions) (*Milestone, error)
+	Edit(ctx context.Context, owner, repo string, id int64, opts EditMilestoneOptions) (*Milestone, error)
+	Delete(ctx context.Context, owner, repo string, id int64) error
 }
 
 // BranchProtections manages branch protection rules, addressed by pattern.

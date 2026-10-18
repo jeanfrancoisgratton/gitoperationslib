@@ -138,3 +138,7 @@ func TestIntegrationBranchesAndTags(t *testing.T) {
 func TestIntegrationProtections(t *testing.T) {
 	contracttest.Protections(t, integrationEnv(t))
 }
+
+func TestIntegrationIssues(t *testing.T) {
+	contracttest.Issues(t, integrationEnv(t))
+}

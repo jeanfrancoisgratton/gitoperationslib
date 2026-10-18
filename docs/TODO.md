@@ -56,6 +56,15 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [ ] GitHub `Tags.List` does not report annotations (one extra request per tag); use `Get`.
 - [ ] The integration tests' `CreateBranch` helpers could add their file commit through a future contents API.
 
+## Issues
+
+- [x] Issues (list without pull requests, get, create, edit, close/reopen, delete), labels on issues and pull requests, comments, repository labels and milestones on both backends. Enhancement 2c.
+- [ ] Production Forgejo test token needs the `write:issue` scope to run the issue contract checks on testorg (verified on the disposable instance meanwhile).
+- [ ] Forgejo resolves label names to IDs with one label listing per call; organisation-level labels are not found by name.
+- [ ] Forgejo does not paginate issue comments (`ListComments` returns them all).
+- [ ] Not exposed yet: issue locking, reactions, timeline, attachments, due dates, pinned issues, issue types/fields (GitHub), state reasons (GitHub).
+- [ ] Unit-test coverage of the GitHub backend dropped to ~76% (labels/milestones list/get are covered by the integration checks only).
+
 ## API surface
 
 - [ ] Optional interfaces for Forgejo extras: mirrors, push mirrors, migrate (`CapMirrors`, `CapMigrate` already declared).
