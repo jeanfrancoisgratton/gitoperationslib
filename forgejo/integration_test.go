@@ -66,3 +66,7 @@ func (c *Client) createBranch(ctx context.Context, owner, repo, branch, file, co
 	_, err := c.api.Do(ctx, http.MethodPost, forgejoapi.Path("repos", owner, repo, "contents", file), nil, body, nil)
 	return err
 }
+
+func TestIntegrationWebhooks(t *testing.T) {
+	contracttest.Webhooks(t, integrationEnv(t))
+}

@@ -100,7 +100,8 @@ func (c *Client) Version() Version { return c.version }
 func (c *Client) Backend() gitoperationslib.Backend { return gitoperationslib.BackendForgejo }
 
 func (c *Client) Capabilities() gitoperationslib.Capability {
-	return gitoperationslib.CapRepos | gitoperationslib.CapAdmin | gitoperationslib.CapReleases | gitoperationslib.CapExternalAssets | gitoperationslib.CapPullRequests
+	return gitoperationslib.CapRepos | gitoperationslib.CapAdmin | gitoperationslib.CapReleases | gitoperationslib.CapExternalAssets | gitoperationslib.CapPullRequests |
+		gitoperationslib.CapWebhooks
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }

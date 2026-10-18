@@ -15,6 +15,23 @@ type Client interface {
 	Repos() Repos
 	Releases() Releases
 	PullRequests() PullRequests
+	Webhooks() Webhooks
+}
+
+// Webhooks manages repository and organisation webhooks. Receiving and
+// verifying deliveries is done by the webhook sub-package.
+type Webhooks interface {
+	List(ctx context.Context, scope HookScope, opts ListOptions) (Page[Webhook], error)
+	Get(ctx context.Context, scope HookScope, id int64) (*Webhook, error)
+	// Create adds a webhook. Forgejo silently drops event names it does not
+	// know; Create then returns the webhook together with an error.
+	Create(ctx context.Context, scope HookScope, opts CreateWebhookOptions) (*Webhook, error)
+	// Edit changes a webhook; dropped events are reported as in Create.
+	Edit(ctx context.Context, scope HookScope, id int64, opts EditWebhookOptions) (*Webhook, error)
+	Delete(ctx context.Context, scope HookScope, id int64) error
+	// Ping asks the server to send a test delivery: a "ping" event on
+	// GitHub, a "push" of the latest commit on Forgejo (repositories only).
+	Ping(ctx context.Context, scope HookScope, id int64) error
 }
 
 // PullRequests manages pull requests and their reviews.

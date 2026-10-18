@@ -35,6 +35,14 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [ ] Not exposed yet: line-level review comments, diff/patch, changed files, commits, update-branch, labels/milestones/assignees (wait for the issues area), `ListPROptions` head/base filters (GitHub only).
 - [ ] `IsMerged` reports false for a pull request that does not exist (both servers answer 404).
 
+## Webhooks
+
+- [x] Repository and organisation webhooks on both backends; `webhook` sub-package for receiving (verification, forge detection, typed push/pull_request/release). Increment 8.
+- [ ] Forgejo 15: `POST /admin/hooks` creates a *default* webhook (copied into every new repository), not a system hook, and `GET /admin/hooks` only lists system hooks. `SystemWebhooks` was dropped; possible `DefaultWebhooks` (get/create/edit/delete by ID only). Consider reporting upstream.
+- [ ] The production instance has default webhooks (Mattermost, Jenkins) copied into every new repository, including test repositories: integration tests trigger them.
+- [ ] Not exposed yet: Forgejo user-level hooks (`/user/hooks`), git hooks (`/hooks/git`), delivery history/redelivery, GitHub `insecure_ssl`, wildcard event subscriptions.
+- [ ] Typed payloads beyond push/pull_request/release (issues, comments, reviews, create/delete). Forgejo review events arrive under Forgejo-specific names; check before typing them.
+
 ## API surface
 
 - [ ] Optional interfaces for Forgejo extras: mirrors, push mirrors, migrate (`CapMirrors`, `CapMigrate` already declared).
@@ -58,7 +66,7 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] Forgejo draft PRs: a title prefix (`WIP:`/`[WIP]`), no API field; drafts cannot be merged (405). Increment 7.
 - [x] Forgejo `mergeable` is a plain bool, set immediately; GitHub's is nullable (`PullRequest.Mergeable *bool`). Increment 7.
 - [x] Forgejo pagination: `page`/`limit`, `Link` + `X-Total-Count` headers; defaults are instance settings (`/api/v1/settings/api`: 30 default, 50 max on git.famillegratton.net). Resolved in increment 2.
-- [ ] Webhook signature header names, algorithm and prefix, Forgejo vs GitHub, tested against real deliveries.
+- [x] Webhook signatures: both forges send `X-Hub-Signature-256: sha256=<hex HMAC-SHA256>`; Forgejo also `X-Forgejo-Signature` (bare hex) and GitHub-style event headers. Verified against real deliveries from both. Increment 8.
 - [ ] Forgejo asset upload limits and content-type handling.
 - [ ] Changes to Forgejo user/org/team endpoints in recent majors (quota APIs etc.).
 - [x] `go-github`: pinned at v93.0.0 (declares go 1.26.0). New majors change the import path; review periodically. Resolved in increment 4.

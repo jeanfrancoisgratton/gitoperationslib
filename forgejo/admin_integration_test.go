@@ -14,6 +14,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/contracttest"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/webhook"
 )
 
 // adminEnv returns an admin client for the disposable test instance. It
@@ -576,5 +578,128 @@ func TestIntegrationAdminPullRequestReviews(t *testing.T) {
 
 	if err := prs.Merge(ctx, admin, repo, pr.Number, gitoperationslib.MergeOptions{Method: gitoperationslib.MergeMethodSquash, DeleteBranch: true}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// hookReceiver collects deliveries made to a webhook.Handler that the test
+// container can reach (GITOPSLIB_TESTENV_HOOK_HOST, the Docker bridge
+// gateway).
+type hookReceiver struct {
+	srv    *httptest.Server
+	events chan received
+}
+
+type received struct {
+	path string
+	ev   *webhook.Event
+}
+
+func newHookReceiver(t *testing.T, secrets map[string][]byte) *hookReceiver {
+	t.Helper()
+	host := os.Getenv("GITOPSLIB_TESTENV_HOOK_HOST")
+	if host == "" {
+		t.Skip("GITOPSLIB_TESTENV_HOOK_HOST must be set (scripts/forgejo-testenv.sh start)")
+	}
+	l, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+	if err != nil {
+		t.Skipf("cannot listen on %s: %v", host, err)
+	}
+	r := &hookReceiver{events: make(chan received, 100)}
+	mux := http.NewServeMux()
+	for path, secret := range secrets {
+		mux.Handle(path, webhook.Handler(secret, func(_ context.Context, ev *webhook.Event) error {
+			r.events <- received{path, ev}
+			return nil
+		}))
+	}
+	r.srv = &httptest.Server{Listener: l, Config: &http.Server{Handler: mux}}
+	r.srv.Start()
+	t.Cleanup(r.srv.Close)
+	return r
+}
+
+// wait returns the first delivery to path with the given event name.
+func (r *hookReceiver) wait(t *testing.T, path, name string) *webhook.Event {
+	t.Helper()
+	timeout := time.After(30 * time.Second)
+	for {
+		select {
+		case got := <-r.events:
+			t.Logf("received %s on %s (action %q)", got.ev.Name, got.path, got.ev.Action)
+			if got.path == path && got.ev.Name == name {
+				return got.ev
+			}
+		case <-timeout:
+			t.Fatalf("no %s delivery on %s", name, path)
+		}
+	}
+}
+
+func TestIntegrationAdminWebhookDeliveries(t *testing.T) {
+	ctx, c := adminEnv(t)
+	repoSecret := []byte("repo-secret")
+	recv := newHookReceiver(t, map[string][]byte{"/repo": repoSecret})
+	admin, err := c.currentLogin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := contracttest.RepoPrefix + "hooks"
+	t.Cleanup(func() { c.Repos().Delete(context.Background(), admin, repo) })
+	created, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Name: repo, AutoInit: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scope := gitoperationslib.RepoHooks(admin, repo)
+	hook, err := c.Webhooks().Create(ctx, scope, gitoperationslib.CreateWebhookOptions{
+		URL: recv.srv.URL + "/repo", Secret: string(repoSecret),
+		Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush, gitoperationslib.HookEventPullRequest, gitoperationslib.HookEventRelease},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Forgejo's test delivery is a push of the latest commit.
+	if err := c.Webhooks().Ping(ctx, scope, hook.ID); err != nil {
+		t.Fatal(err)
+	}
+	ping := recv.wait(t, "/repo", "push")
+	if ping.Forge != gitoperationslib.BackendForgejo || ping.Repo != admin+"/"+repo || ping.Delivery == "" {
+		t.Errorf("ping = %+v", ping)
+	}
+
+	if err := c.createBranch(ctx, admin, repo, "feature", "feature.txt", "x\n"); err != nil {
+		t.Fatal(err)
+	}
+	push, err := recv.wait(t, "/repo", "push").Push()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if push.Branch() != "feature" || push.Pusher != admin || len(push.Commits) != 1 || push.Commits[0].Message != "Add feature.txt\n" && push.Commits[0].Message != "Add feature.txt" {
+		t.Errorf("push = %+v", push)
+	}
+
+	pr, err := c.PullRequests().Create(ctx, admin, repo, gitoperationslib.CreatePROptions{Title: "Hooked", Head: "feature", Base: created.DefaultBranch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prEvent, err := recv.wait(t, "/repo", "pull_request").PullRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prEvent.Action != "opened" || prEvent.Number != pr.Number || prEvent.PullRequest.Head.Ref != "feature" || prEvent.PullRequest.Title != "Hooked" {
+		t.Errorf("pull request event = %+v", prEvent)
+	}
+
+	if _, err := c.Releases().Create(ctx, admin, repo, gitoperationslib.CreateReleaseOptions{TagName: "v1.0.0", Name: "1.0.0"}); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := recv.wait(t, "/repo", "release").Release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.Action != "published" || rel.Release.TagName != "v1.0.0" || rel.Release.Name != "1.0.0" {
+		t.Errorf("release event = %+v", rel)
 	}
 }

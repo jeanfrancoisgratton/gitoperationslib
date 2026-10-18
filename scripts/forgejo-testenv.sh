@@ -7,7 +7,8 @@
 # Then: set -a; source .env.testenv; set +a; go test -tags integration ./...
 #
 # The instance listens on 127.0.0.1 only and keeps no volume: stopping it
-# discards everything.
+# discards everything. It may deliver webhooks to any address, so tests can
+# receive them on the Docker bridge gateway.
 set -euo pipefail
 
 IMAGE="${GITOPSLIB_TESTENV_IMAGE:-codeberg.org/forgejo/forgejo:15}"
@@ -30,6 +31,8 @@ start() {
 		-e FORGEJO__server__DISABLE_SSH=true \
 		-e FORGEJO__service__DISABLE_REGISTRATION=true \
 		-e FORGEJO__mailer__ENABLED=false \
+		-e FORGEJO__webhook__ALLOWED_HOST_LIST='*' \
+		-e FORGEJO__webhook__DELIVER_TIMEOUT=5 \
 		"$IMAGE" >/dev/null
 
 	echo -n "waiting for Forgejo at $URL "
@@ -52,10 +55,16 @@ start() {
 	token="$(docker exec -u git "$NAME" forgejo admin user generate-access-token \
 		--username "$ADMIN" --token-name integration-tests --scopes all --raw)"
 
+	# Webhook integration tests listen on the Docker bridge gateway, which
+	# the container can reach.
+	local hook_host
+	hook_host="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')"
+
 	umask 077
 	cat >"$ENV_FILE" <<EOF
 GITOPSLIB_TESTENV_URL=$URL
 GITOPSLIB_TESTENV_ADMIN_TOKEN=$token
+GITOPSLIB_TESTENV_HOOK_HOST=$hook_host
 EOF
 	echo "admin user $ADMIN created; credentials written to $ENV_FILE"
 }
