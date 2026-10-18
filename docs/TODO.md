@@ -2,9 +2,14 @@
 
 Deferred items and open questions. Remove entries when done; note the increment that resolved them.
 
+## Next priority
+
+- [ ] **Forgejo access tokens** (`Tokens` interface): list, create (name, scopes such as `write:repository`, optional repository restriction), revoke by name or ID, via `/users/{username}/tokens`. The secret is returned only once, by create. Forgejo is expected to require username/password authentication (a token cannot mint tokens): confirm on the disposable instance, and whether a site admin can manage other users' tokens. GitHub: `ErrNotSupported` (personal access tokens cannot be created or revoked through the API).
+- [ ] **GitHub App authentication** (after Forgejo tokens): a client constructor taking an app ID and private key, minting short-lived installation tokens (JWT signed with the standard library, no new dependency) and refreshing them automatically; revocation via `DELETE /installation/token`. Possibly also org-level listing/revocation of fine-grained PATs (GitHub App only) and the leaked-credential revocation endpoint (verify it exists).
+
 ## Transport (Forgejo)
 
-- [ ] Multipart upload for release assets (with releases increment).
+- [x] Multipart upload for release assets (streamed, exact Content-Length). Increment 6.
 - [ ] `Sudo` header option: admin acting as another user.
 - [ ] Basic auth with TOTP (`X-FORGEJO-OTP`) for accounts with 2FA.
 - [ ] Retries / backoff on transient errors (5xx, connection reset). Forgejo sends no rate-limit headers.
