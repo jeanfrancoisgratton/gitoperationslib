@@ -18,7 +18,8 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
 )
 
-// Credentials authenticate requests. Create them with Token or BasicAuth.
+// Credentials authenticate requests. Create them with Token, APIToken or
+// BasicAuth.
 type Credentials interface {
 	apply(*http.Request)
 }
@@ -27,14 +28,19 @@ type tokenAuth string
 
 func (t tokenAuth) apply(r *http.Request) { r.Header.Set("Authorization", "Bearer "+string(t)) }
 
-// Token authenticates with an access token sent as a bearer token: an
-// Atlassian API token with Bitbucket scopes, or a workspace, project or
-// repository access token.
+// Token authenticates with a workspace, project or repository access token
+// (ATCTT...), sent as a bearer token. Atlassian API tokens (ATATT...) are
+// refused as bearer tokens: use APIToken for those.
 func Token(token string) Credentials { return tokenAuth(token) }
 
 type basicAuth struct{ username, password string }
 
 func (b basicAuth) apply(r *http.Request) { r.SetBasicAuth(b.username, b.password) }
+
+// APIToken authenticates with an Atlassian API token with Bitbucket scopes
+// (ATATT...), which Bitbucket only accepts through basic authentication with
+// the Atlassian account e-mail.
+func APIToken(email, token string) Credentials { return basicAuth{email, token} }
 
 // BasicAuth authenticates with a username (or Atlassian account e-mail) and
 // an API token or app password.

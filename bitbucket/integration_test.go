@@ -3,7 +3,11 @@
 // Integration tests against Bitbucket Cloud. They run only with
 // -tags integration and these environment variables set:
 //
-//	GITOPSLIB_BITBUCKET_TOKEN      API token with Bitbucket scopes (bearer)
+//	GITOPSLIB_BITBUCKET_TOKEN      Atlassian API token with Bitbucket scopes
+//	                               (ATATT...), or an access token (ATCTT...)
+//	GITOPSLIB_BITBUCKET_EMAIL      Atlassian account e-mail; required with an
+//	                               API token (basic auth), unset with an
+//	                               access token (bearer)
 //	GITOPSLIB_BITBUCKET_WORKSPACE  workspace to test in (optional when the
 //	                               token can only see one)
 //
@@ -29,7 +33,11 @@ func integrationEnv(t *testing.T) contracttest.Env {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	c, err := New(Token(token))
+	creds := Token(token)
+	if email := os.Getenv("GITOPSLIB_BITBUCKET_EMAIL"); email != "" {
+		creds = APIToken(email, token)
+	}
+	c, err := New(creds)
 	if err != nil {
 		t.Fatal(err)
 	}

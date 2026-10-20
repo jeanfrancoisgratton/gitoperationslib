@@ -130,12 +130,15 @@ client, err = github.New(token, github.WithHTTPClient(httpClient), github.WithUs
 `bitbucket.New` makes no request. Repository owners are **workspaces**; new repositories go to the workspace's default project.
 
 ```go
-// Atlassian API token with Bitbucket scopes (or a workspace/project/repository
-// access token), sent as a bearer token.
-client, err := bitbucket.New(bitbucket.Token(os.Getenv("BITBUCKET_TOKEN")))
+// Atlassian API token with Bitbucket scopes (ATATT...): Bitbucket only accepts it
+// through basic authentication, with the Atlassian account e-mail.
+client, err := bitbucket.New(bitbucket.APIToken("alice@example.com", os.Getenv("BITBUCKET_TOKEN")))
 
-// Basic authentication: username (or Atlassian account e-mail) and API token or app password.
-client, err = bitbucket.New(bitbucket.BasicAuth("alice@example.com", token))
+// Workspace, project or repository access token (ATCTT...), sent as a bearer token.
+client, err = bitbucket.New(bitbucket.Token(os.Getenv("BITBUCKET_ACCESS_TOKEN")))
+
+// Basic authentication: username (or Atlassian account e-mail) and app password.
+client, err = bitbucket.New(bitbucket.BasicAuth("alice@example.com", appPassword))
 
 // Same options as the others:
 client, err = bitbucket.New(bitbucket.Token(token), bitbucket.WithHTTPClient(httpClient), bitbucket.WithUserAgent("my-tool/1.0"))
@@ -155,7 +158,7 @@ func open(ctx context.Context, forge string) (gol.Client, error) {
 	case "github":
 		return github.New(os.Getenv("GITHUB_TOKEN"))
 	case "bitbucket":
-		return bitbucket.New(bitbucket.Token(os.Getenv("BITBUCKET_TOKEN")))
+		return bitbucket.New(bitbucket.APIToken(os.Getenv("BITBUCKET_EMAIL"), os.Getenv("BITBUCKET_TOKEN")))
 	}
 	return nil, fmt.Errorf("unknown forge %q", forge)
 }
@@ -786,7 +789,7 @@ Integration tests are behind the `integration` build tag and skip themselves unl
 |---|---|
 | Forgejo contract checks | `GITOPSLIB_FORGEJO_URL`, `GITOPSLIB_FORGEJO_TOKEN` (scopes: repository, organization, user, issue — read and write), `GITOPSLIB_FORGEJO_ORG` (a throwaway organisation the token's user owns) |
 | GitHub contract checks | `GITOPSLIB_GITHUB_TOKEN`, `GITOPSLIB_GITHUB_ORG` (an organisation, or the account's own login) |
-| Bitbucket contract checks | `GITOPSLIB_BITBUCKET_TOKEN` (API token with Bitbucket scopes), `GITOPSLIB_BITBUCKET_WORKSPACE` (optional when the token sees a single workspace) |
+| Bitbucket contract checks | `GITOPSLIB_BITBUCKET_TOKEN` (Atlassian API token with Bitbucket scopes, or an access token), `GITOPSLIB_BITBUCKET_EMAIL` (the Atlassian account e-mail; required with an API token, unset with an access token), `GITOPSLIB_BITBUCKET_WORKSPACE` (optional when the token sees a single workspace) |
 | Forgejo admin checks | the disposable instance below |
 
 Admin checks need a site-admin token, so they only run against a disposable local Forgejo (Docker), and refuse any non-loopback URL:

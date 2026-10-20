@@ -39,6 +39,23 @@ func fakeBitbucket(t *testing.T, handler http.HandlerFunc) *Client {
 	return c
 }
 
+func TestCredentials(t *testing.T) {
+	for name, tc := range map[string]struct {
+		creds Credentials
+		want  string
+	}{
+		"access token": {Token("ATCTTx"), "Bearer ATCTTx"},
+		"API token":    {APIToken("alice@example.com", "ATATTx"), "Basic YWxpY2VAZXhhbXBsZS5jb206QVRBVFR4"},
+		"basic":        {BasicAuth("alice", "pw"), "Basic YWxpY2U6cHc="},
+	} {
+		r, _ := http.NewRequest(http.MethodGet, "https://api.bitbucket.org/2.0/user", nil)
+		tc.creds.apply(r)
+		if got := r.Header.Get("Authorization"); got != tc.want {
+			t.Errorf("%s: Authorization = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
 func body(r *http.Request) string {
 	data, _ := io.ReadAll(r.Body)
 	return strings.TrimSpace(string(data))

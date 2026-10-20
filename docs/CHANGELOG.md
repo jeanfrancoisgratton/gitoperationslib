@@ -6,6 +6,17 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [0.1.6] — 2026-10-20
+
+### Added
+- `bitbucket.APIToken(email, token)`: Atlassian API tokens (ATATT...), sent through basic
+  authentication with the Atlassian account e-mail, the only way Bitbucket accepts them.
+- Bitbucket integration tests: `GITOPSLIB_BITBUCKET_EMAIL`, to run them with an API token.
+
+### Fixed
+- `bitbucket.Token` documentation: it only covers workspace/project/repository access tokens
+  (ATCTT...); Bitbucket refuses Atlassian API tokens as bearer tokens (HTTP 401).
+
 ## [0.1.5] — 2026-10-20
 
 ### Added
