@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -37,6 +38,28 @@ type Env struct {
 	// CheckPing, when set, is called after a successful webhook ping, e.g.
 	// to verify the recorded delivery's signature against secret.
 	CheckPing func(t *testing.T, ctx context.Context, owner, repo string, hookID int64, secret []byte)
+	// HookURL overrides the webhook target (Bitbucket requires a URL that
+	// resolves in DNS); default HookURL.
+	HookURL string
+}
+
+// isBitbucket reports whether env tests the Bitbucket backend, whose model
+// differs most (no releases, issues or tag protection; final declines).
+func isBitbucket(env Env) bool { return env.Client.Backend() == gitoperationslib.BackendBitbucket }
+
+// unsupported checks that a backend without capability c reports
+// ErrNotSupported from call, and tells the caller to stop.
+func unsupported(t *testing.T, env Env, c gitoperationslib.Capability, call func() error) bool {
+	t.Helper()
+	if env.Client.Capabilities().Has(c) {
+		return false
+	}
+	if err := call(); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("%s lacks %s but returned %v, want ErrNotSupported", env.Client.Backend(), c, err)
+	} else {
+		t.Logf("%s: %v", c, err)
+	}
+	return true
 }
 
 // Repos runs the repository checks.
@@ -143,10 +166,14 @@ func orgRepoLifecycle(t *testing.T, env Env) {
 	ctx := testContext(t)
 	repos := env.Client.Repos()
 
-	created, name := create(t, ctx, env, gitoperationslib.CreateRepoOptions{
+	opts := gitoperationslib.CreateRepoOptions{
 		Owner: env.Org, Description: "gitoperationslib integration test",
 		AutoInit: true, Gitignores: []string{"Go"}, License: "MIT",
-	})
+	}
+	if isBitbucket(env) { // no gitignore or license templates
+		opts.Gitignores, opts.License = nil, ""
+	}
+	created, name := create(t, ctx, env, opts)
 	// Fatal, so cleanup runs at once if a test repo was exposed publicly.
 	if created.Visibility != gitoperationslib.VisibilityPrivate {
 		t.Fatalf("created with visibility %q, want private", created.Visibility)

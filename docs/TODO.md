@@ -110,6 +110,18 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] Disposable Forgejo for admin tests: `scripts/forgejo-testenv.sh start|stop` (Docker, loopback only, writes `.env.testenv`). Admin tests refuse non-loopback URLs. Increment 5a.
 - [ ] CI — **on hold until really needed** (no Forgejo/GitHub Actions for now). When picked up: (1) checks: gofmt, go vet (with and without the integration tag), go test -race; (2) Forgejo integration against the disposable container only, never production (testenv script would also create a CI org and write `GITOPSLIB_FORGEJO_*`); (3) GitHub integration on manual trigger only (token as a CI secret; rate limits; public repo for protection checks). Platform undecided (Jenkins, Forgejo Actions, GitHub Actions).
 
+## Bitbucket Cloud
+
+- [x] Bitbucket Cloud backend (`bitbucket/`, REST 2.0, hand-written transport in `internal/bitbucketapi`): repositories, branches, tags, branch protection (branch restrictions), pull requests and reviews, webhooks; `webhook` package receives Bitbucket deliveries. Contract checks pass on the user's workspace. Users/workspace administration deliberately not implemented.
+- [ ] Not available on Bitbucket Cloud (`ErrNotSupported`): releases (only a repository-wide Downloads area: a Bitbucket-only `Downloads` interface was declined for now), issues/labels/milestones (tracker retired, CHANGE-3071, HTTP 410), tag protection, branch rename, reopening declined pull requests, auto-merge, team reviewers, named status checks (only "N passing builds"), webhook ping, form payloads.
+- [ ] Bitbucket answers **HTTP 500 "Something went wrong"** when deleting a branch protected by a restriction (it is a refusal: the same delete succeeds once the restriction is gone). Consider mapping it to a clearer error.
+- [ ] Receiving Bitbucket webhooks follows the documentation (synthetic fixtures); verify against a live delivery once a public endpoint is available.
+- [ ] `ApplyToAdmins` has no Bitbucket equivalent (ignored on write, reported true). Resetting stale approvals and enforced merge checks need a Premium plan (the server error is passed through).
+- [ ] Users have no public login: nicknames are reported; nickname → UUID lookups use workspace members only.
+- [ ] Webhook IDs are derived from Bitbucket's UUIDs (first 15 hex digits); `Get`/`Edit`/`Delete` list the hooks to find them.
+- [ ] `Repos().List("")` lists each workspace (Bitbucket retired `/repositories?role=member`); with several workspaces everything is returned as one page.
+- [ ] Unit-test coverage of `bitbucket/` is ~53% (read paths and the ErrNotSupported stubs are covered by the integration checks only).
+
 ## Very long term: more forges
 
 Not planned; no accounts or test environments yet. Assessment from API knowledge, not verified against current docs (points marked "verify" especially).
@@ -129,7 +141,9 @@ Not planned; no accounts or test environments yet. Assessment from API knowledge
 
 ### Bitbucket
 
-- [ ] Bitbucket Cloud and Bitbucket Data Center have different APIs (REST 2.0 vs REST 1.0): two backends.
+- [x] Bitbucket Cloud: implemented (see the Bitbucket Cloud section above); the assessment below proved accurate, plus the issue tracker turned out to be retired entirely.
+- [ ] Bitbucket Data Center: separate API (REST 1.0), separate backend; needs a licence to test.
+- Original assessment: Bitbucket Cloud and Bitbucket Data Center have different APIs (REST 2.0 vs REST 1.0): two backends.
 - Gaps (Cloud): no releases (only a "Downloads" area); no labels or milestones on pull requests; minimal issue tracker (Jira is pushed instead); merge strategies merge commit, squash, fast-forward; draft PRs only recently (verify); three-level structure workspace / project / repository (`owner` = workspace); branch permissions and merge checks map partially to the protection model; webhooks: different event header (`X-Event-Key`) and payloads, HMAC signing added fairly recently (verify).
 - Many shared interfaces would return `ErrNotSupported`: acceptable with capabilities, but limited value as a common backend.
 - Testing: Cloud with a free account; Data Center needs a licence (evaluation licences and a Docker image exist, heavy and time-limited).
@@ -144,5 +158,5 @@ Not planned; no accounts or test environments yet. Assessment from API knowledge
 | Backend | Fit | Effort | Testable locally |
 |---|---|---|---|
 | GitLab | good | ≈ one backend (like Forgejo or GitHub) | ✅ GitLab CE in Docker |
-| Bitbucket Cloud | partial (no releases, labels, milestones) | medium, many gaps | free account |
+| Bitbucket Cloud | partial (no releases, labels, milestones) | medium, many gaps | free account — **done** |
 | Bitbucket Data Center | partial, separate API | medium-large | evaluation licence |

@@ -6,6 +6,8 @@ type Backend string
 const (
 	BackendForgejo Backend = "forgejo"
 	BackendGitHub  Backend = "github"
+	// BackendBitbucket is Bitbucket Cloud (REST API 2.0).
+	BackendBitbucket Backend = "bitbucket"
 )
 
 // Visibility is the visibility of a repository.

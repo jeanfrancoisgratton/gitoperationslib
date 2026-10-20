@@ -2,6 +2,7 @@ package contracttest
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"errors"
 	"io"
@@ -12,6 +13,12 @@ import (
 
 // Releases runs the release and asset checks in a throwaway repository.
 func Releases(t *testing.T, env Env) {
+	if unsupported(t, env, gitoperationslib.CapReleases, func() error {
+		_, err := env.Client.Releases().List(context.Background(), env.Org, "any", gitoperationslib.ListOptions{})
+		return err
+	}) {
+		return
+	}
 	ctx := testContext(t)
 	_, repo := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org, AutoInit: true})
 	rels := env.Client.Releases()

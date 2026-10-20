@@ -2,6 +2,7 @@ package contracttest
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"testing"
@@ -13,6 +14,19 @@ import (
 // Issues runs the issue, label, milestone and comment checks in a throwaway
 // repository.
 func Issues(t *testing.T, env Env) {
+	if unsupported(t, env, gitoperationslib.CapIssues, func() error {
+		bg := context.Background()
+		_, err := env.Client.Issues().Create(bg, env.Org, "any", gitoperationslib.CreateIssueOptions{Title: "x"})
+		if errors.Is(err, gitoperationslib.ErrNotSupported) {
+			_, err = env.Client.Labels().Create(bg, env.Org, "any", gitoperationslib.Label{Name: "x"})
+		}
+		if errors.Is(err, gitoperationslib.ErrNotSupported) {
+			_, err = env.Client.Milestones().Create(bg, env.Org, "any", gitoperationslib.CreateMilestoneOptions{Title: "x"})
+		}
+		return err
+	}) {
+		return
+	}
 	ctx := testContext(t)
 	created, repo := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org, AutoInit: true})
 	owner := env.Org

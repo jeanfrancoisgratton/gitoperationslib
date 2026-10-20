@@ -231,3 +231,61 @@ func TestHandler(t *testing.T) {
 		t.Errorf("failing handler: %d", code)
 	}
 }
+
+// The Bitbucket fixtures are synthetic (built from Bitbucket's documented
+// payload format): no public endpoint was available to capture deliveries.
+func TestBitbucketDeliveries(t *testing.T) {
+	push := parseFixture(t, "bitbucket-push")
+	if push.Forge != gitoperationslib.BackendBitbucket || push.Name != "push" || push.Key != "repo:push" ||
+		push.Repo != "acme/widget" || push.Sender != "alice" || push.Delivery == "" {
+		t.Errorf("push event = %+v", push)
+	}
+	p, err := push.Push()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Branch() != "main" || p.After != strings.Repeat("b", 40) || p.Before == "" || p.Pusher != "alice" || p.CompareURL == "" ||
+		len(p.Commits) != 2 || p.Commits[0].ID != strings.Repeat("a", 40) || p.HeadCommit == nil || p.HeadCommit.ID != strings.Repeat("b", 40) {
+		t.Fatalf("push = %+v", p)
+	}
+	if c := p.Commits[0]; c.Author.Name != "Alice Example" || c.Author.Email != "alice@example.invalid" || c.Author.Username != "alice" || c.Timestamp.IsZero() {
+		t.Errorf("commit author = %+v", c)
+	}
+	if _, err := push.PullRequest(); err == nil {
+		t.Error("PullRequest() on a push succeeded")
+	}
+
+	ev := parseFixture(t, "bitbucket-pullrequest")
+	if ev.Name != "pull_request" || ev.Action != "closed" || ev.Key != "pullrequest:fulfilled" {
+		t.Errorf("pull request event = %+v", ev)
+	}
+	pr, err := ev.PullRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr.Number != 7 || pr.Action != "closed" || !pr.PullRequest.Merged || pr.PullRequest.State != gitoperationslib.PRStateClosed ||
+		pr.PullRequest.Head.Ref != "feature/sign-in" || pr.PullRequest.Base.Ref != "main" || pr.PullRequest.MergedBy != "alice" ||
+		pr.PullRequest.MergeCommitSHA != strings.Repeat("c", 12) {
+		t.Errorf("pull request = %+v", pr)
+	}
+	if _, err := ev.Release(); err == nil {
+		t.Error("Release() on Bitbucket succeeded")
+	}
+}
+
+func TestBitbucketSignature(t *testing.T) {
+	f, r := load(t, "bitbucket-push")
+	body := []byte(f.Body)
+	if err := Verify(body, r.Header, []byte(f.Secret)); err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(body, r.Header, []byte("wrong")); !errors.Is(err, ErrInvalidSignature) {
+		t.Errorf("wrong secret: %v", err)
+	}
+	// GitHub's legacy SHA-1 header alone is not accepted.
+	h := http.Header{}
+	h.Set("X-Hub-Signature", "sha1=0123")
+	if err := Verify(body, h, []byte(f.Secret)); !errors.Is(err, ErrMissingSignature) {
+		t.Errorf("sha1 only: %v", err)
+	}
+}

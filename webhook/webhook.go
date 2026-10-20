@@ -41,9 +41,10 @@ var (
 	ErrUnknownForge = errors.New("webhook: not a Forgejo or GitHub delivery")
 )
 
-// Verify checks a delivery's HMAC-SHA256 signature. Both forges send
-// X-Hub-Signature-256 ("sha256=<hex>"); Forgejo's own X-Forgejo-Signature
-// (bare hex) is used when it is absent.
+// Verify checks a delivery's HMAC-SHA256 signature. GitHub and Forgejo send
+// X-Hub-Signature-256 ("sha256=<hex>"), Bitbucket sends X-Hub-Signature
+// with the same format; Forgejo's own X-Forgejo-Signature (bare hex) is used
+// when neither is present. GitHub's legacy SHA-1 X-Hub-Signature is ignored.
 func Verify(body []byte, h http.Header, secret []byte) error {
 	if len(secret) == 0 {
 		return errors.New("webhook: empty secret")
@@ -54,6 +55,8 @@ func Verify(body []byte, h http.Header, secret []byte) error {
 		if sig, ok = strings.CutPrefix(s, "sha256="); !ok {
 			return ErrInvalidSignature
 		}
+	} else if s, ok := strings.CutPrefix(h.Get("X-Hub-Signature"), "sha256="); ok {
+		sig = s
 	} else if sig = h.Get("X-Forgejo-Signature"); sig == "" {
 		return ErrMissingSignature
 	}
@@ -72,9 +75,14 @@ func Verify(body []byte, h http.Header, secret []byte) error {
 // Event is a decoded delivery.
 type Event struct {
 	Forge gitoperationslib.Backend
-	// Name is the event header value, e.g. "push", "pull_request",
-	// "release", or GitHub's "ping".
-	Name     string
+	// Name is the event, e.g. "push", "pull_request", "release", or
+	// GitHub's "ping". Bitbucket's event keys are mapped to these names where
+	// they match ("repo:push" is "push"; "pullrequest:…" is "pull_request" or
+	// "pull_request_review"); others keep their key.
+	Name string
+	// Key is Bitbucket's raw event key (X-Event-Key), e.g.
+	// "pullrequest:fulfilled"; empty for other forges.
+	Key      string
 	Delivery string // unique delivery ID
 	Action   string // e.g. "opened", "published"; empty for push
 	Repo     string // "owner/name"; empty for events without a repository
@@ -106,6 +114,8 @@ func Decode(h http.Header, body []byte) (*Event, error) {
 		ev.Forge, ev.Name, ev.Delivery = gitoperationslib.BackendForgejo, h.Get("X-Forgejo-Event"), h.Get("X-Forgejo-Delivery")
 	case h.Get("X-GitHub-Event") != "" && h.Get("X-Gitea-Event") == "":
 		ev.Forge, ev.Name, ev.Delivery = gitoperationslib.BackendGitHub, h.Get("X-GitHub-Event"), h.Get("X-GitHub-Delivery")
+	case h.Get("X-Event-Key") != "":
+		return decodeBitbucket(h, body)
 	default:
 		return nil, ErrUnknownForge
 	}

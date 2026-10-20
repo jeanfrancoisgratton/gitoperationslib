@@ -1,6 +1,7 @@
 package contracttest
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -16,6 +17,11 @@ func Webhooks(t *testing.T, env Env) {
 	ctx := testContext(t)
 	_, repo := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org, AutoInit: true})
 	scope := gitoperationslib.RepoHooks(env.Org, *repo)
+	HookURL := HookURL
+	if env.HookURL != "" {
+		HookURL = env.HookURL
+	}
+	bb := isBitbucket(env)
 	hooks := env.Client.Webhooks()
 	check := func(err error) {
 		t.Helper()
@@ -26,8 +32,10 @@ func Webhooks(t *testing.T, env Env) {
 	secret := "integration-secret"
 
 	events := []gitoperationslib.HookEvent{
-		gitoperationslib.HookEventPush, gitoperationslib.HookEventPullRequest,
-		gitoperationslib.HookEventPullRequestReview, gitoperationslib.HookEventRelease, gitoperationslib.HookEventWiki,
+		gitoperationslib.HookEventPush, gitoperationslib.HookEventPullRequest, gitoperationslib.HookEventPullRequestReview,
+	}
+	if !bb { // Bitbucket has no release or wiki events
+		events = append(events, gitoperationslib.HookEventRelease, gitoperationslib.HookEventWiki)
 	}
 	hook, err := hooks.Create(ctx, scope, gitoperationslib.CreateWebhookOptions{URL: HookURL, Secret: secret, Events: events})
 	check(err)
@@ -58,19 +66,28 @@ func Webhooks(t *testing.T, env Env) {
 		t.Errorf("List returned hook IDs %v, missing %d", ids, hook.ID)
 	}
 
-	check(hooks.Ping(ctx, scope, hook.ID))
+	if err := hooks.Ping(ctx, scope, hook.ID); bb && errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Logf("ping: %v", err)
+	} else {
+		check(err)
+	}
 	if env.CheckPing != nil {
 		env.CheckPing(t, ctx, env.Org, *repo, hook.ID, []byte(secret))
 	}
 
 	newURL := HookURL + "/v2"
 	form := gitoperationslib.HookContentForm
-	edited, err := hooks.Edit(ctx, scope, hook.ID, gitoperationslib.EditWebhookOptions{
-		URL: &newURL, ContentType: &form, Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventCreate},
-		Active: gitoperationslib.Ptr(false),
-	})
+	newEvent := gitoperationslib.HookEventCreate
+	editOpts := gitoperationslib.EditWebhookOptions{
+		URL: &newURL, ContentType: &form, Events: []gitoperationslib.HookEvent{newEvent}, Active: gitoperationslib.Ptr(false),
+	}
+	if bb { // JSON only; no branch creation event (pushes cover it)
+		form, newEvent = gitoperationslib.HookContentJSON, gitoperationslib.HookEventFork
+		editOpts.ContentType, editOpts.Events = nil, []gitoperationslib.HookEvent{newEvent}
+	}
+	edited, err := hooks.Edit(ctx, scope, hook.ID, editOpts)
 	check(err)
-	if edited.URL != newURL || edited.ContentType != form || edited.Active || !slices.Contains(edited.Events, gitoperationslib.HookEventCreate) ||
+	if edited.URL != newURL || edited.ContentType != form || edited.Active || !slices.Contains(edited.Events, newEvent) ||
 		slices.Contains(edited.Events, gitoperationslib.HookEventPush) {
 		t.Errorf("edited = %+v", edited)
 	}

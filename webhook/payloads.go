@@ -118,8 +118,15 @@ func (c *commitJSON) toCommit() Commit {
 	}
 }
 
-// Push decodes a "push" delivery.
+// Push decodes a "push" delivery. For Bitbucket, which can update several
+// refs in one delivery, it decodes the first change.
 func (e *Event) Push() (*PushEvent, error) {
+	if e.Forge == gitoperationslib.BackendBitbucket {
+		if e.Name != "push" {
+			return nil, fmt.Errorf("webhook: %s delivery is not a push event", e.Key)
+		}
+		return e.bitbucketPush()
+	}
 	var p struct {
 		Ref        string       `json:"ref"`
 		Before     string       `json:"before"`
@@ -173,8 +180,15 @@ func timeOrZero(t *time.Time) time.Time {
 	return *t
 }
 
-// PullRequest decodes a "pull_request" delivery.
+// PullRequest decodes a "pull_request" delivery (on Bitbucket, any
+// "pullrequest:…" delivery, reviews included).
 func (e *Event) PullRequest() (*PullRequestEvent, error) {
+	if e.Forge == gitoperationslib.BackendBitbucket {
+		if !isBitbucketPR(e.Key) {
+			return nil, fmt.Errorf("webhook: %s delivery is not a pull request event", e.Key)
+		}
+		return e.bitbucketPullRequest()
+	}
 	var p struct {
 		Action      string `json:"action"`
 		Number      int    `json:"number"`
@@ -215,8 +229,12 @@ func (e *Event) PullRequest() (*PullRequestEvent, error) {
 	}, nil
 }
 
-// Release decodes a "release" delivery. Assets are not included.
+// Release decodes a "release" delivery. Assets are not included. Bitbucket
+// has no releases.
 func (e *Event) Release() (*ReleaseEvent, error) {
+	if e.Forge == gitoperationslib.BackendBitbucket {
+		return nil, fmt.Errorf("webhook: Bitbucket has no release events (got %s)", e.Key)
+	}
 	var p struct {
 		Action  string `json:"action"`
 		Release struct {

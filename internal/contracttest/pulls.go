@@ -21,6 +21,7 @@ func PullRequests(t *testing.T, env Env) {
 	owner := env.Org
 	prs := env.Client.PullRequests()
 	isForgejo := env.Client.Backend() == gitoperationslib.BackendForgejo
+	bb := isBitbucket(env)
 	check := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -83,15 +84,24 @@ func PullRequests(t *testing.T, env Env) {
 	if review.State != gitoperationslib.ReviewCommented || !strings.EqualFold(review.Reviewer, env.Login) {
 		t.Errorf("review = %+v", review)
 	}
+	selfApproval, err := prs.CreateReview(ctx, owner, *repo, pr.Number, gitoperationslib.CreateReviewOptions{Event: gitoperationslib.ReviewEventApprove})
+	switch {
+	case bb && err == nil: // Bitbucket lets authors approve their own pull requests
+		if selfApproval.State != gitoperationslib.ReviewApproved {
+			t.Errorf("self-approval = %+v", selfApproval)
+		}
+	case bb:
+		t.Errorf("self-approval on Bitbucket: %v", err)
+	case err == nil:
+		t.Error("approving one's own pull request succeeded")
+	default:
+		t.Logf("self-approval: %v", err)
+	}
+	// Bitbucket lists verdicts only (no comment reviews).
 	reviews, err := prs.ListReviews(ctx, owner, *repo, pr.Number, gitoperationslib.ListOptions{})
 	check(err)
 	if len(reviews.Items) == 0 {
 		t.Error("ListReviews returned nothing")
-	}
-	if _, err := prs.CreateReview(ctx, owner, *repo, pr.Number, gitoperationslib.CreateReviewOptions{Event: gitoperationslib.ReviewEventApprove}); err == nil {
-		t.Error("approving one's own pull request succeeded")
-	} else {
-		t.Logf("self-approval: %v", err)
 	}
 
 	// Drafts cannot be merged.
@@ -124,12 +134,19 @@ func PullRequests(t *testing.T, env Env) {
 		t.Errorf("closed = %+v", closed)
 	}
 	reopened, err := prs.Edit(ctx, owner, *repo, draft.Number, gitoperationslib.EditPROptions{State: gitoperationslib.Ptr(gitoperationslib.PRStateOpen)})
-	check(err)
-	if reopened.State != gitoperationslib.PRStateOpen {
-		t.Errorf("reopened = %+v", reopened)
+	switch {
+	case bb: // declined pull requests are final
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("reopen on Bitbucket: err = %v, want ErrNotSupported", err)
+		}
+	default:
+		check(err)
+		if reopened.State != gitoperationslib.PRStateOpen {
+			t.Errorf("reopened = %+v", reopened)
+		}
+		_, err = prs.Edit(ctx, owner, *repo, draft.Number, gitoperationslib.EditPROptions{State: gitoperationslib.Ptr(gitoperationslib.PRStateClosed)})
+		check(err)
 	}
-	_, err = prs.Edit(ctx, owner, *repo, draft.Number, gitoperationslib.EditPROptions{State: gitoperationslib.Ptr(gitoperationslib.PRStateClosed)})
-	check(err)
 
 	// Auto-merge. Forgejo schedules it even without status checks. GitHub
 	// only accepts it while a required check is pending, which needs branch
@@ -137,7 +154,11 @@ func PullRequests(t *testing.T, env Env) {
 	// refusal is checked to be reported cleanly.
 	auto := open("auto-merge", gitoperationslib.CreatePROptions{Title: "Auto-merge"})
 	err = prs.Merge(ctx, owner, *repo, auto.Number, gitoperationslib.MergeOptions{WhenChecksSucceed: true})
-	if isForgejo {
+	if bb {
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("auto-merge on Bitbucket: err = %v, want ErrNotSupported", err)
+		}
+	} else if isForgejo {
 		check(err)
 		check(prs.CancelAutoMerge(ctx, owner, *repo, auto.Number))
 		if err := prs.CancelAutoMerge(ctx, owner, *repo, auto.Number); !gitoperationslib.IsNotFound(err) {
@@ -157,7 +178,7 @@ func PullRequests(t *testing.T, env Env) {
 
 	// Every merge method the backend supports, each on a fresh branch.
 	methods := []gitoperationslib.MergeMethod{gitoperationslib.MergeMethodMerge, gitoperationslib.MergeMethodSquash, gitoperationslib.MergeMethodRebase}
-	if isForgejo {
+	if isForgejo || bb {
 		methods = append(methods, gitoperationslib.MergeMethodRebaseMerge, gitoperationslib.MergeMethodFastForwardOnly)
 	} else if err := prs.Merge(ctx, owner, *repo, pr.Number, gitoperationslib.MergeOptions{Method: gitoperationslib.MergeMethodFastForwardOnly}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("fast-forward-only on %s: err = %v, want ErrNotSupported", env.Client.Backend(), err)

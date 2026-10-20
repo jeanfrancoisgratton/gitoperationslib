@@ -1,0 +1,12 @@
+{
+ "note": "synthetic: built from Bitbucket Cloud's documented payload format, not a captured delivery",
+ "secret": "s3cret",
+ "headers": {
+  "Content-Type": "application/json",
+  "X-Event-Key": "pullrequest:fulfilled",
+  "X-Request-UUID": "5c9b2b5e-0000-4000-8000-000000000001",
+  "X-Hook-UUID": "{0b6a4b8e-0000-4000-8000-000000000000}",
+  "X-Hub-Signature": "sha256=6d06f0b9412ff6a82096015df560f86e727fed0bdc619b0cf693638f0d2b6bd2"
+ },
+ "body": "{\"actor\":{\"type\":\"user\",\"nickname\":\"alice\",\"display_name\":\"Alice Example\",\"uuid\":\"{11111111-2222-3333-4444-555555555555}\",\"account_id\":\"70121:aaaa\"},\"repository\":{\"type\":\"repository\",\"full_name\":\"acme/widget\",\"name\":\"widget\",\"uuid\":\"{99999999-8888-7777-6666-555555555555}\"},\"pullrequest\":{\"type\":\"pullrequest\",\"id\":7,\"title\":\"Add sign-in\",\"description\":\"Closes #12\",\"state\":\"MERGED\",\"draft\":false,\"author\":{\"type\":\"user\",\"nickname\":\"alice\",\"display_name\":\"Alice Example\",\"uuid\":\"{11111111-2222-3333-4444-555555555555}\",\"account_id\":\"70121:aaaa\"},\"source\":{\"branch\":{\"name\":\"feature/sign-in\"},\"commit\":{\"hash\":\"bbbbbbbbbbbb\"},\"repository\":{\"type\":\"repository\",\"full_name\":\"acme/widget\",\"name\":\"widget\",\"uuid\":\"{99999999-8888-7777-6666-555555555555}\"}},\"destination\":{\"branch\":{\"name\":\"main\"},\"commit\":{\"hash\":\"000000000001\"},\"repository\":{\"type\":\"repository\",\"full_name\":\"acme/widget\",\"name\":\"widget\",\"uuid\":\"{99999999-8888-7777-6666-555555555555}\"}},\"merge_commit\":{\"hash\":\"cccccccccccc\"},\"closed_by\":{\"type\":\"user\",\"nickname\":\"alice\",\"display_name\":\"Alice Example\",\"uuid\":\"{11111111-2222-3333-4444-555555555555}\",\"account_id\":\"70121:aaaa\"},\"created_on\":\"2026-10-20T09:00:00+00:00\",\"updated_on\":\"2026-10-20T11:00:00+00:00\",\"links\":{\"html\":{\"href\":\"https://bitbucket.org/acme/widget/pull-requests/7\"}}}}"
+}

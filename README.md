@@ -5,10 +5,10 @@ ___
 
 # gitoperationslib
 
-A Go library for managing git forges through one set of interfaces. **Forgejo** is the primary backend; **GitHub** is supported wherever the two APIs overlap. Code written against the interfaces works with either backend; anything a backend cannot do is reported with a typed error instead of being silently skipped.
+A Go library for managing git forges through one set of interfaces. **Forgejo** is the primary backend; **GitHub** and **Bitbucket Cloud** are supported wherever their APIs overlap. Code written against the interfaces works with any backend; anything a backend cannot do is reported with a typed error instead of being silently skipped.
 
 - No third-party types in the public API: all types are this library's own.
-- The Forgejo backend is a small hand-written HTTP client (no SDK); the GitHub backend uses [`google/go-github`](https://github.com/google/go-github) (pinned at v93) plus a minimal GraphQL client for the few features REST cannot do.
+- The Forgejo and Bitbucket backends are small hand-written HTTP clients (no SDK); the GitHub backend uses [`google/go-github`](https://github.com/google/go-github) (pinned at v93) plus a minimal GraphQL client for the few features REST cannot do.
 - Every call takes a `context.Context`.
 
 ## Contents
@@ -31,17 +31,9 @@ A Go library for managing git forges through one set of interfaces. **Forgejo** 
 
 ## Features
 
-| Area | Forgejo | GitHub |
-|---|---|---|
-| Repositories | ✅ | ✅ |
-| Branches and tags | ✅ | ✅ |
-| Branch and tag protection | ✅ protection rules | ✅ rulesets |
-| Releases and assets | ✅ (plus external assets) | ✅ |
-| Pull requests and reviews | ✅ | ✅ (drafts and auto-merge via GraphQL) |
-| Issues, labels, milestones, comments | ✅ | ✅ |
-| Webhooks (repository and organisation) | ✅ | ✅ |
-| Receiving and verifying deliveries | ✅ | ✅ |
-| Users, organisations, teams (admin) | ✅ | — |
+Repositories, branches and tags, branch and tag protection, releases and assets, pull requests and reviews, issues (with labels, milestones and comments), webhooks (managing them and receiving deliveries), and Forgejo administration (users, organisations, teams).
+
+What each backend supports, feature by feature, is in **[docs/support_grid.md](docs/support_grid.md)**.
 
 ## Installation
 
@@ -56,6 +48,7 @@ Requirements: Go 1.27.2 or later; Forgejo 11.0.10 or later (checked when connect
 | Interfaces and types | `github.com/jeanfrancoisgratton/gitoperationslib` |
 | Forgejo backend | `github.com/jeanfrancoisgratton/gitoperationslib/forgejo` |
 | GitHub backend | `github.com/jeanfrancoisgratton/gitoperationslib/github` |
+| Bitbucket Cloud backend | `github.com/jeanfrancoisgratton/gitoperationslib/bitbucket` |
 | Receiving webhooks | `github.com/jeanfrancoisgratton/gitoperationslib/webhook` |
 
 The examples below use these imports:
@@ -72,6 +65,7 @@ import (
 	"time"
 
 	gol "github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/bitbucket"
 	"github.com/jeanfrancoisgratton/gitoperationslib/forgejo"
 	"github.com/jeanfrancoisgratton/gitoperationslib/github"
 	"github.com/jeanfrancoisgratton/gitoperationslib/webhook"
@@ -131,7 +125,27 @@ client, err = github.New(token, github.WithEnterpriseURL("https://github.example
 client, err = github.New(token, github.WithHTTPClient(httpClient), github.WithUserAgent("my-tool/1.0"))
 ```
 
-Both `*forgejo.Client` and `*github.Client` implement `gol.Client`, so the rest of your code does not need to know which forge it talks to:
+### Bitbucket Cloud
+
+`bitbucket.New` makes no request. Repository owners are **workspaces**; new repositories go to the workspace's default project.
+
+```go
+// Atlassian API token with Bitbucket scopes (or a workspace/project/repository
+// access token), sent as a bearer token.
+client, err := bitbucket.New(bitbucket.Token(os.Getenv("BITBUCKET_TOKEN")))
+
+// Basic authentication: username (or Atlassian account e-mail) and API token or app password.
+client, err = bitbucket.New(bitbucket.BasicAuth("alice@example.com", token))
+
+// Same options as the others:
+client, err = bitbucket.New(bitbucket.Token(token), bitbucket.WithHTTPClient(httpClient), bitbucket.WithUserAgent("my-tool/1.0"))
+```
+
+Bitbucket accounts have no public login name: fields such as `Author`, `MergedBy` or `Allowlist.Users` hold the user's **nickname**. Where a user is an input (reviewers, allowlists), a nickname, an account ID or a `{UUID}` is accepted; nicknames are looked up among the workspace's members.
+
+### Choosing at run time
+
+`*forgejo.Client`, `*github.Client` and `*bitbucket.Client` all implement `gol.Client`, so the rest of your code does not need to know which forge it talks to:
 
 ```go
 func open(ctx context.Context, forge string) (gol.Client, error) {
@@ -140,6 +154,8 @@ func open(ctx context.Context, forge string) (gol.Client, error) {
 		return forgejo.New(ctx, os.Getenv("FORGEJO_URL"), forgejo.Token(os.Getenv("FORGEJO_TOKEN")))
 	case "github":
 		return github.New(os.Getenv("GITHUB_TOKEN"))
+	case "bitbucket":
+		return bitbucket.New(bitbucket.Token(os.Getenv("BITBUCKET_TOKEN")))
 	}
 	return nil, fmt.Errorf("unknown forge %q", forge)
 }
@@ -652,6 +668,8 @@ ev, err := webhook.Decode(header, body)
 
 Forgejo's test delivery (`Webhooks().Ping`) is a `push` event; GitHub's is a `ping` event.
 
+Bitbucket deliveries are recognised by their `X-Event-Key` header and verified with `X-Hub-Signature` (`sha256=…`). Their keys are mapped to the same names: `repo:push` is `push`, `pullrequest:created`/`updated`/`fulfilled`/`rejected` are `pull_request` with action `opened`/`edited`/`closed`/`closed`, and approvals or change requests are `pull_request_review`; `ev.Key` keeps the raw key. `Push()` and `PullRequest()` decode Bitbucket's payloads; a push updating several refs is decoded from its first change. This support follows Bitbucket's documentation and has not yet been checked against live deliveries.
+
 ## Administration (Forgejo)
 
 `gol.Admin` (Forgejo only) manages accounts. User management needs a site-admin token; organisations and teams need the corresponding owner rights.
@@ -752,27 +770,7 @@ err = teams.Delete(ctx, owners.ID) // errors.Is(err, gol.ErrOwnerTeam)
 
 ## Backend differences
 
-Where the forges differ, the library either adapts or returns `ErrNotSupported`:
-
-| Topic | Forgejo | GitHub |
-|---|---|---|
-| Repository default branch on create | ✅ | `ErrNotSupported` (set it afterwards with `Edit`) |
-| `internal` repository visibility | `ErrNotSupported` | ✅ |
-| More than one gitignore template | ✅ | `ErrNotSupported` |
-| Creating repositories for another user | site admins | `ErrNotSupported` |
-| `Repo.Empty` | ✅ | always `false` |
-| Draft pull requests | `WIP:` title prefix | native (GraphQL for changes) |
-| Merge methods | 6 | merge, squash, rebase |
-| `PullRequest.Mergeable` | always set | may be `nil` while computed |
-| Auto-merge | ✅ | GraphQL; needs a pending required check |
-| Generated release notes, "latest" flag | `ErrNotSupported` | ✅ |
-| Hidden archive links, external assets | ✅ | `ErrNotSupported` |
-| Protection | protection rules | rulesets (free plans: public repositories) |
-| Exempting individual users from protection | ✅ | `ErrNotSupported` (teams only) |
-| Webhook branch filter, authorization header | ✅ | `ErrNotSupported` |
-| Users, organisations, teams | ✅ (`Admin`) | — |
-
-See [docs/TODO.md](docs/TODO.md) for open items and known limitations.
+Where the forges differ, the library either adapts or returns `ErrNotSupported`. The full per-feature grid for Forgejo, GitHub and Bitbucket is in **[docs/support_grid.md](docs/support_grid.md)**; [docs/TODO.md](docs/TODO.md) lists open items and the reasons behind each limitation.
 
 ## Testing
 
@@ -788,6 +786,7 @@ Integration tests are behind the `integration` build tag and skip themselves unl
 |---|---|
 | Forgejo contract checks | `GITOPSLIB_FORGEJO_URL`, `GITOPSLIB_FORGEJO_TOKEN` (scopes: repository, organization, user, issue — read and write), `GITOPSLIB_FORGEJO_ORG` (a throwaway organisation the token's user owns) |
 | GitHub contract checks | `GITOPSLIB_GITHUB_TOKEN`, `GITOPSLIB_GITHUB_ORG` (an organisation, or the account's own login) |
+| Bitbucket contract checks | `GITOPSLIB_BITBUCKET_TOKEN` (API token with Bitbucket scopes), `GITOPSLIB_BITBUCKET_WORKSPACE` (optional when the token sees a single workspace) |
 | Forgejo admin checks | the disposable instance below |
 
 Admin checks need a site-admin token, so they only run against a disposable local Forgejo (Docker), and refuse any non-loopback URL:

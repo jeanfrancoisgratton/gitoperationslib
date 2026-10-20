@@ -22,6 +22,7 @@ func Protections(t *testing.T, env Env) {
 	owner, def := env.Org, created.DefaultBranch
 	bp, tp := env.Client.BranchProtections(), env.Client.TagProtections()
 	isForgejo := env.Client.Backend() == gitoperationslib.BackendForgejo
+	bb := isBitbucket(env)
 	check := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -30,14 +31,20 @@ func Protections(t *testing.T, env Env) {
 	}
 
 	// A rule on the default branch, and a glob rule.
-	mainRule, err := bp.Create(ctx, owner, *repo, gitoperationslib.BranchProtection{
+	// Bitbucket (free plan): no named checks, no up-to-date requirement, and
+	// resetting stale approvals needs Premium.
+	want := gitoperationslib.BranchProtection{
 		Pattern: def, RequiredApprovals: 1, DismissStaleApprovals: true,
 		RequiredStatusChecks: []string{"ci/test"}, RequireUpToDate: true, ApplyToAdmins: true,
-	})
+	}
+	if bb {
+		want.DismissStaleApprovals, want.RequiredStatusChecks, want.RequireUpToDate = false, nil, false
+	}
+	mainRule, err := bp.Create(ctx, owner, *repo, want)
 	check(err)
-	if mainRule.Pattern != def || mainRule.RequiredApprovals != 1 || !mainRule.DismissStaleApprovals ||
-		!slices.Equal(mainRule.RequiredStatusChecks, []string{"ci/test"}) || !mainRule.RequireUpToDate || !mainRule.ApplyToAdmins ||
-		mainRule.AllowDeletion || mainRule.AllowForcePush {
+	if mainRule.Pattern != def || mainRule.RequiredApprovals != 1 || mainRule.DismissStaleApprovals != want.DismissStaleApprovals ||
+		!slices.Equal(mainRule.RequiredStatusChecks, want.RequiredStatusChecks) || mainRule.RequireUpToDate != want.RequireUpToDate ||
+		!mainRule.ApplyToAdmins || mainRule.AllowDeletion || mainRule.AllowForcePush {
 		t.Errorf("created = %+v", mainRule)
 	}
 	release, err := bp.Create(ctx, owner, *repo, gitoperationslib.BranchProtection{Pattern: "release/*", RequiredApprovals: 2, ApplyToAdmins: true})
@@ -46,17 +53,30 @@ func Protections(t *testing.T, env Env) {
 		t.Errorf("glob rule = %+v", release)
 	}
 
-	// Exempting administrators (GitHub: a bypass for the admin role).
-	hotfix, err := bp.Create(ctx, owner, *repo, gitoperationslib.BranchProtection{Pattern: "hotfix/*", RequireSignedCommits: true})
-	check(err)
-	if hotfix.ApplyToAdmins || !hotfix.RequireSignedCommits {
-		t.Errorf("hotfix rule = %+v", hotfix)
+	if bb {
+		// Push and merge allowlists (Bitbucket stores users as UUIDs).
+		hotfix, err := bp.Create(ctx, owner, *repo, gitoperationslib.BranchProtection{
+			Pattern: "hotfix/*", PushAllowlist: &gitoperationslib.Allowlist{Users: []string{env.Login}},
+			MergeAllowlist: &gitoperationslib.Allowlist{Users: []string{env.Login}},
+		})
+		check(err)
+		if hotfix.PushAllowlist == nil || !slices.Equal(hotfix.PushAllowlist.Users, []string{env.Login}) ||
+			hotfix.MergeAllowlist == nil || !slices.Equal(hotfix.MergeAllowlist.Users, []string{env.Login}) {
+			t.Errorf("hotfix rule = %+v (allowlists %+v %+v)", hotfix, hotfix.PushAllowlist, hotfix.MergeAllowlist)
+		}
+	} else {
+		// Exempting administrators (GitHub: a bypass for the admin role).
+		hotfix, err := bp.Create(ctx, owner, *repo, gitoperationslib.BranchProtection{Pattern: "hotfix/*", RequireSignedCommits: true})
+		check(err)
+		if hotfix.ApplyToAdmins || !hotfix.RequireSignedCommits {
+			t.Errorf("hotfix rule = %+v", hotfix)
+		}
 	}
 	check(bp.Delete(ctx, owner, *repo, "hotfix/*"))
 
 	got, err := bp.Get(ctx, owner, *repo, def)
 	check(err)
-	if got.RequiredApprovals != 1 || !slices.Equal(got.RequiredStatusChecks, []string{"ci/test"}) {
+	if got.RequiredApprovals != 1 || !slices.Equal(got.RequiredStatusChecks, want.RequiredStatusChecks) {
 		t.Errorf("Get = %+v", got)
 	}
 	rules, err := bp.List(ctx, owner, *repo)
@@ -88,7 +108,9 @@ func Protections(t *testing.T, env Env) {
 
 	// Backend-specific options are reported.
 	extra := gitoperationslib.BranchProtection{Pattern: "extra", AllowForcePush: true}
-	if !isForgejo {
+	if bb {
+		extra = gitoperationslib.BranchProtection{Pattern: "extra", RequireSignedCommits: true}
+	} else if !isForgejo {
 		extra = gitoperationslib.BranchProtection{Pattern: "extra", BlockOnRejectedReviews: true}
 	}
 	if _, err := bp.Create(ctx, owner, *repo, extra); !errors.Is(err, gitoperationslib.ErrNotSupported) {
@@ -101,6 +123,15 @@ func Protections(t *testing.T, env Env) {
 	}
 	check(env.Client.Branches().Delete(ctx, owner, *repo, "release/1.0"))
 	check(bp.Delete(ctx, owner, *repo, def))
+
+	if unsupported(t, env, gitoperationslib.CapTagProtection, func() error {
+		_, err := tp.Create(ctx, owner, *repo, gitoperationslib.TagProtection{Pattern: "v*"})
+		return err
+	}) {
+		_, err = env.Client.Tags().Create(ctx, owner, *repo, gitoperationslib.CreateTagOptions{Name: "v9.9.9"})
+		check(err)
+		return
+	}
 
 	// Tag protection. Forgejo needs someone on the allowlist; GitHub cannot
 	// list users, and an empty allowlist there blocks everyone.

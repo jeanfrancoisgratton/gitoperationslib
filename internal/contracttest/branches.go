@@ -2,6 +2,7 @@ package contracttest
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -63,9 +64,14 @@ func BranchesAndTags(t *testing.T, env Env) {
 		t.Errorf("IsDefault wrong in List: %v", listed)
 	}
 
-	renamed, err := branches.Rename(ctx, owner, *repo, "feature", "feature-renamed")
-	check(err)
-	if renamed.Name != "feature-renamed" || renamed.SHA != def.SHA {
+	featureName := "feature-renamed"
+	renamed, err := branches.Rename(ctx, owner, *repo, "feature", featureName)
+	switch {
+	case isBitbucket(env) && errors.Is(err, gitoperationslib.ErrNotSupported):
+		featureName = "feature" // Bitbucket cannot rename branches
+	case err != nil:
+		t.Fatal(err)
+	case renamed.Name != featureName || renamed.SHA != def.SHA:
 		t.Errorf("renamed = %+v", renamed)
 	}
 	check(branches.Delete(ctx, owner, *repo, "from-sha"))
@@ -80,7 +86,7 @@ func BranchesAndTags(t *testing.T, env Env) {
 		t.Errorf("lightweight tag = %+v", light)
 	}
 	annotated, err := tags.Create(ctx, owner, *repo, gitoperationslib.CreateTagOptions{
-		Name: "v0.2.0", Target: "feature-renamed", Message: "Release 0.2.0",
+		Name: "v0.2.0", Target: featureName, Message: "Release 0.2.0",
 	})
 	check(err)
 	if annotated.SHA != def.SHA || annotated.Message == "" {
@@ -110,11 +116,13 @@ func BranchesAndTags(t *testing.T, env Env) {
 	}
 
 	// An existing tag can be released, and the tag outlives the release.
-	rel, err := env.Client.Releases().Create(ctx, owner, *repo, gitoperationslib.CreateReleaseOptions{TagName: "v0.2.0", Name: "0.2.0"})
-	check(err)
-	check(env.Client.Releases().Delete(ctx, owner, *repo, rel.ID))
-	if _, err := tags.Get(ctx, owner, *repo, "v0.2.0"); err != nil {
-		t.Errorf("tag gone after deleting its release: %v", err)
+	if env.Client.Capabilities().Has(gitoperationslib.CapReleases) {
+		rel, err := env.Client.Releases().Create(ctx, owner, *repo, gitoperationslib.CreateReleaseOptions{TagName: "v0.2.0", Name: "0.2.0"})
+		check(err)
+		check(env.Client.Releases().Delete(ctx, owner, *repo, rel.ID))
+		if _, err := tags.Get(ctx, owner, *repo, "v0.2.0"); err != nil {
+			t.Errorf("tag gone after deleting its release: %v", err)
+		}
 	}
 
 	check(tags.Delete(ctx, owner, *repo, "v0.1.0"))
