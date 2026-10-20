@@ -4,14 +4,17 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 ## Next priority
 
-- [ ] **Forgejo access tokens** (`Tokens` interface): list, create (name, scopes such as `write:repository`, optional repository restriction), revoke by name or ID, via `/users/{username}/tokens`. The secret is returned only once, by create. Forgejo is expected to require username/password authentication (a token cannot mint tokens): confirm on the disposable instance, and whether a site admin can manage other users' tokens. GitHub: `ErrNotSupported` (personal access tokens cannot be created or revoked through the API).
-- [ ] **GitHub App authentication** (after Forgejo tokens): a client constructor taking an app ID and private key, minting short-lived installation tokens (JWT signed with the standard library, no new dependency) and refreshing them automatically; revocation via `DELETE /installation/token`. Possibly also org-level listing/revocation of fine-grained PATs (GitHub App only) and the leaked-credential revocation endpoint (verify it exists).
+- [ ] **Forgejo access tokens** (`Tokens` interface), released alone as v0.2.0: list, create (name, scopes such as `write:repository`, optional repository restriction), revoke by name or ID, via `GET`/`POST /users/{username}/tokens` and `DELETE /users/{username}/tokens/{token}`. The secret is returned only once, by create. Scopes are passed through as strings, not validated. Forgejo is expected to require username/password authentication (a token cannot mint tokens): confirm on the disposable instance, and whether a site admin can manage other users' tokens. Expose it as an optional interface found by type assertion (like `Admin`), not as a new `Client` method, so the addition is not breaking. GitHub: not implemented (personal access tokens cannot be created or revoked through the API). Accounts with 2FA are out of scope for now (see TOTP under Transport).
+
+## Deferred: GitHub App authentication
+
+- [ ] Scoped out for later: the main server is Forgejo (git.famillegratton.net), and nothing needs it yet; pick it up when a real consumer (bot, CI job) does. A client constructor taking an app ID and private key (PKCS#1 and PKCS#8), minting short-lived installation tokens (JWT signed with the standard library, no new dependency) and refreshing them automatically (concurrency-safe cache), for both go-github and the GraphQL client; revocation via `DELETE /installation/token`. Testing needs a registered, installed GitHub App. Possibly also org-level listing/revocation of fine-grained PATs (GitHub App only) and the leaked-credential revocation endpoint (verify it exists).
 
 ## Transport (Forgejo)
 
 - [x] Multipart upload for release assets (streamed, exact Content-Length). Increment 6.
 - [ ] `Sudo` header option: admin acting as another user.
-- [ ] Basic auth with TOTP (`X-FORGEJO-OTP`) for accounts with 2FA.
+- [ ] Basic auth with TOTP (`X-FORGEJO-OTP`) for accounts with 2FA. Important but not a priority yet; needed before token management works for 2FA-enabled accounts.
 - [ ] Retries / backoff on transient errors (5xx, connection reset). Forgejo sends no rate-limit headers.
 - [ ] `/api/forgejo/v1` namespace client, for Forgejo-only endpoints. Its swagger was not found at `/api/forgejo/v1/swagger.json` on 15.0.2; locate it.
 
