@@ -6,6 +6,11 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [0.1.7] — 2026-10-21
+Nothing changed, functionally, really.
+
+## Added
+A LICENSE file, so documentation gets properly shown on https://pkg.go.dev/
 ## [0.1.6] — 2026-10-20
 
 ### Added

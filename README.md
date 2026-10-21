@@ -802,3 +802,13 @@ scripts/forgejo-testenv.sh stop    # removes the container and .env.testenv
 ```
 
 GitHub's protection checks briefly create a **public** repository (rulesets need one on free plans). Running the GitHub suites many times in a row can trigger GitHub's secondary rate limit on repository creation (a temporary block of up to an hour).
+
+## License
+
+Copyright (C) 2026 Jean-François Gratton
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [LICENSE](LICENSE) file for details.
+
+SPDX-License-Identifier: GPL-3.0-or-later
