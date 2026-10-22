@@ -17,6 +17,13 @@ type User struct {
 	Restricted    bool
 	ProhibitLogin bool
 	HTMLURL       string
+	AvatarURL     string
+	Company       string // GitHub only
+	Pronouns      string // Forgejo only
+	Language      string // interface language; Forgejo only
+	Followers     int
+	Following     int
+	StarredRepos  int // Forgejo only
 	CreatedAt     time.Time
 	LastLogin     time.Time // zero if the user never signed in
 }

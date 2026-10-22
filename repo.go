@@ -2,7 +2,7 @@ package gitoperationslib
 
 import "time"
 
-// Repo is a repository, modelled on the fields Forgejo and GitHub share.
+// Repo is a repository, modelled on the fields the forges share.
 type Repo struct {
 	ID            int64
 	Owner         string

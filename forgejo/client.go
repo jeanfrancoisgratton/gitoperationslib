@@ -102,7 +102,8 @@ func (c *Client) Backend() gitoperationslib.Backend { return gitoperationslib.Ba
 func (c *Client) Capabilities() gitoperationslib.Capability {
 	return gitoperationslib.CapRepos | gitoperationslib.CapAdmin | gitoperationslib.CapReleases | gitoperationslib.CapExternalAssets | gitoperationslib.CapPullRequests |
 		gitoperationslib.CapWebhooks | gitoperationslib.CapBranches | gitoperationslib.CapTags |
-		gitoperationslib.CapBranchProtection | gitoperationslib.CapTagProtection | gitoperationslib.CapIssues
+		gitoperationslib.CapBranchProtection | gitoperationslib.CapTagProtection | gitoperationslib.CapIssues |
+		gitoperationslib.CapDirectory
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }

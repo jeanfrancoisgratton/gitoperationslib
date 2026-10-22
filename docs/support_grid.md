@@ -25,7 +25,8 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Issues, labels, milestones, comments | ✅ | ✅ | ❌ issue tracker retired by Atlassian |
 | Webhooks (repository, organisation/workspace) | ✅ | ✅ | ✅ |
 | Receiving and verifying deliveries | ✅ | ✅ | ⚠️ from documentation, not yet checked against live deliveries |
-| Users, organisations, teams (`Admin`) | ✅ | — | — |
+| Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ❌ |
+| Managing users, organisations, teams (`Admin`) | ✅ | — | — |
 
 ## Connecting
 
@@ -217,6 +218,23 @@ Events (`HookEvent`):
 | `Release()` | ✅ | ✅ | ❌ |
 | Form-encoded deliveries | ✅ | ✅ | — |
 | Checked against live deliveries | ✅ | ✅ (real signatures) | ❌ synthetic fixtures |
+
+## Reading users, organisations and teams (`Directory`)
+
+Works with any token; the server filters what the caller may see. Forgejo checks run with a non-admin token.
+
+| Feature | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| User, organisation, team (by organisation and name) | ✅ | ✅ team = slug | ❌ |
+| Authenticated user's organisations, another user's | ✅ | ⚠️ another user's: public memberships only | ❌ |
+| Every visible organisation (`ListAllOrgs`) | ✅ | ⚠️ `since` cursor carried in `NextPage` | ❌ |
+| Organisation members | ✅ (non-members: public members) | ✅ (non-members: public members) | ❌ |
+| Organisation teams | ⚠️ members only | ⚠️ visible teams; 403 without organisation access | ❌ |
+| Team members and repositories | ✅ | ✅ | ❌ |
+| `UserInfo`, `OrgInfo`, `TeamInfo` (refused parts reported in `Incomplete`) | ✅ | ✅† organisation and team info | ❌ |
+| Avatar, followers / following | ✅ | ✅ | — |
+| Pronouns, interface language, starred count | ✅ | ❌ | — |
+| Company, organisation web URL | ❌ | ✅ | — |
 
 ## Administration
 

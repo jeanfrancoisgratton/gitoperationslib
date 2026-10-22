@@ -20,6 +20,7 @@ const (
 	CapBranchProtection
 	CapTagProtection
 	CapIssues
+	CapDirectory
 )
 
 var capabilityNames = []struct {
@@ -40,6 +41,7 @@ var capabilityNames = []struct {
 	{CapBranchProtection, "branch-protection"},
 	{CapTagProtection, "tag-protection"},
 	{CapIssues, "issues"},
+	{CapDirectory, "directory"},
 }
 
 // Has reports whether c includes every capability in want.

@@ -37,9 +37,12 @@ var AllTeamUnits = []TeamUnit{
 
 // Team is a team within an organisation.
 type Team struct {
-	ID          int64
-	Org         string
-	Name        string
+	ID   int64
+	Org  string
+	Name string
+	// Slug is the URL-safe name GitHub addresses teams by; on Forgejo it is
+	// the name.
+	Slug        string
 	Description string
 	// Permission is the overall level: admin or owner when the team has
 	// that level on every unit, otherwise derived by the server from Units.

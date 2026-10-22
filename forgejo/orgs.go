@@ -20,6 +20,7 @@ type orgJSON struct {
 	Location                  string `json:"location"`
 	Email                     string `json:"email"`
 	Visibility                string `json:"visibility"`
+	AvatarURL                 string `json:"avatar_url"`
 	RepoAdminChangeTeamAccess bool   `json:"repo_admin_change_team_access"`
 }
 
@@ -37,6 +38,7 @@ func (o *orgJSON) toOrg() gitoperationslib.Org {
 		Location:                  o.Location,
 		Email:                     o.Email,
 		Visibility:                gitoperationslib.OwnerVisibility(o.Visibility),
+		AvatarURL:                 o.AvatarURL,
 		RepoAdminChangeTeamAccess: o.RepoAdminChangeTeamAccess,
 	}
 }

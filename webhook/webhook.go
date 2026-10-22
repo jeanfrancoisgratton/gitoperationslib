@@ -1,6 +1,6 @@
-// Package webhook receives webhook deliveries from Forgejo and GitHub: it
-// verifies their signature, identifies the forge and event, and decodes the
-// common payloads. It does not depend on either backend.
+// Package webhook receives webhook deliveries from Forgejo, GitHub and
+// Bitbucket Cloud: it verifies their signature, identifies the forge and
+// event, and decodes the common payloads. It does not depend on any backend.
 //
 //	http.Handle("/hooks", webhook.Handler(secret, func(ctx context.Context, ev *webhook.Event) error {
 //		if ev.Name == "push" {
@@ -38,7 +38,7 @@ var (
 	// ErrInvalidSignature is returned when the signature does not match.
 	ErrInvalidSignature = errors.New("webhook: invalid signature")
 	// ErrUnknownForge is returned when no known event header is present.
-	ErrUnknownForge = errors.New("webhook: not a Forgejo or GitHub delivery")
+	ErrUnknownForge = errors.New("webhook: not a Forgejo, GitHub or Bitbucket delivery")
 )
 
 // Verify checks a delivery's HMAC-SHA256 signature. GitHub and Forgejo send

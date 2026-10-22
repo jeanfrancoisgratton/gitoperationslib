@@ -23,6 +23,8 @@ type Client interface {
 	Issues() Issues
 	Labels() Labels
 	Milestones() Milestones
+	// Directory reads users, organisations and teams (CapDirectory).
+	Directory() Directory
 }
 
 // Issues manages issues and their comments. Label and comment methods also

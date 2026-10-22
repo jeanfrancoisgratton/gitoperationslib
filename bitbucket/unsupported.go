@@ -166,3 +166,48 @@ func (milestones) Edit(context.Context, string, string, int64, gitoperationslib.
 func (milestones) Delete(context.Context, string, string, int64) error {
 	return notSupported("milestones.delete", noIssues)
 }
+
+const noDirectory = "the user and workspace directory is not implemented for Bitbucket Cloud"
+
+// Directory implements gitoperationslib.Client; every method returns
+// ErrNotSupported.
+func (c *Client) Directory() gitoperationslib.Directory { return directory{} }
+
+type directory struct{}
+
+func (directory) User(context.Context, string) (*gitoperationslib.User, error) {
+	return nil, notSupported("directory.user", noDirectory)
+}
+func (directory) UserInfo(context.Context, string) (*gitoperationslib.UserInfo, error) {
+	return nil, notSupported("directory.user_info", noDirectory)
+}
+func (directory) Org(context.Context, string) (*gitoperationslib.Org, error) {
+	return nil, notSupported("directory.org", noDirectory)
+}
+func (directory) ListOrgs(context.Context, string, gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
+	return gitoperationslib.Page[gitoperationslib.Org]{}, notSupported("directory.list_orgs", noDirectory)
+}
+func (directory) ListAllOrgs(context.Context, gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
+	return gitoperationslib.Page[gitoperationslib.Org]{}, notSupported("directory.list_all_orgs", noDirectory)
+}
+func (directory) OrgInfo(context.Context, string) (*gitoperationslib.OrgInfo, error) {
+	return nil, notSupported("directory.org_info", noDirectory)
+}
+func (directory) OrgMembers(context.Context, string, gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+	return gitoperationslib.Page[gitoperationslib.User]{}, notSupported("directory.org_members", noDirectory)
+}
+func (directory) ListTeams(context.Context, string, gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Team], error) {
+	return gitoperationslib.Page[gitoperationslib.Team]{}, notSupported("directory.list_teams", noDirectory)
+}
+func (directory) Team(context.Context, string, string) (*gitoperationslib.Team, error) {
+	return nil, notSupported("directory.team", noDirectory)
+}
+func (directory) TeamInfo(context.Context, string, string) (*gitoperationslib.TeamInfo, error) {
+	return nil, notSupported("directory.team_info", noDirectory)
+}
+func (directory) TeamMembers(context.Context, string, string, gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+	return gitoperationslib.Page[gitoperationslib.User]{}, notSupported("directory.team_members", noDirectory)
+}
+func (directory) TeamRepos(context.Context, string, string, gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
+	return gitoperationslib.Page[gitoperationslib.Repo]{}, notSupported("directory.team_repos", noDirectory)
+}

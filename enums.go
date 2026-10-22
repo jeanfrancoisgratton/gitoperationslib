@@ -18,8 +18,8 @@ const (
 	VisibilityPublic  Visibility = "public"
 	VisibilityPrivate Visibility = "private"
 	// VisibilityInternal is visible to all members of a GitHub enterprise.
-	// Forgejo repositories only have a private flag, so the Forgejo backend
-	// is expected to return ErrNotSupported for it. [verify in increment 3]
+	// Forgejo and Bitbucket repositories only have a private flag, so those
+	// backends return ErrNotSupported for it.
 	VisibilityInternal Visibility = "internal"
 )
 

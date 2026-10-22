@@ -31,6 +31,7 @@ func (t *teamJSON) toTeam() gitoperationslib.Team {
 	team := gitoperationslib.Team{
 		ID:               t.ID,
 		Name:             t.Name,
+		Slug:             t.Name,
 		Description:      t.Description,
 		Permission:       gitoperationslib.TeamPermission(t.Permission),
 		Units:            make(map[gitoperationslib.TeamUnit]gitoperationslib.TeamPermission, len(t.UnitsMap)),

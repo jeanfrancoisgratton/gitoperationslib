@@ -26,6 +26,12 @@ type userJSON struct {
 	Restricted    bool      `json:"restricted"`
 	ProhibitLogin bool      `json:"prohibit_login"`
 	HTMLURL       string    `json:"html_url"`
+	AvatarURL     string    `json:"avatar_url"`
+	Pronouns      string    `json:"pronouns"`
+	Language      string    `json:"language"`
+	Followers     int       `json:"followers_count"`
+	Following     int       `json:"following_count"`
+	StarredRepos  int       `json:"starred_repos_count"`
 	Created       time.Time `json:"created"`
 	LastLogin     time.Time `json:"last_login"`
 }
@@ -49,6 +55,12 @@ func (u *userJSON) toUser() gitoperationslib.User {
 		Restricted:    u.Restricted,
 		ProhibitLogin: u.ProhibitLogin,
 		HTMLURL:       u.HTMLURL,
+		AvatarURL:     u.AvatarURL,
+		Pronouns:      u.Pronouns,
+		Language:      u.Language,
+		Followers:     u.Followers,
+		Following:     u.Following,
+		StarredRepos:  u.StarredRepos,
 		CreatedAt:     u.Created,
 		LastLogin:     lastLogin,
 	}

@@ -85,3 +85,5 @@ func TestIntegrationWebhooks(t *testing.T) { contracttest.Webhooks(t, integratio
 func TestIntegrationReleases(t *testing.T) { contracttest.Releases(t, integrationEnv(t)) }
 
 func TestIntegrationIssues(t *testing.T) { contracttest.Issues(t, integrationEnv(t)) }
+
+func TestIntegrationDirectory(t *testing.T) { contracttest.Directory(t, integrationEnv(t)) }

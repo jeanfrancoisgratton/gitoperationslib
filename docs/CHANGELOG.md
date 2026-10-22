@@ -6,6 +6,30 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [0.2.0] — 2026-10-22
+
+### Added
+- `Directory` (`Client.Directory()`, `CapDirectory`): reads users, organisations and teams with
+  any token (the server filters what the caller may see), on Forgejo and GitHub; Bitbucket returns
+  `ErrNotSupported`. `User`, `UserInfo`, `Org`, `ListOrgs`, `ListAllOrgs`, `OrgInfo`, `OrgMembers`,
+  `ListTeams`, `Team`, `TeamInfo`, `TeamMembers`, `TeamRepos`. Teams are addressed by organisation
+  and name (GitHub: slug).
+- `UserInfo`, `OrgInfo`, `TeamInfo`: an object with its lists (organisations and repositories of
+  a user; teams, members and repositories of an organisation; members and repositories of a
+  team). Lists the caller may not read are left empty and reported in `Incomplete`.
+- New fields: `User.AvatarURL`, `Company` (GitHub), `Pronouns`, `Language`, `StarredRepos`
+  (Forgejo), `Followers`, `Following`; `Org.AvatarURL`, `Org.HTMLURL` (GitHub); `Team.Slug`.
+- Contract check `contracttest.Directory` (read-only).
+
+### Changed
+- `gitoperationslib.Client` gains `Directory()`: implementations outside this module must add it.
+- Package documentation updated for Bitbucket (`doc.go`, `webhook`); `webhook.ErrUnknownForge`'s
+  message now names Bitbucket.
+
+### Documentation
+- README rewritten (architecture, design choices, backend differences); `docs/USAGE.md` added,
+  covering every package, interface and option.
+
 ## [0.1.7] — 2026-10-21
 Nothing changed, functionally, really.
 

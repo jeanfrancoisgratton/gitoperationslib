@@ -10,6 +10,8 @@ type Org struct {
 	Location    string
 	Email       string
 	Visibility  OwnerVisibility
+	AvatarURL   string
+	HTMLURL     string // GitHub only
 	// RepoAdminChangeTeamAccess lets repository admins change team access.
 	RepoAdminChangeTeamAccess bool
 }

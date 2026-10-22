@@ -153,6 +153,7 @@ func TestUnsupportedOptions(t *testing.T) {
 		"labels":         func() error { return c.Labels().Delete(ctx, "acme", "x", "bug") },
 		"milestones":     func() error { _, err := c.Milestones().Get(ctx, "acme", "x", 1); return err },
 		"tag protection": func() error { _, err := c.TagProtections().List(ctx, "acme", "x"); return err },
+		"directory":      func() error { _, err := c.Directory().OrgInfo(ctx, "acme"); return err },
 	} {
 		if err := call(); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("%s: err = %v, want ErrNotSupported", name, err)
