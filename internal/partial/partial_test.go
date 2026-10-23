@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -53,6 +54,12 @@ func TestResult(t *testing.T) {
 	err := r.Err()
 	if !errors.Is(err, gitoperationslib.ErrNotSupported) || gitoperationslib.StatusCode(err) != http.StatusUnauthorized {
 		t.Errorf("joined error loses its parts: %v", err)
+	}
+
+	parts := r.Parts()
+	if len(parts) != 4 || parts[0].Part != "part" || parts[0].Status != 401 || !strings.Contains(parts[0].Message, "HTTP 401") ||
+		parts[3].Part != "teams" || parts[3].Status != 0 || !strings.Contains(parts[3].Message, "not supported") {
+		t.Errorf("Parts = %+v", parts)
 	}
 
 	fatal := []error{&gitoperationslib.APIError{StatusCode: http.StatusInternalServerError}, context.Canceled}

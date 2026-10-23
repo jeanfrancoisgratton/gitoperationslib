@@ -6,6 +6,32 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [0.3.0] — 2026-10-23
+
+JSON support. The JSON key names are now part of the public API.
+
+### Added
+- JSON tags on every public struct: results, option structs, error types (`APIError`,
+  `NotSupportedError`, `UnsupportedVersionError`), `webhook` events and `forgejo.Version`.
+  - Keys are camelCase; acronyms are written as words (`htmlUrl`, `sshUrl`, `keyId`).
+  - Common fields are always present; fields some backends don't report, nil pointers and zero
+    times are omitted (`omitzero`).
+  - Option structs omit everything except their required fields; nil `Edit…Options` fields stay
+    nil when unmarshalled.
+  - Secrets are never serialised: `Password` (user options), `Secret` and `AuthorizationHeader`
+    (webhook options) are tagged `json:"-"`.
+- `PartError` and a `Missing []PartError` field on `UserInfo`, `OrgInfo`, `TeamInfo` and
+  `CurrentUser`: the refused parts as data (part, HTTP status, message), since `Incomplete` (an
+  `error`) is not serialised.
+- A test that fails when an exported field lacks a camelCase JSON tag.
+- `docs/USAGE.md` §3.7 (JSON).
+
+### Changed
+- `webhook.Event.Payload` is now `json.RawMessage` instead of `[]byte`, so it marshals as JSON
+  rather than base64. It has the same underlying type, so `json.Unmarshal(ev.Payload, …)` and
+  assignments to `[]byte` still compile.
+- `Incomplete` is tagged `json:"-"`.
+
 ## [0.2.1] — 2026-10-23
 
 ### Added

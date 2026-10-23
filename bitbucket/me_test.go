@@ -61,4 +61,7 @@ func TestMe(t *testing.T) {
 	if !errors.Is(me.Incomplete, gitoperationslib.ErrNotSupported) || len(me.Teams) != 0 || len(me.GPGKeys) != 0 {
 		t.Errorf("Incomplete = %v, want teams and GPG keys not supported", me.Incomplete)
 	}
+	if len(me.Missing) != 2 || me.Missing[0].Part != "teams" || me.Missing[1].Part != "GPG keys" || me.Missing[0].Status != 0 {
+		t.Errorf("Missing = %+v", me.Missing)
+	}
 }

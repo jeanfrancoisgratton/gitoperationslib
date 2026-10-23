@@ -11,13 +11,13 @@ import (
 
 // PushEvent is a push to a branch or tag.
 type PushEvent struct {
-	Ref        string // "refs/heads/main" or "refs/tags/v1"
-	Before     string
-	After      string
-	CompareURL string
-	Pusher     string // login
-	Commits    []Commit
-	HeadCommit *Commit // nil when the push deletes the ref
+	Ref        string   `json:"ref"` // "refs/heads/main" or "refs/tags/v1"
+	Before     string   `json:"before"`
+	After      string   `json:"after"`
+	CompareURL string   `json:"compareUrl"`
+	Pusher     string   `json:"pusher"` // login
+	Commits    []Commit `json:"commits"`
+	HeadCommit *Commit  `json:"headCommit,omitzero"` // nil when the push deletes the ref
 }
 
 // Branch returns the branch name, or "" if the push is not to a branch.
@@ -40,34 +40,34 @@ func (p *PushEvent) Tag() string {
 
 // Commit is a commit in a push.
 type Commit struct {
-	ID        string
-	Message   string
-	URL       string
-	Author    CommitAuthor
-	Timestamp time.Time
-	Added     []string
-	Removed   []string
-	Modified  []string
+	ID        string       `json:"id"`
+	Message   string       `json:"message"`
+	URL       string       `json:"url"`
+	Author    CommitAuthor `json:"author"`
+	Timestamp time.Time    `json:"timestamp,omitzero"`
+	Added     []string     `json:"added"`
+	Removed   []string     `json:"removed"`
+	Modified  []string     `json:"modified"`
 }
 
 // CommitAuthor identifies a commit's author.
 type CommitAuthor struct {
-	Name     string
-	Email    string
-	Username string // empty if the e-mail matches no account
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Username string `json:"username,omitzero"` // empty if the e-mail matches no account
 }
 
 // PullRequestEvent is a change to a pull request.
 type PullRequestEvent struct {
-	Action      string // "opened", "closed", "reopened", "edited", ...
-	Number      int
-	PullRequest gitoperationslib.PullRequest
+	Action      string                       `json:"action"` // "opened", "closed", "reopened", "edited", ...
+	Number      int                          `json:"number"`
+	PullRequest gitoperationslib.PullRequest `json:"pullRequest"`
 }
 
 // ReleaseEvent is a change to a release.
 type ReleaseEvent struct {
-	Action  string // "published", "updated", "deleted", ...
-	Release gitoperationslib.Release
+	Action  string                   `json:"action"` // "published", "updated", "deleted", ...
+	Release gitoperationslib.Release `json:"release"`
 }
 
 func (e *Event) decode(want string, v any) error {

@@ -137,6 +137,6 @@ func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error
 	if err := res.Add("GPG keys", notSupported("directory.me", noMeGPG)); err != nil {
 		return nil, err
 	}
-	me.Incomplete = res.Err()
+	me.Incomplete, me.Missing = res.Err(), res.Parts()
 	return me, nil
 }

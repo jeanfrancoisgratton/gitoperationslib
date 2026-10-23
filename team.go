@@ -37,21 +37,21 @@ var AllTeamUnits = []TeamUnit{
 
 // Team is a team within an organisation.
 type Team struct {
-	ID   int64
-	Org  string
-	Name string
+	ID   int64  `json:"id"`
+	Org  string `json:"org"`
+	Name string `json:"name"`
 	// Slug is the URL-safe name GitHub addresses teams by; on Forgejo it is
 	// the name.
-	Slug        string
-	Description string
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
 	// Permission is the overall level: admin or owner when the team has
 	// that level on every unit, otherwise derived by the server from Units.
-	Permission TeamPermission
-	Units      map[TeamUnit]TeamPermission
+	Permission TeamPermission              `json:"permission"`
+	Units      map[TeamUnit]TeamPermission `json:"units,omitzero"`
 	// IncludesAllRepos gives the team access to every repository of the
 	// organisation, current and future.
-	IncludesAllRepos bool
-	CanCreateOrgRepo bool
+	IncludesAllRepos bool `json:"includesAllRepos,omitzero"`
+	CanCreateOrgRepo bool `json:"canCreateOrgRepo,omitzero"`
 }
 
 // TeamAccess sets a team's permissions. Exactly one form applies:
@@ -61,24 +61,24 @@ type Team struct {
 //     must be empty.
 //   - Permission read or write with no Units: that level on every unit.
 type TeamAccess struct {
-	Permission TeamPermission
-	Units      map[TeamUnit]TeamPermission
+	Permission TeamPermission              `json:"permission,omitzero"`
+	Units      map[TeamUnit]TeamPermission `json:"units,omitzero"`
 }
 
 // CreateTeamOptions describes a team to create.
 type CreateTeamOptions struct {
-	Name             string // required
-	Description      string
-	Access           TeamAccess // required
-	IncludesAllRepos bool
-	CanCreateOrgRepo bool
+	Name             string     `json:"name"` // required
+	Description      string     `json:"description,omitzero"`
+	Access           TeamAccess `json:"access"` // required
+	IncludesAllRepos bool       `json:"includesAllRepos,omitzero"`
+	CanCreateOrgRepo bool       `json:"canCreateOrgRepo,omitzero"`
 }
 
 // EditTeamOptions changes a team. Nil fields are left unchanged.
 type EditTeamOptions struct {
-	Name             *string
-	Description      *string
-	Access           *TeamAccess
-	IncludesAllRepos *bool
-	CanCreateOrgRepo *bool
+	Name             *string     `json:"name,omitzero"`
+	Description      *string     `json:"description,omitzero"`
+	Access           *TeamAccess `json:"access,omitzero"`
+	IncludesAllRepos *bool       `json:"includesAllRepos,omitzero"`
+	CanCreateOrgRepo *bool       `json:"canCreateOrgRepo,omitzero"`
 }

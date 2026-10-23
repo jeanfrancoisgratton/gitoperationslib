@@ -79,4 +79,7 @@ func TestMe(t *testing.T) {
 	if !gitoperationslib.IsNotFound(me.Incomplete) {
 		t.Errorf("Incomplete = %v, want the 404 on e-mail addresses", me.Incomplete)
 	}
+	if len(me.Missing) != 1 || me.Missing[0].Part != "e-mail addresses" || me.Missing[0].Status != http.StatusNotFound {
+		t.Errorf("Missing = %+v", me.Missing)
+	}
 }

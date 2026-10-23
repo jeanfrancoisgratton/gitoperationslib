@@ -57,12 +57,22 @@ type Directory interface {
 // see.
 type UserInfo struct {
 	User
-	Orgs  []Org  // organisations the user belongs to
-	Repos []Repo // repositories the user owns
+	Orgs  []Org  `json:"orgs"`  // organisations the user belongs to
+	Repos []Repo `json:"repos"` // repositories the user owns
 	// Incomplete is nil when every part was read. Otherwise it describes the
 	// parts the server refused (401, 403, 404) or the backend cannot list
-	// (ErrNotSupported); those fields are left empty.
-	Incomplete error
+	// (ErrNotSupported); those fields are left empty. It is not serialised:
+	// Missing carries the same information as data.
+	Incomplete error `json:"-"`
+	// Missing lists the parts recorded in Incomplete, one entry each.
+	Missing []PartError `json:"missing,omitzero"`
+}
+
+// PartError is a part of an info call that could not be read.
+type PartError struct {
+	Part    string `json:"part"`            // "organisations", "teams", "e-mail addresses"…
+	Status  int    `json:"status,omitzero"` // HTTP status of the refusal; 0 when the backend cannot read the part
+	Message string `json:"message"`
 }
 
 // CurrentUser is the authenticated user, as returned by Directory.Me. Fields
@@ -72,59 +82,62 @@ type CurrentUser struct {
 	// LoginName is the name used to sign in on an external authentication
 	// source (LDAP, OAuth…), and AuthSourceID that source; 0 for a local
 	// account. Forgejo only.
-	LoginName    string
-	AuthSourceID int64
-	UUID         string // Bitbucket only
-	AccountID    string // Atlassian account ID; Bitbucket only
+	LoginName    string `json:"loginName,omitzero"`
+	AuthSourceID int64  `json:"authSourceId,omitzero"`
+	UUID         string `json:"uuid,omitzero"`      // Bitbucket only
+	AccountID    string `json:"accountId,omitzero"` // Atlassian account ID; Bitbucket only
 	// TwoFactorAuth reports whether two-factor authentication is enabled;
 	// nil when the backend does not tell. GitHub and Bitbucket only.
-	TwoFactorAuth *bool
+	TwoFactorAuth *bool `json:"twoFactorAuth,omitzero"`
 	// Type is the account type ("User", "Bot"…); GitHub only.
-	Type              string
-	Plan              string    // GitHub only
-	Hireable          bool      // GitHub only
-	TwitterUsername   string    // GitHub only
-	PublicRepos       int       // GitHub only
-	TotalPrivateRepos int64     // GitHub only
-	OwnedPrivateRepos int64     // GitHub only
-	PublicGists       int       // GitHub only
-	PrivateGists      int       // GitHub only
-	DiskUsage         int       // in KiB; GitHub only
-	Collaborators     int       // GitHub only
-	UpdatedAt         time.Time // GitHub only
+	Type              string    `json:"type,omitzero"`
+	Plan              string    `json:"plan,omitzero"`              // GitHub only
+	Hireable          bool      `json:"hireable,omitzero"`          // GitHub only
+	TwitterUsername   string    `json:"twitterUsername,omitzero"`   // GitHub only
+	PublicRepos       int       `json:"publicRepos,omitzero"`       // GitHub only
+	TotalPrivateRepos int64     `json:"totalPrivateRepos,omitzero"` // GitHub only
+	OwnedPrivateRepos int64     `json:"ownedPrivateRepos,omitzero"` // GitHub only
+	PublicGists       int       `json:"publicGists,omitzero"`       // GitHub only
+	PrivateGists      int       `json:"privateGists,omitzero"`      // GitHub only
+	DiskUsage         int       `json:"diskUsage,omitzero"`         // in KiB; GitHub only
+	Collaborators     int       `json:"collaborators,omitzero"`     // GitHub only
+	UpdatedAt         time.Time `json:"updatedAt,omitzero"`         // GitHub only
 	// Settings are the account preferences; Forgejo only.
-	Settings *UserSettings
+	Settings *UserSettings `json:"settings,omitzero"`
 
-	Emails []Email
-	Orgs   []Org // organisations the user belongs to, private memberships included
-	Teams  []Team
+	Emails []Email `json:"emails"`
+	Orgs   []Org   `json:"orgs"` // organisations the user belongs to, private memberships included
+	Teams  []Team  `json:"teams"`
 	// Repos are the repositories the user owns or reaches as a collaborator
 	// or organisation member, private ones included.
-	Repos   []Repo
-	SSHKeys []SSHKey
-	GPGKeys []GPGKey
+	Repos   []Repo   `json:"repos"`
+	SSHKeys []SSHKey `json:"sshKeys"`
+	GPGKeys []GPGKey `json:"gpgKeys"`
 	// Incomplete is nil when every part was read; see UserInfo.Incomplete.
 	// A token lacking a scope (GitHub's user:email, read:public_key…)
 	// leaves the matching part empty and recorded here.
-	Incomplete error
+	Incomplete error       `json:"-"`
+	Missing    []PartError `json:"missing,omitzero"` // see UserInfo.Missing
 }
 
 // OrgInfo is an organisation with the teams, members and repositories the
 // caller can see.
 type OrgInfo struct {
 	Org
-	Teams   []Team
-	Members []User // non-members only see public members
-	Repos   []Repo
+	Teams   []Team `json:"teams"`
+	Members []User `json:"members"` // non-members only see public members
+	Repos   []Repo `json:"repos"`
 	// Incomplete is nil when every part was read; see UserInfo.Incomplete.
-	Incomplete error
+	Incomplete error       `json:"-"`
+	Missing    []PartError `json:"missing,omitzero"` // see UserInfo.Missing
 }
 
 // TeamInfo is a team with its members and repositories.
 type TeamInfo struct {
 	Team
-	Members []User
-	Repos   []Repo
+	Members []User `json:"members"`
+	Repos   []Repo `json:"repos"`
 	// Incomplete is nil when every part was read; see UserInfo.Incomplete.
-	Incomplete error
+	Incomplete error       `json:"-"`
+	Missing    []PartError `json:"missing,omitzero"` // see UserInfo.Missing
 }

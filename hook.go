@@ -5,8 +5,8 @@ import "time"
 // HookScope selects where webhooks live: a repository, or an organisation
 // when Repo is empty.
 type HookScope struct {
-	Owner string
-	Repo  string
+	Owner string `json:"owner"`
+	Repo  string `json:"repo,omitzero"`
 }
 
 // RepoHooks is the scope of a repository's webhooks.
@@ -44,43 +44,43 @@ const (
 
 // Webhook is a configured webhook. The secret is never returned.
 type Webhook struct {
-	ID          int64
-	URL         string
-	ContentType HookContentType
+	ID          int64           `json:"id"`
+	URL         string          `json:"url"`
+	ContentType HookContentType `json:"contentType"`
 	// Events lists the subscribed events. Forgejo may add finer-grained
 	// events implied by the requested ones (e.g. issue_assign with issues);
 	// those keep Forgejo's names.
-	Events       []HookEvent
-	Active       bool
-	BranchFilter string // Forgejo only
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	Events       []HookEvent `json:"events"`
+	Active       bool        `json:"active"`
+	BranchFilter string      `json:"branchFilter,omitzero"` // Forgejo only
+	CreatedAt    time.Time   `json:"createdAt,omitzero"`
+	UpdatedAt    time.Time   `json:"updatedAt,omitzero"`
 }
 
 // CreateWebhookOptions describes a webhook to create.
 type CreateWebhookOptions struct {
-	URL         string          // required
-	ContentType HookContentType // zero value: json
+	URL         string          `json:"url"`                  // required
+	ContentType HookContentType `json:"contentType,omitzero"` // zero value: json
 	// Secret signs deliveries (see the webhook package). Strongly
 	// recommended.
-	Secret string
-	Events []HookEvent // required
-	Active *bool       // nil: active
+	Secret string      `json:"-"`
+	Events []HookEvent `json:"events"`          // required
+	Active *bool       `json:"active,omitzero"` // nil: active
 	// BranchFilter limits push and branch events to matching branches, as a
 	// glob such as "{main,release/*}" (Forgejo only).
-	BranchFilter string
+	BranchFilter string `json:"branchFilter,omitzero"`
 	// AuthorizationHeader is sent with every delivery (Forgejo only).
-	AuthorizationHeader string
+	AuthorizationHeader string `json:"-"`
 }
 
 // EditWebhookOptions changes a webhook. Nil fields are left unchanged; a
 // non-nil Events replaces the subscription list.
 type EditWebhookOptions struct {
-	URL                 *string
-	ContentType         *HookContentType
-	Secret              *string
-	Events              []HookEvent
-	Active              *bool
-	BranchFilter        *string // Forgejo only
-	AuthorizationHeader *string // Forgejo only
+	URL                 *string          `json:"url,omitzero"`
+	ContentType         *HookContentType `json:"contentType,omitzero"`
+	Secret              *string          `json:"-"`
+	Events              []HookEvent      `json:"events,omitzero"`
+	Active              *bool            `json:"active,omitzero"`
+	BranchFilter        *string          `json:"branchFilter,omitzero"` // Forgejo only
+	AuthorizationHeader *string          `json:"-"`                     // Forgejo only
 }

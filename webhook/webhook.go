@@ -74,21 +74,21 @@ func Verify(body []byte, h http.Header, secret []byte) error {
 
 // Event is a decoded delivery.
 type Event struct {
-	Forge gitoperationslib.Backend
+	Forge gitoperationslib.Backend `json:"forge"`
 	// Name is the event, e.g. "push", "pull_request", "release", or
 	// GitHub's "ping". Bitbucket's event keys are mapped to these names where
 	// they match ("repo:push" is "push"; "pullrequest:…" is "pull_request" or
 	// "pull_request_review"); others keep their key.
-	Name string
+	Name string `json:"name"`
 	// Key is Bitbucket's raw event key (X-Event-Key), e.g.
 	// "pullrequest:fulfilled"; empty for other forges.
-	Key      string
-	Delivery string // unique delivery ID
-	Action   string // e.g. "opened", "published"; empty for push
-	Repo     string // "owner/name"; empty for events without a repository
-	Sender   string // login of the user who triggered the event
+	Key      string `json:"key,omitzero"`
+	Delivery string `json:"delivery"`        // unique delivery ID
+	Action   string `json:"action,omitzero"` // e.g. "opened", "published"; empty for push
+	Repo     string `json:"repo,omitzero"`   // "owner/name"; empty for events without a repository
+	Sender   string `json:"sender"`          // login of the user who triggered the event
 	// Payload is the JSON payload, for fields the typed accessors omit.
-	Payload []byte
+	Payload json.RawMessage `json:"payload,omitzero"`
 }
 
 // Parse reads, verifies and decodes a delivery. The request body is

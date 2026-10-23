@@ -8,7 +8,7 @@ This guide covers every package, interface, type and option of the library, with
 2. [Connecting](#2-connecting)
    - [Forgejo](#21-forgejo) · [GitHub](#22-github) · [Bitbucket Cloud](#23-bitbucket-cloud) · [Choosing at run time](#24-choosing-a-backend-at-run-time)
 3. [Core concepts](#3-core-concepts)
-   - [Client](#31-the-client) · [Capabilities](#32-capabilities-and-optional-interfaces) · [Errors](#33-errors) · [Pagination](#34-pagination) · [Optional fields](#35-optional-fields-and-ptr) · [Enums](#36-enums)
+   - [Client](#31-the-client) · [Capabilities](#32-capabilities-and-optional-interfaces) · [Errors](#33-errors) · [Pagination](#34-pagination) · [Optional fields](#35-optional-fields-and-ptr) · [Enums](#36-enums) · [JSON](#37-json)
 4. [Repositories](#4-repositories)
 5. [Branches](#5-branches)
 6. [Tags](#6-tags)
@@ -432,6 +432,39 @@ Enums are typed strings. The types with a fixed set of values have a `Valid()` m
 | `HookContentType` | `HookContentJSON`, `HookContentForm` | |
 | `TeamPermission` | `TeamPermissionNone`, `Read`, `Write`, `Admin`, `Owner` (reported only) | |
 | `TeamUnit` | `TeamUnitCode`, `Issues`, `ExternalIssues`, `Wiki`, `ExternalWiki`, `Pulls`, `Releases`, `Projects`, `Packages`, `Actions`; `AllTeamUnits` lists them | |
+
+### 3.7 JSON
+
+Every public struct (results, option structs, error types and the `webhook` events) has JSON tags, so you can print results with `json.Marshal` or load options from a file. The key names are part of the API and only change in a minor release, noted in the changelog.
+
+- **Keys are camelCase.** Acronyms are written as words: `fullName`, `htmlUrl`, `sshUrl`, `mergeCommitSha`, `keyId`.
+- **Embedded structs are flattened.** `UserInfo` and `CurrentUser` show the `User` fields at the top level, and `ListIssuesOptions` takes `page` and `perPage` directly.
+- **Common fields are always present**, even when empty (`"email": ""`), so every backend gives the same shape.
+- **Fields some backends don't report are omitted when empty**: the ones documented as "GitHub only" or "Forgejo only", optional pointers (`mergeable`, `twoFactorAuth`, `pushAllowlist`) and `missing`. A nil pointer is omitted, but `false` is still written, so "not reported" and "disabled" stay distinct.
+- **Zero times are omitted**, e.g. `lastLogin` for a user who never signed in or `expiresAt` for a key that does not expire.
+- **Option structs omit everything not set**, apart from their required fields. Nil `Edit…Options` fields stay nil when unmarshalled, so "leave unchanged" survives a round trip.
+- **Secrets are never serialised.** `Password` (user options), `Secret` and `AuthorizationHeader` (webhook options) are tagged `json:"-"`. Set them in code.
+- **`Incomplete` is not serialised**, because an `error` would come out as `{}`. Info results carry the same information in `missing`; see [§16.3](#163-info-calls).
+- **`webhook.Event.Payload`** is a `json.RawMessage`, so it is embedded as JSON, not base64.
+
+```go
+me, err := client.Directory().Me(ctx)
+if err != nil {
+	log.Fatal(err)
+}
+out, _ := json.MarshalIndent(me, "", "  ")
+fmt.Println(string(out))
+// {
+//   "id": 3,
+//   "login": "alice",
+//   "fullName": "Alice",
+//   "htmlUrl": "https://git.example.com/alice",
+//   ...
+//   "missing": [
+//     {"part": "SSH keys", "status": 403, "message": "forgejo: HTTP 403: token does not have …"}
+//   ]
+// }
+```
 
 ---
 
@@ -1679,7 +1712,7 @@ Forge detection: `X-Forgejo-Event` means Forgejo (checked first, because Forgejo
 | `Action string` | `opened`, `closed`, `published`, …; empty for push |
 | `Repo string` | `"owner/name"`; empty for events without a repository |
 | `Sender string` | Login of the user who triggered the event |
-| `Payload []byte` | The JSON payload, for fields the typed accessors omit |
+| `Payload json.RawMessage` | The JSON payload, for fields the typed accessors omit |
 
 ### 15.4 Typed payloads
 
@@ -1866,6 +1899,7 @@ type UserInfo struct {
 	Orgs       []Org  // organisations the user belongs to
 	Repos      []Repo // repositories the user owns
 	Incomplete error
+	Missing    []PartError // the same refusals, as data (and in JSON)
 }
 
 type OrgInfo struct {
@@ -1874,6 +1908,7 @@ type OrgInfo struct {
 	Members    []User
 	Repos      []Repo
 	Incomplete error
+	Missing    []PartError // the same refusals, as data (and in JSON)
 }
 
 type TeamInfo struct {
@@ -1881,6 +1916,7 @@ type TeamInfo struct {
 	Members    []User
 	Repos      []Repo
 	Incomplete error
+	Missing    []PartError // the same refusals, as data (and in JSON)
 }
 ```
 
@@ -1892,6 +1928,16 @@ The object itself is embedded, so `info.Name`, `info.Description` and so on work
 - Any other failure fails the whole call: a 5xx, a network error, a cancelled context, or the main object itself being missing (a 404 on the user, organisation or team).
 
 `Incomplete` keeps the original errors, so `gol.IsForbidden(info.Incomplete)` and `errors.Is(info.Incomplete, gol.ErrNotSupported)` work.
+
+**`Missing`.** `Incomplete` is an `error`, so it is not serialised. `Missing` holds the same refusals as data, one `PartError` per part, and is omitted from JSON when everything was read:
+
+```go
+type PartError struct {
+	Part    string // "teams", "e-mail addresses", …
+	Status  int    // HTTP status of the refusal; 0 when the backend cannot read the part (ErrNotSupported)
+	Message string
+}
+```
 
 ```go
 info, err := client.Directory().OrgInfo(ctx, "acme")
@@ -1952,6 +1998,7 @@ type CurrentUser struct {
 	SSHKeys []SSHKey
 	GPGKeys []GPGKey          // with e-mail addresses and subkeys
 	Incomplete error
+	Missing    []PartError // the same refusals, as data (and in JSON)
 }
 ```
 

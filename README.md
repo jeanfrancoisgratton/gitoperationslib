@@ -135,6 +135,7 @@ The `webhook` package depends only on the root package, so a service that only r
   - In `Edit…Options`, `nil` means "leave unchanged".
   - Enums are typed (`Visibility`, `MergeMethod`, `PRState`, …), never bare strings or booleans.
   - Webhook event names follow GitHub's and are translated for the other forges.
+  - Every public struct has camelCase JSON tags. Fields only some forges report, and zero times, are omitted, and secrets are never serialised. See [USAGE §3.7](docs/USAGE.md#37-json).
 - **Safe defaults.** A zero-value `BranchProtection` blocks deletion and force pushes. Deleting, renaming or changing the permissions of an organisation's owner team is refused (`ErrOwnerTeam`), because Forgejo would otherwise let an organisation lose all its owners. Webhook signatures are compared in constant time.
 - **Forgejo first.** Forgejo is the reference backend, and its full feature set is exposed, including features GitHub lacks: extra merge methods, file-pattern protection, external release assets, and user, organisation and team administration. The minimum supported version is checked when connecting.
 - **Verified against real servers.** One contract suite (`internal/contracttest`) runs against every backend, and it also checks that each backend fails the way its documentation says it should.

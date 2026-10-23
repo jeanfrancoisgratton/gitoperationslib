@@ -27,7 +27,10 @@ func Collect[T any](ctx context.Context, fetch func(context.Context, gitoperatio
 }
 
 // Result accumulates the parts of an info call the server refused.
-type Result struct{ errs []error }
+type Result struct {
+	errs  []error
+	parts []gitoperationslib.PartError
+}
 
 // Add records err for part when the caller lacks access to it (HTTP 401,
 // 403, 404) or the backend cannot read it (ErrNotSupported), and returns
@@ -36,7 +39,8 @@ func (r *Result) Add(part string, err error) error {
 	if err == nil {
 		return nil
 	}
-	switch gitoperationslib.StatusCode(err) {
+	status := gitoperationslib.StatusCode(err)
+	switch status {
 	case 401, 403, 404:
 	default:
 		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
@@ -44,8 +48,12 @@ func (r *Result) Add(part string, err error) error {
 		}
 	}
 	r.errs = append(r.errs, fmt.Errorf("%s: %w", part, err))
+	r.parts = append(r.parts, gitoperationslib.PartError{Part: part, Status: status, Message: err.Error()})
 	return nil
 }
 
 // Err returns the recorded refusals joined, or nil.
 func (r *Result) Err() error { return errors.Join(r.errs...) }
+
+// Parts returns the recorded refusals as data, or nil.
+func (r *Result) Parts() []gitoperationslib.PartError { return r.parts }

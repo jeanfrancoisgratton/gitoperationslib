@@ -8,15 +8,15 @@ import (
 // ListOptions selects one page of a list call. Zero values mean
 // "first page" and "backend default page size".
 type ListOptions struct {
-	Page    int // 1-based
-	PerPage int
+	Page    int `json:"page,omitzero"` // 1-based
+	PerPage int `json:"perPage,omitzero"`
 }
 
 // Page is one page of results.
 type Page[T any] struct {
-	Items []T
+	Items []T `json:"items"`
 	// NextPage is the page number to request next, or 0 if this is the last page.
-	NextPage int
+	NextPage int `json:"nextPage"`
 }
 
 // All iterates over every item of a paginated list, starting at opts.Page.

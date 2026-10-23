@@ -36,7 +36,7 @@ func (d directory) UserInfo(ctx context.Context, login string) (*gitoperationsli
 	if err := res.Add("repositories", err); err != nil {
 		return nil, err
 	}
-	info.Incomplete = res.Err()
+	info.Incomplete, info.Missing = res.Err(), res.Parts()
 	return info, nil
 }
 
@@ -75,7 +75,7 @@ func (d directory) OrgInfo(ctx context.Context, name string) (*gitoperationslib.
 	if err := res.Add("repositories", err); err != nil {
 		return nil, err
 	}
-	info.Incomplete = res.Err()
+	info.Incomplete, info.Missing = res.Err(), res.Parts()
 	return info, nil
 }
 
@@ -110,7 +110,7 @@ func (d directory) TeamInfo(ctx context.Context, org, name string) (*gitoperatio
 	if err := res.Add("repositories", err); err != nil {
 		return nil, err
 	}
-	info.Incomplete = res.Err()
+	info.Incomplete, info.Missing = res.Err(), res.Parts()
 	return info, nil
 }
 

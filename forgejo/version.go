@@ -9,7 +9,9 @@ import (
 
 // Version is a Forgejo semantic version.
 type Version struct {
-	Major, Minor, Patch int
+	Major int `json:"major"`
+	Minor int `json:"minor"`
+	Patch int `json:"patch"`
 }
 
 // MinimumVersion is the oldest Forgejo release this library supports.

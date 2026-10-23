@@ -88,6 +88,9 @@ func TestMe(t *testing.T) {
 	if !gitoperationslib.IsForbidden(me.Incomplete) {
 		t.Errorf("Incomplete = %v, want the 403 on SSH keys", me.Incomplete)
 	}
+	if len(me.Missing) != 1 || me.Missing[0].Part != "SSH keys" || me.Missing[0].Status != http.StatusForbidden {
+		t.Errorf("Missing = %+v", me.Missing)
+	}
 	want := []string{"/api/v1/user/settings", "/api/v1/user/emails", "/api/v1/user/orgs", "/api/v1/user/teams",
 		"/api/v1/user/repos", "/api/v1/user/keys", "/api/v1/user/gpg_keys"}
 	if !slices.Equal(requests, want) {

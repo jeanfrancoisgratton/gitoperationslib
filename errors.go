@@ -18,9 +18,9 @@ var ErrOwnerTeam = errors.New("refusing to delete, rename or change the permissi
 
 // NotSupportedError describes which operation a backend refused.
 type NotSupportedError struct {
-	Backend   Backend
-	Operation string
-	Reason    string // optional
+	Backend   Backend `json:"backend"`
+	Operation string  `json:"operation"`
+	Reason    string  `json:"reason,omitzero"` // optional
 }
 
 func (e *NotSupportedError) Error() string {
@@ -41,9 +41,9 @@ func NotSupported(backend Backend, operation, reason string) error {
 // UnsupportedVersionError is returned when a server is older than the
 // minimum version the library supports.
 type UnsupportedVersionError struct {
-	Backend Backend
-	Version string
-	Minimum string
+	Backend Backend `json:"backend"`
+	Version string  `json:"version"`
+	Minimum string  `json:"minimum"`
 }
 
 func (e *UnsupportedVersionError) Error() string {
@@ -52,13 +52,13 @@ func (e *UnsupportedVersionError) Error() string {
 
 // APIError is the normalised form of an error response from either backend.
 type APIError struct {
-	Backend    Backend
-	StatusCode int
-	Message    string
+	Backend    Backend `json:"backend"`
+	StatusCode int     `json:"statusCode"`
+	Message    string  `json:"message"`
 	// DocumentationURL is GitHub's documentation_url or Forgejo's url field.
-	DocumentationURL string
+	DocumentationURL string `json:"documentationUrl,omitzero"`
 	// Details holds GitHub's errors[] entries, flattened to strings.
-	Details []string
+	Details []string `json:"details,omitzero"`
 }
 
 func (e *APIError) Error() string {
