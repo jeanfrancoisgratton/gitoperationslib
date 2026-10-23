@@ -3,7 +3,7 @@
 // Repository owners are workspaces. Bitbucket Cloud has no releases, no tag
 // protection, and its issue tracker (with labels and milestones) has been
 // retired: those areas return ErrNotSupported. User and workspace
-// administration is not implemented.
+// administration is not implemented; of the directory, only Me is.
 package bitbucket
 
 import (

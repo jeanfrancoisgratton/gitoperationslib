@@ -169,11 +169,11 @@ func (milestones) Delete(context.Context, string, string, int64) error {
 
 const noDirectory = "the user and workspace directory is not implemented for Bitbucket Cloud"
 
-// Directory implements gitoperationslib.Client; every method returns
+// Directory implements gitoperationslib.Client; every method but Me returns
 // ErrNotSupported.
-func (c *Client) Directory() gitoperationslib.Directory { return directory{} }
+func (c *Client) Directory() gitoperationslib.Directory { return directory{c} }
 
-type directory struct{}
+type directory struct{ c *Client }
 
 func (directory) User(context.Context, string) (*gitoperationslib.User, error) {
 	return nil, notSupported("directory.user", noDirectory)

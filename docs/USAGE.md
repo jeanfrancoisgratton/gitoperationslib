@@ -1760,7 +1760,7 @@ case "issues":
 
 ## 16. Users, organisations and teams (Directory)
 
-`Directory` reads accounts **with whatever rights the token has**. A site admin sees everything. Any other user sees what they could see in the web interface: public profiles, the organisations and teams they belong to, public members of other organisations. Forgejo and GitHub implement it (`CapDirectory`). **Bitbucket** returns `ErrNotSupported`.
+`Directory` reads accounts **with whatever rights the token has**. A site admin sees everything. Any other user sees what they could see in the web interface: public profiles, the organisations and teams they belong to, public members of other organisations. Forgejo and GitHub implement it (`CapDirectory`). **Bitbucket** implements `Me` only and returns `ErrNotSupported` for the rest.
 
 ```go
 dir := client.Directory()
@@ -1770,6 +1770,8 @@ For managing accounts (creating, editing, deleting) on Forgejo, see [Administrat
 
 ```go
 type Directory interface {
+	Me(ctx) (*CurrentUser, error) // the authenticated user; Bitbucket too
+
 	User(ctx, login string) (*User, error)
 	UserInfo(ctx, login string) (*UserInfo, error)
 
@@ -1923,6 +1925,73 @@ The info calls cost one request for the object, plus one per page of each list. 
 | `UserInfo.Repos` | repositories the user owns that the caller can see | the same (for the authenticated user, their own repositories, private included) |
 | `OrgInfo.Teams` | members only | visible teams; 403 for tokens without organisation access |
 | `OrgInfo.Members` | all members for members; public members otherwise | the same |
+
+### 16.4 The authenticated user (`Me`)
+
+`Me` answers "who am I?" from the credentials themselves, not from a stored username. It reads `GET /user`, which shows fields that `User(login)` hides even for yourself (e-mail, admin flag, last login, GitHub's plan and private counts), then gathers everything else the token may read about the account. Nothing is filtered: keep what you need.
+
+```go
+type CurrentUser struct {
+	User                      // profile, private fields included
+	LoginName    string       // Forgejo: name on the external auth source
+	AuthSourceID int64        // Forgejo: 0 for a local account
+	UUID, AccountID string    // Bitbucket
+	TwoFactorAuth *bool       // GitHub, Bitbucket; nil if not reported
+	Type, Plan, TwitterUsername string                    // GitHub
+	Hireable bool                                         // GitHub
+	PublicRepos, PublicGists, PrivateGists int            // GitHub
+	TotalPrivateRepos, OwnedPrivateRepos int64            // GitHub
+	DiskUsage, Collaborators int                          // GitHub (DiskUsage in KiB)
+	UpdatedAt time.Time                                   // GitHub
+	Settings *UserSettings    // Forgejo: theme, diff view, hide e-mail/activity/pronouns
+
+	Emails  []Email           // address, primary, verified (GitHub: visibility)
+	Orgs    []Org             // private memberships included
+	Teams   []Team
+	Repos   []Repo            // owned, collaborator and organisation repositories, private included
+	SSHKeys []SSHKey
+	GPGKeys []GPGKey          // with e-mail addresses and subkeys
+	Incomplete error
+}
+```
+
+```go
+me, err := client.Directory().Me(ctx)
+if err != nil {
+	log.Fatal(err) // bad credentials, server error, …
+}
+fmt.Println(me.Login, me.FullName, me.Email, me.IsAdmin)
+for _, e := range me.Emails {
+	fmt.Println(e.Address, e.Primary, e.Verified)
+}
+if me.Incomplete != nil {
+	log.Printf("partial view: %v", me.Incomplete) // e.g. "e-mail addresses: github: HTTP 404: Not Found"
+}
+```
+
+`Incomplete` works as for the info calls (§16.3): a failure on `/user` itself fails the call, a refused part is left empty and recorded. Missing token scopes are the usual cause:
+
+| Part | Forgejo scope | GitHub classic scope | Bitbucket scope |
+|---|---|---|---|
+| profile (`/user`), settings, e-mail addresses, SSH and GPG keys | `read:user` | e-mail: `user:email`; keys: `read:public_key`, `read:gpg_key` | `account`, e-mail: `email` |
+| organisations, teams | `read:organization` | `read:org` (teams) | workspaces: `account` |
+| repositories | `read:repository` | `repo` for private ones | `repository` |
+
+Per backend:
+
+| Part | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| `Settings` | `/user/settings` | — | — |
+| `Emails` | `/user/emails` | `/user/emails` | `/user/emails`; the primary one also fills `Email` |
+| `Orgs` | `/user/orgs` | `/user/orgs` | workspaces (`/user/workspaces`): `Name` = slug, `FullName` = name |
+| `Teams` | `/user/teams` | `/user/teams` | not supported (recorded in `Incomplete`) |
+| `Repos` | `/user/repos` | `/user/repos` | every workspace's repositories |
+| `SSHKeys` | `/user/keys` | `/user/keys` | `/users/{uuid}/ssh-keys`; `Title` is the label, else the key comment |
+| `GPGKeys` | `/user/gpg_keys` | `/user/gpg_keys` | not supported (recorded in `Incomplete`) |
+
+On Bitbucket, `Me` needs credentials that belong to a user (API token or app password). Workspace, project and repository access tokens have no user behind them and get an error from `/user`.
+
+`Me` costs about eight requests plus one per extra page of each list.
 
 ---
 

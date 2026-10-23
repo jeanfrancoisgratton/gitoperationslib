@@ -6,6 +6,20 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [0.2.1] — 2026-10-23
+
+### Added
+- `Directory.Me`: the authenticated user, from the credentials, with everything the token may
+  read: private profile fields, e-mail addresses, organisations, teams, repositories, SSH and GPG
+  keys (Forgejo also settings; GitHub also plan and private counts). Refused or unsupported parts
+  are reported in `Incomplete`. Implemented on Forgejo, GitHub and Bitbucket (workspaces as
+  organisations; no teams or GPG keys).
+- New types `CurrentUser`, `UserSettings`, `Email`, `SSHKey`, `GPGKey`, `GPGKeyEmail`.
+- `contracttest.Directory` checks `Me` on every backend.
+
+### Changed
+- `gitoperationslib.Directory` gains `Me`: implementations outside this module must add it.
+
 ## [0.2.0] — 2026-10-22
 
 ### Added

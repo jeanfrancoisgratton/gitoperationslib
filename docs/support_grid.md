@@ -25,7 +25,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Issues, labels, milestones, comments | ✅ | ✅ | ❌ issue tracker retired by Atlassian |
 | Webhooks (repository, organisation/workspace) | ✅ | ✅ | ✅ |
 | Receiving and verifying deliveries | ✅ | ✅ | ⚠️ from documentation, not yet checked against live deliveries |
-| Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ❌ |
+| Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
 
 ## Connecting
@@ -225,6 +225,7 @@ Works with any token; the server filters what the caller may see. Forgejo checks
 
 | Feature | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|
+| Authenticated user (`Me`): private fields, e-mail addresses, memberships, repositories, keys | ✅ plus settings | ✅ plus plan and private counts | ⚠️ workspaces as organisations; no teams, no GPG keys |
 | User, organisation, team (by organisation and name) | ✅ | ✅ team = slug | ❌ |
 | Authenticated user's organisations, another user's | ✅ | ⚠️ another user's: public memberships only | ❌ |
 | Every visible organisation (`ListAllOrgs`) | ✅ | ⚠️ `since` cursor carried in `NextPage` | ❌ |

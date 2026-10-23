@@ -14,6 +14,21 @@ import (
 func Directory(t *testing.T, env Env) {
 	ctx := testContext(t)
 	dir := env.Client.Directory()
+
+	// Every backend implements Me.
+	me, err := dir.Me(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(me.Login, env.Login) {
+		t.Errorf("Me().Login = %q, want %s", me.Login, env.Login)
+	}
+	if me.Incomplete != nil {
+		t.Logf("Me incomplete: %v", me.Incomplete)
+	}
+	t.Logf("me %s: %d e-mail addresses, %d organisations, %d teams, %d repositories, %d SSH keys, %d GPG keys",
+		me.Login, len(me.Emails), len(me.Orgs), len(me.Teams), len(me.Repos), len(me.SSHKeys), len(me.GPGKeys))
+
 	if unsupported(t, env, gitoperationslib.CapDirectory, func() error {
 		_, err := dir.User(ctx, env.Login)
 		return err

@@ -154,7 +154,7 @@ The library adapts where it can, and returns `ErrNotSupported` where it cannot. 
 | Issues, labels, milestones, comments | ✅ | ✅ | ❌ issue tracker retired |
 | Webhooks (repository, organisation/workspace) | ✅ | ✅ | ✅ |
 | Receiving deliveries (`webhook`) | ✅ | ✅ | ⚠️ not yet checked against live deliveries |
-| Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ❌ |
+| Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
 
 Differences worth knowing before you start:
