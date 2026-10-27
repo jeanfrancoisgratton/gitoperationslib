@@ -95,6 +95,10 @@ type Branches interface {
 	// follow it.
 	Rename(ctx context.Context, owner, repo, name, newName string) (*Branch, error)
 	Delete(ctx context.Context, owner, repo, name string) error
+	// Compare counts the commits between base and head (branches, tags or
+	// commits): Ahead, those in head but not in base, and Behind, the
+	// reverse. Both are 0 when head and base point to the same commit.
+	Compare(ctx context.Context, owner, repo, base, head string) (*Comparison, error)
 }
 
 // Tags manages repository tags. Releases are managed with Releases().

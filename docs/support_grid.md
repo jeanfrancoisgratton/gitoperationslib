@@ -71,6 +71,8 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Create a branch from a branch, tag or commit | ✅ | ✅ | ✅ |
 | Rename a branch | ✅ | ✅ | ❌ |
 | `Branch.Protected` reported | ✅ | ✅ | ❌ always false |
+| `Branch.LastCommit` (message, author, date) | ✅ | ⚠️ `Get` only | ✅ |
+| Compare two refs (ahead / behind) | ✅ two requests | ✅ | ⚠️ counts the commits, 100 per request |
 | Lightweight tags | ✅ | ✅ | ⚠️ Bitbucket always annotates; its generated message reads back as empty |
 | Annotated tags | ✅ | ✅ | ✅ |
 | List, get, delete tags | ✅ | ✅ | ✅ |

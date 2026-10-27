@@ -64,6 +64,16 @@ func BranchesAndTags(t *testing.T, env Env) {
 		t.Errorf("IsDefault wrong in List: %v", listed)
 	}
 
+	// Get always describes the head commit; every branch is still at the initial commit, so nothing is ahead or behind
+	if lc := def.LastCommit; lc == nil || lc.Date.IsZero() || lc.Message == "" {
+		t.Errorf("default branch's LastCommit = %+v", lc)
+	}
+	cmp, err := branches.Compare(ctx, owner, *repo, created.DefaultBranch, "from-branch")
+	check(err)
+	if cmp.Ahead != 0 || cmp.Behind != 0 {
+		t.Errorf("Compare = %+v, want 0 ahead, 0 behind", cmp)
+	}
+
 	featureName := "feature-renamed"
 	renamed, err := branches.Rename(ctx, owner, *repo, "feature", featureName)
 	switch {

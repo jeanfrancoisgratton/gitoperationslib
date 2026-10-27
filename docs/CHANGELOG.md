@@ -6,6 +6,20 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [Unreleased]
+
+### Added
+- `Branch.LastCommit` (`CommitSummary`: message, author name, author date). `Get` always fills
+  it; `List` does on Forgejo and Bitbucket, not on GitHub (nil there), whose branch list only
+  carries the commit SHA.
+- `Branches.Compare(ctx, owner, repo, base, head)`, returning a `Comparison`: the commits of
+  head missing from base (`Ahead`), and the reverse (`Behind`). One request on GitHub, two on
+  Forgejo, and on Bitbucket (no comparison endpoint) a count of the commits, 100 per request.
+- Contract test: `LastCommit` from `Get`, and `Compare` between two branches at the same commit.
+
+### Changed
+- **Breaking** for code implementing `Branches` (fakes, wrappers): the interface gains `Compare`.
+
 ## [0.3.0] — 2026-10-23
 
 JSON support. The JSON key names are now part of the public API.

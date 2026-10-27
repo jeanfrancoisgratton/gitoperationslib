@@ -348,3 +348,53 @@ func TestBranchProtectionBitbucket(t *testing.T) {
 		t.Errorf("rolled back %v, want [1]", deleted)
 	}
 }
+
+func TestBranchLastCommitAndCompareBitbucket(t *testing.T) {
+	var commitQueries []string
+	c := fakeBitbucket(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/2.0/repositories/acme/widget":
+			io.WriteString(w, `{"slug":"widget","mainbranch":{"name":"main"}}`)
+		case "/2.0/repositories/acme/widget/refs/branches":
+			io.WriteString(w, `{"values":[
+				{"name":"main","target":{"hash":"c1","message":"Fix the build","date":"2026-10-20T14:00:00+00:00",
+					"author":{"raw":"Alice Smith <alice@example.com>","user":{"display_name":"Alice S."}}}},
+				{"name":"dev","target":{"hash":"c2","message":"WIP","date":"2026-10-21T14:00:00+00:00","author":{"user":{"display_name":"Bob"}}}}]}`)
+		case "/2.0/repositories/acme/widget/commits":
+			q := r.URL.Query()
+			commitQueries = append(commitQueries, q.Get("include")+".."+q.Get("exclude")+"@"+q.Get("page"))
+			// main..dev: 2 pages, linked by an opaque token; dev..main: 1 commit
+			switch {
+			case q.Get("include") == "dev" && q.Get("page") == "":
+				fmt.Fprintf(w, `{"values":[{"hash":"a"},{"hash":"b"}],"next":"http://%s/2.0/repositories/acme/widget/commits?include=dev&exclude=main&pagelen=100&page=Zx9q"}`, r.Host)
+			case q.Get("include") == "dev":
+				io.WriteString(w, `{"values":[{"hash":"c"}]}`)
+			default:
+				io.WriteString(w, `{"values":[{"hash":"d"}]}`)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	ctx := context.Background()
+
+	list, err := c.Branches().List(ctx, "acme", "widget", gitoperationslib.ListOptions{})
+	if err != nil || len(list.Items) != 2 {
+		t.Fatalf("List = %+v, %v", list, err)
+	}
+	// The git author's name comes first; the Bitbucket account's only when there is no raw author
+	if lc := list.Items[0].LastCommit; lc == nil || lc.Author != "Alice Smith" || lc.Message != "Fix the build" || lc.Date.Day() != 20 {
+		t.Errorf("main's last commit = %+v", lc)
+	}
+	if lc := list.Items[1].LastCommit; lc == nil || lc.Author != "Bob" {
+		t.Errorf("dev's last commit = %+v", lc)
+	}
+
+	cmp, err := c.Branches().Compare(ctx, "acme", "widget", "main", "dev")
+	if err != nil || *cmp != (gitoperationslib.Comparison{Base: "main", Head: "dev", Ahead: 3, Behind: 1}) {
+		t.Fatalf("Compare = %+v, %v", cmp, err)
+	}
+	if want := []string{"dev..main@", "dev..main@Zx9q", "main..dev@"}; !slices.Equal(commitQueries, want) {
+		t.Errorf("commit queries = %v, want %v", commitQueries, want)
+	}
+}

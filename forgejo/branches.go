@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
@@ -12,13 +13,22 @@ import (
 type branchJSON struct {
 	Name   string `json:"name"`
 	Commit struct {
-		ID string `json:"id"`
+		ID      string `json:"id"`
+		Message string `json:"message"`
+		Author  struct {
+			Name string `json:"name"`
+		} `json:"author"`
+		Timestamp time.Time `json:"timestamp"` // the author date
 	} `json:"commit"`
 	Protected bool `json:"protected"`
 }
 
 func (b *branchJSON) toBranch() gitoperationslib.Branch {
-	return gitoperationslib.Branch{Name: b.Name, SHA: b.Commit.ID, Protected: b.Protected}
+	br := gitoperationslib.Branch{Name: b.Name, SHA: b.Commit.ID, Protected: b.Protected}
+	if !b.Commit.Timestamp.IsZero() {
+		br.LastCommit = &gitoperationslib.CommitSummary{Message: b.Commit.Message, Author: b.Commit.Author.Name, Date: b.Commit.Timestamp}
+	}
+	return br
 }
 
 func branchesPath(owner, repo string, rest ...string) string {
@@ -103,6 +113,34 @@ func (b branches) Rename(ctx context.Context, owner, repo, name, newName string)
 func (b branches) Delete(ctx context.Context, owner, repo, name string) error {
 	_, err := b.c.api.Do(ctx, http.MethodDelete, branchesPath(owner, repo, name), nil, nil, nil)
 	return err
+}
+
+// Compare asks twice: Forgejo only counts the commits of head that base lacks.
+func (b branches) Compare(ctx context.Context, owner, repo, base, head string) (*gitoperationslib.Comparison, error) {
+	if base == "" || head == "" {
+		return nil, errors.New("forgejo: branches.compare: base and head are required")
+	}
+	ahead, err := b.commitsMissing(ctx, owner, repo, base, head)
+	if err != nil {
+		return nil, err
+	}
+	behind, err := b.commitsMissing(ctx, owner, repo, head, base)
+	if err != nil {
+		return nil, err
+	}
+	return &gitoperationslib.Comparison{Base: base, Head: head, Ahead: ahead, Behind: behind}, nil
+}
+
+// commitsMissing counts the commits of head that base lacks.
+func (b branches) commitsMissing(ctx context.Context, owner, repo, base, head string) (int, error) {
+	var out struct {
+		TotalCommits int `json:"total_commits"`
+	}
+	path := forgejoapi.Path("repos", owner, repo, "compare", base+"..."+head)
+	if _, err := b.c.api.Do(ctx, http.MethodGet, path, nil, nil, &out); err != nil {
+		return 0, err
+	}
+	return out.TotalCommits, nil
 }
 
 type tagJSON struct {

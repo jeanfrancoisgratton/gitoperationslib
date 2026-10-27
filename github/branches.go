@@ -57,8 +57,13 @@ func (c *Client) peel(ctx context.Context, owner, repo string, obj *gh.GitObject
 	return obj.GetSHA(), nil
 }
 
+// The branch list only carries the commit SHA: LastCommit is filled from GetBranch's answer only
 func toRepoBranch(b *gh.Branch, def string) gitoperationslib.Branch {
-	return gitoperationslib.Branch{Name: b.GetName(), SHA: b.GetCommit().GetSHA(), Protected: b.GetProtected(), IsDefault: b.GetName() == def}
+	br := gitoperationslib.Branch{Name: b.GetName(), SHA: b.GetCommit().GetSHA(), Protected: b.GetProtected(), IsDefault: b.GetName() == def}
+	if c := b.GetCommit().GetCommit(); c.GetAuthor() != nil {
+		br.LastCommit = &gitoperationslib.CommitSummary{Message: c.GetMessage(), Author: c.GetAuthor().GetName(), Date: c.GetAuthor().GetDate().Time}
+	}
+	return br
 }
 
 // Branches implements gitoperationslib.Client.
@@ -146,6 +151,18 @@ func (b branches) Rename(ctx context.Context, owner, repo, name, newName string)
 func (b branches) Delete(ctx context.Context, owner, repo, name string) error {
 	_, err := b.c.gh.Git.DeleteRef(ctx, owner, repo, "heads/"+name)
 	return convertError(err)
+}
+
+func (b branches) Compare(ctx context.Context, owner, repo, base, head string) (*gitoperationslib.Comparison, error) {
+	if base == "" || head == "" {
+		return nil, errors.New("github: branches.compare: base and head are required")
+	}
+	// The counts do not depend on the commit list's page: ask for the smallest one
+	cmp, _, err := b.c.gh.Repositories.CompareCommits(ctx, owner, repo, base, head, &gh.ListOptions{PerPage: 1})
+	if err != nil {
+		return nil, convertError(err)
+	}
+	return &gitoperationslib.Comparison{Base: base, Head: head, Ahead: cmp.GetAheadBy(), Behind: cmp.GetBehindBy()}, nil
 }
 
 // Tags implements gitoperationslib.Client.

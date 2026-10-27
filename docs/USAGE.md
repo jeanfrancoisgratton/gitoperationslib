@@ -590,13 +590,26 @@ type Branches interface {
 	Create(ctx, owner, repo string, opts CreateBranchOptions) (*Branch, error)
 	Rename(ctx, owner, repo, name, newName string) (*Branch, error)
 	Delete(ctx, owner, repo, name string) error
+	Compare(ctx, owner, repo, base, head string) (*Comparison, error)
 }
 
 type Branch struct {
-	Name      string
-	SHA       string // head commit
-	Protected bool   // Bitbucket: always false
-	IsDefault bool
+	Name       string
+	SHA        string // head commit
+	Protected  bool   // Bitbucket: always false
+	IsDefault  bool
+	LastCommit *CommitSummary // GitHub: from Get only, nil in List
+}
+
+type CommitSummary struct {
+	Message string    // the full message
+	Author  string    // the author's name
+	Date    time.Time // the author date
+}
+
+type Comparison struct {
+	Base, Head    string
+	Ahead, Behind int // commits in Head missing from Base, and the reverse
 }
 
 type CreateBranchOptions struct {
@@ -624,7 +637,13 @@ for _, br := range page.Items {
 
 br, err = b.Rename(ctx, "acme", "widget", "feature/login", "feature/sign-in")
 err = b.Delete(ctx, "acme", "widget", "feature/sign-in")
+
+cmp, err := b.Compare(ctx, "acme", "widget", "main", "develop") // branches, tags or commits
+fmt.Printf("develop is %d ahead and %d behind main\n", cmp.Ahead, cmp.Behind)
 ```
+
+- `LastCommit` describes the head commit. `Get` always fills it; `List` does on Forgejo and Bitbucket, but **GitHub**'s branch list only carries the commit SHA, so `LastCommit` is nil there: call `Get` for the branches you need it for.
+- `Compare` costs one request on **GitHub**, two on **Forgejo** (one per direction), and on **Bitbucket**, which has no comparison endpoint, it lists the commits on each side, 100 per request.
 
 - `Rename` keeps open pull requests and protection rules attached to the branch. **Bitbucket** has no rename API and returns `ErrNotSupported`.
 - Deleting a protected branch is refused by the server: HTTP 403 on Forgejo, 422 on GitHub, and 500 on Bitbucket (which is still a refusal).

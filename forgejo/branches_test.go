@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 )
@@ -126,5 +127,50 @@ func TestBranchesAndTagsRejected(t *testing.T) {
 	}
 	if _, err := c.Tags().Create(ctx, "acme", "widget", gitoperationslib.CreateTagOptions{}); err == nil {
 		t.Error("empty tag name accepted")
+	}
+}
+
+func TestBranchLastCommitAndCompare(t *testing.T) {
+	var requests []string
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.EscapedPath())
+		switch r.URL.EscapedPath() {
+		case "/api/v1/repos/acme/widget":
+			io.WriteString(w, `{"name":"widget","default_branch":"main"}`)
+		case "/api/v1/repos/acme/widget/branches":
+			io.WriteString(w, `[{"name":"main","commit":{"id":"c1","message":"Fix the build\n\nDetails","author":{"name":"Alice"},
+				"timestamp":"2026-10-20T10:00:00-04:00"}},{"name":"bare","commit":{"id":"c2"}}]`)
+		case "/api/v1/repos/acme/widget/compare/main...feature%2Fx":
+			io.WriteString(w, `{"total_commits":3}`)
+		case "/api/v1/repos/acme/widget/compare/feature%2Fx...main":
+			io.WriteString(w, `{"total_commits":1}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	ctx := context.Background()
+
+	list, err := c.Branches().List(ctx, "acme", "widget", gitoperationslib.ListOptions{})
+	if err != nil || len(list.Items) != 2 {
+		t.Fatalf("List = %+v, %v", list, err)
+	}
+	lc := list.Items[0].LastCommit
+	if lc == nil || lc.Author != "Alice" || lc.Message != "Fix the build\n\nDetails" || !lc.Date.Equal(time.Date(2026, 10, 20, 14, 0, 0, 0, time.UTC)) {
+		t.Errorf("main's last commit = %+v", lc)
+	}
+	if list.Items[1].LastCommit != nil {
+		t.Errorf("a commit without a date must leave LastCommit nil: %+v", list.Items[1].LastCommit)
+	}
+
+	// A branch name with a slash stays one path segment
+	cmp, err := c.Branches().Compare(ctx, "acme", "widget", "main", "feature/x")
+	if err != nil || *cmp != (gitoperationslib.Comparison{Base: "main", Head: "feature/x", Ahead: 3, Behind: 1}) {
+		t.Fatalf("Compare = %+v, %v (requests %v)", cmp, err, requests)
+	}
+	if _, err := c.Branches().Compare(ctx, "acme", "widget", "main", "nope"); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("unknown head: err = %v, want 404", err)
+	}
+	if _, err := c.Branches().Compare(ctx, "acme", "widget", "", "main"); err == nil {
+		t.Error("empty base accepted")
 	}
 }

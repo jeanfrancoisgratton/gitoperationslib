@@ -48,7 +48,12 @@ func gitServer(t *testing.T) (*Client, *[]string) {
 			w.WriteHeader(http.StatusCreated)
 			io.WriteString(w, `{"ref":"refs/x"}`)
 		case p == "/api/v3/repos/acme/widget/branches/main":
-			io.WriteString(w, `{"name":"main","commit":{"sha":"c1"},"protected":true}`)
+			io.WriteString(w, `{"name":"main","commit":{"sha":"c1","commit":{"message":"Fix the build","author":{"name":"Alice","date":"2026-10-20T14:00:00Z"}}},"protected":true}`)
+		case p == "/api/v3/repos/acme/widget/compare/main...feature/x":
+			if r.URL.Query().Get("per_page") != "1" {
+				t.Errorf("compare asked for per_page=%q", r.URL.Query().Get("per_page"))
+			}
+			io.WriteString(w, `{"status":"diverged","ahead_by":3,"behind_by":1,"total_commits":3}`)
 		case p == "/api/v3/repos/acme/widget/branches/old":
 			w.Header().Set("Location", "/api/v3/repos/acme/widget/branches/new")
 			w.WriteHeader(http.StatusMovedPermanently)
@@ -87,6 +92,20 @@ func TestBranchesGitHub(t *testing.T) {
 	main, err := c.Branches().Get(ctx, "acme", "widget", "main")
 	if err != nil || !main.IsDefault || !main.Protected || main.SHA != "c1" {
 		t.Errorf("Get = %+v, %v", main, err)
+	}
+	// The list carries the commit SHA alone; Get has the commit itself
+	if list.Items[0].LastCommit != nil {
+		t.Errorf("List's LastCommit = %+v, want nil", list.Items[0].LastCommit)
+	}
+	if lc := main.LastCommit; lc == nil || lc.Author != "Alice" || lc.Message != "Fix the build" || lc.Date.Year() != 2026 {
+		t.Errorf("Get's LastCommit = %+v", lc)
+	}
+	cmp, err := c.Branches().Compare(ctx, "acme", "widget", "main", "feature/x")
+	if err != nil || *cmp != (gitoperationslib.Comparison{Base: "main", Head: "feature/x", Ahead: 3, Behind: 1}) {
+		t.Errorf("Compare = %+v, %v", cmp, err)
+	}
+	if _, err := c.Branches().Compare(ctx, "acme", "widget", "main", "nope"); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("unknown head: err = %v, want 404", err)
 	}
 	if _, err := c.Branches().Get(ctx, "acme", "widget", "missing"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("missing branch: err = %v, want 404 APIError", err)

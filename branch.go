@@ -1,11 +1,32 @@
 package gitoperationslib
 
+import "time"
+
 // Branch is a repository branch.
 type Branch struct {
 	Name      string `json:"name"`
 	SHA       string `json:"sha"` // head commit
 	Protected bool   `json:"protected"`
 	IsDefault bool   `json:"isDefault"`
+	// LastCommit describes the head commit. Get always reports it; List
+	// does on Forgejo and Bitbucket, but not on GitHub, whose branch list
+	// carries the commit SHA alone (nil there).
+	LastCommit *CommitSummary `json:"lastCommit,omitzero"`
+}
+
+// CommitSummary describes a commit.
+type CommitSummary struct {
+	Message string    `json:"message"` // the full message; its first line is the title
+	Author  string    `json:"author"`  // the author's name
+	Date    time.Time `json:"date"`    // the author date
+}
+
+// Comparison tells how far apart two refs are.
+type Comparison struct {
+	Base   string `json:"base"`
+	Head   string `json:"head"`
+	Ahead  int    `json:"ahead"`  // commits in Head that Base lacks
+	Behind int    `json:"behind"` // commits in Base that Head lacks
 }
 
 // CreateBranchOptions describes a branch to create.
