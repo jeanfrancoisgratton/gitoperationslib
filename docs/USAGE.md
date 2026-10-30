@@ -22,7 +22,7 @@ This guide covers every package, interface, type and option of the library, with
 14. [Managing webhooks](#14-managing-webhooks)
 15. [Receiving webhooks (`webhook` package)](#15-receiving-webhooks-webhook-package)
 16. [Users, organisations and teams (Directory)](#16-users-organisations-and-teams-directory)
-   - [Your own account: e-mail addresses, SSH and GPG keys (`Account`)](#165-managing-your-own-account-account)
+   - [Your own account: e-mail addresses, SSH and GPG keys, profile (`Account`)](#165-managing-your-own-account-account)
 17. [Administration (Forgejo): managing users, organisations, teams](#17-administration-forgejo)
 18. [Recipes](#18-recipes)
 19. [Reference: errors returned without an HTTP call](#19-reference-errors-returned-without-an-http-call)
@@ -2132,6 +2132,7 @@ type Account interface {
 	Emails() Emails   // List, Add(addresses...), Delete(addresses...)
 	SSHKeys() SSHKeys // List, Get(id), Add(AddSSHKeyOptions), Delete(id)
 	GPGKeys() GPGKeys // List, Get(id), Add(armored, signature), Delete(id), VerificationToken, Verify(keyID, signature)
+	Profile() Profile // Edit(EditProfileOptions), SetAvatar(io.Reader), DeleteAvatar
 }
 ```
 
@@ -2142,12 +2143,15 @@ type Account interface {
 | SSH keys: list, get, add, delete | ✅ | ✅ | ✅ (`ID` derived from the key's UUID) |
 | Read-only SSH keys (`AddSSHKeyOptions.ReadOnly`) | ✅ | ❌ | ❌ |
 | GPG keys: list, get, add, delete | ✅ | ✅ | ✅ (`ID` derived from the fingerprint) |
-| GPG key verification by signature | ✅ | ❌ (GitHub checks e-mail addresses) | ❌ (same) |
+| GPG key verification by signature | ✅ (not for key IDs starting with 0, see below) | ❌ (GitHub checks e-mail addresses) | ❌ (same) |
+| Profile: edit | ✅ | ✅ | ❌ no API (the profile is the Atlassian account's) |
+| Avatar: set, delete | ✅ | ❌ no API | ❌ |
 
 Token permissions:
 - **GitHub, classic tokens:** scopes `user` (e-mail addresses), `admin:public_key` and `admin:gpg_key`.
 - **GitHub, fine-grained tokens:** the account permissions "Email addresses", "Git SSH keys" and "GPG keys", read and write.
 - **Forgejo:** `write:user`.
+- **GitHub, profile editing:** classic scope `user`, or the fine-grained account permission "Profile".
 
 Without them, the calls fail with HTTP 403.
 
@@ -2164,12 +2168,32 @@ err = acct.SSHKeys().Delete(ctx, key.ID)
   - A key with none of the account's addresses can only be added together with that signature. Otherwise Forgejo answers HTTP 404, which matches `gol.ErrGPGSignature`; a signature that does not match gives 422, also `ErrGPGSignature`.
 - **Bitbucket:** refuses (HTTP 400) a key with none of the account's addresses.
 - **GitHub:** accepts any key and marks it verified per address.
+- **Forgejo bug, key IDs starting with 0:** Forgejo 15 cannot verify a key whose ID starts with 0 (about one key in 16). `Verify` then fails with Forgejo's HTTP 500 "public gpg key does not exist", which matches `gol.ErrNotSupported`. Delete the key and add it again with the signature (`Add(ctx, armored, signature)`): that path works.
 
 ```go
 token, _ := acct.GPGKeys().VerificationToken(ctx)
 // echo -n "$token" | gpg -a --default-key KEYID --detach-sig
 key, err := acct.GPGKeys().Add(ctx, armoredKey, signature)
 ```
+
+**Profile.** In `EditProfileOptions`, nil fields are left unchanged and an empty string clears a field. Fields only one forge has are refused with `ErrNotSupported` on the other, before any request is sent:
+
+| Field | Forgejo | GitHub |
+|---|---|---|
+| `FullName`, `Description` (GitHub: bio), `Website` (GitHub: blog), `Location` | ✅ | ✅ |
+| `Pronouns`, `Language`, `Settings` (theme, diff style, hide e-mail/activity/pronouns, unit hints) | ✅ | ❌ |
+| `Company`, `PublicEmail`, `Hireable`, `TwitterUsername` | ❌ | ✅ |
+
+`Edit` returns the updated `*User`; on Forgejo that costs a second request, and the settings are read back with `Directory().Me()`. Forgejo stores any `Theme` value, even one the instance does not offer.
+
+```go
+u, err := acct.Profile().Edit(ctx, gol.EditProfileOptions{
+	Location: gol.Ptr("Québec"),
+	Website:  gol.Ptr(""), // clear it
+})
+```
+
+`SetAvatar` (Forgejo only) uploads an image of up to `gol.MaxAvatarSize` (10 MiB), whatever the instance's own avatar settings. Forgejo checks the image and answers HTTP 500 for an unknown format or a side over 4096 pixels. `DeleteAvatar` restores the default avatar; the old image is gone.
 
 ---
 

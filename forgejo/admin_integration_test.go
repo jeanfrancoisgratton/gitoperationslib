@@ -8,6 +8,7 @@
 package forgejo
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -17,6 +18,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -791,4 +796,52 @@ func totp(t *testing.T, secret string, at time.Time) string {
 	off := sum[len(sum)-1] & 0x0f
 	code := binary.BigEndian.Uint32(sum[off:off+4]) & 0x7fffffff
 	return fmt.Sprintf("%06d", code%1000000)
+}
+
+// TestIntegrationAdminAvatar sets and deletes the avatar of a throwaway user
+// (through Sudo): deleting an avatar cannot be undone, so it is never done
+// on a real account.
+func TestIntegrationAdminAvatar(t *testing.T) {
+	ctx, c := adminEnv(t)
+	login := testLogin(t)
+	cleanupUser(t, c, &login)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: login, Email: login + "@example.com", Password: "Avatar-Passw0rd!", MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sudo, err := New(ctx, os.Getenv("GITOPSLIB_TESTENV_URL"), Token(os.Getenv("GITOPSLIB_TESTENV_ADMIN_TOKEN")), WithSudo(login))
+	if err != nil {
+		t.Fatal(err)
+	}
+	avatarURL := func() string {
+		u, err := c.Users().Get(ctx, login)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u.AvatarURL
+	}
+	original := avatarURL()
+
+	var img bytes.Buffer
+	m := image.NewRGBA(image.Rect(0, 0, 32, 32))
+	draw.Draw(m, m.Bounds(), &image.Uniform{color.RGBA{0x80, 0x40, 0xc0, 0xff}}, image.Point{}, draw.Src)
+	if err := png.Encode(&img, m); err != nil {
+		t.Fatal(err)
+	}
+	if err := sudo.Profile().SetAvatar(ctx, &img); err != nil {
+		t.Fatal(err)
+	}
+	if avatarURL() == original {
+		t.Error("avatar URL unchanged after SetAvatar")
+	}
+	if err := sudo.Profile().SetAvatar(ctx, strings.NewReader("not an image")); gitoperationslib.StatusCode(err) != http.StatusInternalServerError {
+		t.Errorf("not an image: err = %v, want Forgejo's HTTP 500", err)
+	}
+	if err := sudo.Profile().DeleteAvatar(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := avatarURL(); got != original {
+		t.Errorf("avatar URL after DeleteAvatar = %s, want the default %s", got, original)
+	}
 }

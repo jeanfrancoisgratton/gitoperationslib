@@ -3,6 +3,7 @@ package bitbucket
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -245,4 +246,24 @@ func (k gpgKeys) VerificationToken(context.Context) (string, error) {
 
 func (k gpgKeys) Verify(context.Context, string, string) (*gitoperationslib.GPGKey, error) {
 	return nil, notSupported("gpgkeys.verify", noGPGVerify)
+}
+
+// Profile is not available: Bitbucket has no API to change a profile or
+// avatar (the profile is the Atlassian account's).
+func (c *Client) Profile() gitoperationslib.Profile { return profile{} }
+
+type profile struct{}
+
+const noProfile = "Bitbucket has no API to change the profile or avatar (they belong to the Atlassian account)"
+
+func (profile) Edit(context.Context, gitoperationslib.EditProfileOptions) (*gitoperationslib.User, error) {
+	return nil, notSupported("profile.edit", noProfile)
+}
+
+func (profile) SetAvatar(context.Context, io.Reader) error {
+	return notSupported("profile.setavatar", noProfile)
+}
+
+func (profile) DeleteAvatar(context.Context) error {
+	return notSupported("profile.deleteavatar", noProfile)
 }

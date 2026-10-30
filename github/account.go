@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"errors"
+	"io"
 
 	gh "github.com/google/go-github/v93/github"
 
@@ -149,4 +150,43 @@ func (k gpgKeys) VerificationToken(context.Context) (string, error) {
 
 func (k gpgKeys) Verify(context.Context, string, string) (*gitoperationslib.GPGKey, error) {
 	return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "gpgkeys.verify", noGPGVerify)
+}
+
+// Profile needs the user scope (classic tokens) or the "Profile" account
+// permission (fine-grained tokens). GitHub has no avatar API.
+func (c *Client) Profile() gitoperationslib.Profile { return profile{c} }
+
+type profile struct{ c *Client }
+
+const noAvatar = "GitHub has no API to change the avatar"
+
+func (p profile) Edit(ctx context.Context, opts gitoperationslib.EditProfileOptions) (*gitoperationslib.User, error) {
+	forgejoOnly := []struct {
+		name string
+		set  bool
+	}{
+		{"pronouns", opts.Pronouns != nil}, {"language", opts.Language != nil}, {"settings", opts.Settings != nil},
+	}
+	for _, f := range forgejoOnly {
+		if f.set {
+			return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "profile.edit", f.name+" is a Forgejo profile field")
+		}
+	}
+	u, _, err := p.c.gh.Users.Update(ctx, gh.UserUpdateRequest{
+		Name: opts.FullName, Bio: opts.Description, Blog: opts.Website, Location: opts.Location,
+		Company: opts.Company, Email: opts.PublicEmail, Hireable: opts.Hireable, TwitterUsername: opts.TwitterUsername,
+	})
+	if err != nil {
+		return nil, convertError(err)
+	}
+	out := toUser(u)
+	return &out, nil
+}
+
+func (p profile) SetAvatar(context.Context, io.Reader) error {
+	return gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "profile.setavatar", noAvatar)
+}
+
+func (p profile) DeleteAvatar(context.Context) error {
+	return gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "profile.deleteavatar", noAvatar)
 }

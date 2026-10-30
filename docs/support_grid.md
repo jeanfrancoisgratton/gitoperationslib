@@ -27,7 +27,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Receiving and verifying deliveries | ✅ | ✅ | ⚠️ from documentation, not yet checked against live deliveries |
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
-| Own account: e-mail addresses, SSH and GPG keys (`Account`) | ✅ | ✅† (needs account permissions on the token) | ⚠️ e-mail addresses read-only |
+| Own account: e-mail addresses, SSH and GPG keys, profile (`Account`) | ✅ | ✅ no avatar | ⚠️ e-mail addresses read-only, no profile |
 
 ## Connecting
 
@@ -263,10 +263,14 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 
 | Feature | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|
-| List e-mail addresses | ✅ | ✅† | ✅ |
-| Add, delete e-mail addresses | ✅ | ✅† (verification e-mail sent) | ❌ refused with token authentication |
-| List, get, add, delete SSH keys | ✅ | ✅† | ✅ `ID` derived from the UUID |
+| List e-mail addresses | ✅ | ✅ | ✅ |
+| Add, delete e-mail addresses | ✅ | ✅ (verification e-mail sent) | ❌ refused with token authentication |
+| List, get, add, delete SSH keys | ✅ | ✅ | ✅ `ID` derived from the UUID |
 | Read-only SSH keys | ✅ | ❌ | ❌ |
-| List, get, add, delete GPG keys | ✅ | ✅† | ✅ `ID` derived from the fingerprint; key must bear an account address |
-| GPG verification by signed token | ✅ | ❌ | ❌ |
+| List, get, add, delete GPG keys | ✅ | ✅ | ✅ `ID` derived from the fingerprint; key must bear an account address |
+| GPG verification by signed token | ⚠️ not for key IDs starting with 0 (Forgejo bug): add the key with the signature instead | ❌ | ❌ |
+| Edit profile (name, description, website, location) | ✅ | ✅ | ❌ |
+| Forgejo profile fields (pronouns, language, settings) | ✅ | ❌ | ❌ |
+| GitHub profile fields (company, public e-mail, hireable, Twitter) | ❌ | ✅ | ❌ |
+| Set, delete avatar | ✅ | ❌ | ❌ |
 

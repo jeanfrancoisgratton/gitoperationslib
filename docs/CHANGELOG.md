@@ -22,6 +22,10 @@ change the public API.
   `AddSSHKeyOptions`) and GPG keys (`GPGKeys`: list, get, add, delete, and on Forgejo verification by a
   signed token). Bitbucket only lists e-mail addresses; Forgejo-only features return `ErrNotSupported`
   elsewhere. New sentinel `ErrGPGSignature` for Forgejo's "provide a valid signature" refusals (404/422).
+  `Account.Profile()`: `Edit(EditProfileOptions)` on Forgejo and GitHub (`EditSettings` for Forgejo's
+  preferences), `SetAvatar`/`DeleteAvatar` on Forgejo (`MaxAvatarSize`, 10 MiB); Bitbucket has no API.
+  Forgejo cannot verify GPG keys whose ID starts with 0 (server bug, HTTP 500): `Verify` then matches
+  `ErrNotSupported`, and the key can be added again with the signature.
 - Bitbucket: `Directory().Me()` now reads GPG keys (`/users/{uuid}/gpg-keys`) instead of recording them as
   not supported, and `SSHKey.ID` is derived from the key's UUID (it was 0).
 - Forgejo: `BasicAuthOTP(user, password, code)` and `BasicAuthOTPFunc(user, password, func() string)` for

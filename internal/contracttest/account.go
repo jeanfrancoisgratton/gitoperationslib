@@ -30,6 +30,7 @@ func Account(t *testing.T, env Env) {
 	t.Run("emails", func(t *testing.T) { accountEmails(t, env, acct.Emails()) })
 	t.Run("ssh keys", func(t *testing.T) { accountSSHKeys(t, acct.SSHKeys()) })
 	t.Run("gpg keys", func(t *testing.T) { accountGPGKeys(t, env, acct) })
+	t.Run("profile", func(t *testing.T) { accountProfile(t, env, acct.Profile()) })
 }
 
 // skipForbidden skips the test when the token lacks the permission.
@@ -192,7 +193,13 @@ func accountGPGKeys(t *testing.T, env Env, acct gitoperationslib.Account) {
 			t.Fatal(err)
 		}
 		verified, err := keys.Verify(ctx, keyID, g.sign(t, keyID, token))
-		if err != nil || !verified.Verified {
+		if strings.HasPrefix(keyID, "0") {
+			// Forgejo bug: key IDs with a leading zero cannot be verified
+			// (about one key in 16).
+			if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+				t.Errorf("Verify of %s: err = %v, want ErrNotSupported (Forgejo's leading-zero bug)", keyID, err)
+			}
+		} else if err != nil || !verified.Verified {
 			t.Errorf("Verify = %+v, %v", verified, err)
 		}
 		// A key with none of the account's addresses needs a signature.
@@ -260,4 +267,72 @@ func (g gpgHome) generate(t *testing.T, uid string) (armored, keyID string) {
 // sign returns an armored detached signature of data by keyID.
 func (g gpgHome) sign(t *testing.T, keyID, data string) string {
 	return g.run(t, data, "--local-user", keyID, "--armor", "--detach-sign")
+}
+
+// accountProfile changes the location (and pronouns on Forgejo), then
+// restores them. Avatars are not touched: deleting one cannot be undone (see
+// the Forgejo admin tests).
+func accountProfile(t *testing.T, env Env, profile gitoperationslib.Profile) {
+	ctx := testContext(t)
+	if isBitbucket(env) {
+		_, err := profile.Edit(ctx, gitoperationslib.EditProfileOptions{Location: gitoperationslib.Ptr("x")})
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) || !errors.Is(profile.DeleteAvatar(ctx), gitoperationslib.ErrNotSupported) {
+			t.Errorf("Bitbucket profile: err = %v, want ErrNotSupported", err)
+		}
+		return
+	}
+	before, err := env.Client.Directory().User(ctx, env.Login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forgejo := env.Client.Backend() == gitoperationslib.BackendForgejo
+	restore := gitoperationslib.EditProfileOptions{Location: gitoperationslib.Ptr(before.Location)}
+	if forgejo {
+		restore.Pronouns = gitoperationslib.Ptr(before.Pronouns)
+	}
+	restored := false
+	t.Cleanup(func() {
+		if !restored {
+			if _, err := profile.Edit(context.Background(), restore); err != nil {
+				t.Errorf("restore the profile (location %q): %v", before.Location, err)
+			}
+		}
+	})
+
+	change := gitoperationslib.EditProfileOptions{Location: gitoperationslib.Ptr(RepoPrefix + randomHex(t))}
+	if forgejo {
+		change.Pronouns = gitoperationslib.Ptr("they/them")
+	}
+	got, err := profile.Edit(ctx, change)
+	skipForbidden(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Login != env.Login || got.Location != *change.Location || (forgejo && got.Pronouns != "they/them") {
+		t.Errorf("Edit returned %+v", got)
+	}
+	if got.FullName != before.FullName || got.Website != before.Website {
+		t.Errorf("Edit changed fields it was not given: name %q → %q, website %q → %q", before.FullName, got.FullName, before.Website, got.Website)
+	}
+
+	got, err = profile.Edit(ctx, restore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored = true
+	if got.Location != before.Location || got.Pronouns != before.Pronouns {
+		t.Errorf("not restored: location %q, pronouns %q; want %q, %q", got.Location, got.Pronouns, before.Location, before.Pronouns)
+	}
+
+	// A field of the other forge is refused before any request.
+	other := gitoperationslib.EditProfileOptions{Company: gitoperationslib.Ptr("x")}
+	if !forgejo {
+		other = gitoperationslib.EditProfileOptions{Pronouns: gitoperationslib.Ptr("x")}
+	}
+	if _, err := profile.Edit(ctx, other); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("other forge's field: err = %v, want ErrNotSupported", err)
+	}
+	if !forgejo && !errors.Is(profile.DeleteAvatar(ctx), gitoperationslib.ErrNotSupported) {
+		t.Error("GitHub DeleteAvatar: want ErrNotSupported")
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -131,3 +132,76 @@ func TestAccountValidationAndRefusals(t *testing.T) {
 		}
 	}
 }
+
+func TestGPGVerifyLeadingZero(t *testing.T) {
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, `{"message":"public gpg key does not exist [id: 0]"}`)
+	})
+	ctx := context.Background()
+	_, err := c.GPGKeys().Verify(ctx, "0FD9BAB20C8D9AB9", "sig")
+	if !errors.Is(err, gitoperationslib.ErrNotSupported) || gitoperationslib.StatusCode(err) != 500 {
+		t.Errorf("leading zero: err = %v, want ErrNotSupported with status 500", err)
+	}
+	if _, err := c.GPGKeys().Verify(ctx, "FD9BAB20C8D9AB90", "sig"); errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("no leading zero: err = %v, want a plain 500", err)
+	}
+}
+
+func TestProfileForgejo(t *testing.T) {
+	var requests []string
+	var patched map[string]any
+	var avatar map[string]string
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		switch r.Method + " " + r.URL.Path {
+		case "PATCH /api/v1/user/settings":
+			json.NewDecoder(r.Body).Decode(&patched)
+			io.WriteString(w, `{}`)
+		case "POST /api/v1/user/avatar":
+			json.NewDecoder(r.Body).Decode(&avatar)
+			w.WriteHeader(http.StatusNoContent)
+		case "DELETE /api/v1/user/avatar":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	ctx := context.Background()
+	u, err := c.Profile().Edit(ctx, gitoperationslib.EditProfileOptions{
+		FullName: gitoperationslib.Ptr("Jean"), Website: gitoperationslib.Ptr(""), Pronouns: gitoperationslib.Ptr("they/them"),
+		Settings: &gitoperationslib.EditSettings{Theme: gitoperationslib.Ptr("forgejo-dark"), HideEmail: gitoperationslib.Ptr(false)},
+	})
+	if err != nil || u.Login != "me" {
+		t.Fatalf("Edit = %+v, %v", u, err)
+	}
+	want := map[string]any{"full_name": "Jean", "website": "", "pronouns": "they/them", "theme": "forgejo-dark", "hide_email": false}
+	if !reflect.DeepEqual(patched, want) {
+		t.Errorf("PATCH body %v, want %v", patched, want)
+	}
+
+	if err := c.Profile().SetAvatar(ctx, strings.NewReader("PNGDATA")); err != nil || avatar["image"] != "UE5HREFUQQ==" {
+		t.Errorf("SetAvatar: %v, body %v", err, avatar)
+	}
+	if err := c.Profile().DeleteAvatar(ctx); err != nil {
+		t.Error(err)
+	}
+
+	n := len(requests)
+	if _, err := c.Profile().Edit(ctx, gitoperationslib.EditProfileOptions{Company: gitoperationslib.Ptr("Acme")}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("GitHub-only field: err = %v, want ErrNotSupported", err)
+	}
+	if err := c.Profile().SetAvatar(ctx, strings.NewReader("")); err == nil {
+		t.Error("empty avatar accepted")
+	}
+	if err := c.Profile().SetAvatar(ctx, io.LimitReader(zeros{}, gitoperationslib.MaxAvatarSize+1)); err == nil {
+		t.Error("oversized avatar accepted")
+	}
+	if len(requests) != n {
+		t.Errorf("refused calls sent %v", requests[n:])
+	}
+}
+
+type zeros struct{}
+
+func (zeros) Read(p []byte) (int, error) { clear(p); return len(p), nil }

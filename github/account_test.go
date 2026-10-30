@@ -104,3 +104,43 @@ func TestAccountGitHub(t *testing.T) {
 		t.Errorf("refused calls sent %v", requests[n:])
 	}
 }
+
+func TestProfileGitHub(t *testing.T) {
+	var body map[string]any
+	calls := 0
+	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != http.MethodPatch || r.URL.Path != "/api/v3/user" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		io.WriteString(w, `{"login": "me", "name": "Jean", "bio": "b", "blog": "", "company": "Acme"}`)
+	})
+	ctx := context.Background()
+	u, err := c.Profile().Edit(ctx, gitoperationslib.EditProfileOptions{
+		FullName: gitoperationslib.Ptr("Jean"), Description: gitoperationslib.Ptr("b"), Website: gitoperationslib.Ptr(""),
+		Company: gitoperationslib.Ptr("Acme"), Hireable: gitoperationslib.Ptr(true),
+	})
+	if err != nil || u.FullName != "Jean" || u.Description != "b" || u.Company != "Acme" {
+		t.Fatalf("Edit = %+v, %v", u, err)
+	}
+	// An empty string is sent, and clears the field.
+	want := map[string]any{"name": "Jean", "bio": "b", "blog": "", "company": "Acme", "hireable": true}
+	if !reflect.DeepEqual(body, want) {
+		t.Errorf("PATCH body %v, want %v", body, want)
+	}
+	for name, err := range map[string]error{
+		"pronouns": func() error {
+			_, err := c.Profile().Edit(ctx, gitoperationslib.EditProfileOptions{Pronouns: gitoperationslib.Ptr("x")})
+			return err
+		}(),
+		"avatar": c.Profile().SetAvatar(ctx, nil),
+	} {
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("%s: err = %v, want ErrNotSupported", name, err)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("%d requests, want 1", calls)
+	}
+}
