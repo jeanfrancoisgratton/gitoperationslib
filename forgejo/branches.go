@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 )
 
 type branchJSON struct {
@@ -112,7 +113,7 @@ func (b branches) Rename(ctx context.Context, owner, repo, name, newName string)
 
 func (b branches) Delete(ctx context.Context, owner, repo, name string) error {
 	_, err := b.c.api.Do(ctx, http.MethodDelete, branchesPath(owner, repo, name), nil, nil, nil)
-	return err
+	return refusal.Mark(err, refusal.Rule{Status: http.StatusForbidden, Fragment: "branch protected", Sentinel: gitoperationslib.ErrBranchProtected})
 }
 
 // Compare asks twice: Forgejo only counts the commits of head that base lacks.

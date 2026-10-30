@@ -13,8 +13,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/retry"
 )
 
 // DefaultBaseURL is Bitbucket Cloud's API root.
@@ -123,6 +125,7 @@ func (c *Client) send(ctx context.Context, method, path string, query url.Values
 // look like {"type":"error","error":{"message":…,"detail":…,"fields":{…}}}.
 func decodeError(resp *http.Response) error {
 	apiErr := &gitoperationslib.APIError{Backend: gitoperationslib.BackendBitbucket, StatusCode: resp.StatusCode}
+	apiErr.RetryAt, _ = retry.RetryAt(resp.Header, time.Now())
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 	var body struct {
 		Error struct {

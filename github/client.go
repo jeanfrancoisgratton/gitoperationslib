@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	gh "github.com/google/go-github/v93/github"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/retry"
 )
 
 // Option configures New.
@@ -19,6 +21,7 @@ type Option func(*config)
 type config struct {
 	httpClient           *http.Client
 	userAgent            string
+	retry                gitoperationslib.RetryPolicy
 	baseURL, uploadURL   string
 	enterpriseConfigured bool
 }
@@ -28,6 +31,16 @@ func WithHTTPClient(c *http.Client) Option { return func(cfg *config) { cfg.http
 
 // WithUserAgent sets the User-Agent header.
 func WithUserAgent(ua string) Option { return func(cfg *config) { cfg.userAgent = ua } }
+
+// WithRetry sets the retry policy; the default is
+// gitoperationslib.DefaultRetryPolicy, and gitoperationslib.NoRetry disables
+// retries. GitHub's 409 "repository operation still in progress", returned
+// for a while after creating a repository with AutoInit, is retried too.
+func WithRetry(p gitoperationslib.RetryPolicy) Option { return func(cfg *config) { cfg.retry = p } }
+
+// conflictInProgress is GitHub's 409 message for an operation that has to
+// wait for a previous one on the same repository.
+const conflictInProgress = "conflicting repository operation is still in progress"
 
 // WithEnterpriseURL targets a GitHub Enterprise Server instance. "/api/v3/"
 // (and "/api/uploads/" for uploadURL) is appended when missing; an empty
@@ -58,14 +71,12 @@ var _ gitoperationslib.Client = (*Client)(nil)
 // WithEnterpriseURL), authenticated with a personal access token. An empty
 // token means anonymous access. No request is made.
 func New(token string, opts ...Option) (*Client, error) {
-	cfg := config{userAgent: "gitoperationslib"}
+	cfg := config{userAgent: "gitoperationslib", retry: gitoperationslib.DefaultRetryPolicy}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	ghOpts := []gh.ClientOptionsFunc{gh.WithUserAgent(cfg.userAgent)}
-	if cfg.httpClient != nil {
-		ghOpts = append(ghOpts, gh.WithHTTPClient(cfg.httpClient))
-	}
+	plain := retry.Wrap(cfg.httpClient, cfg.retry, conflictInProgress)
+	ghOpts := []gh.ClientOptionsFunc{gh.WithUserAgent(cfg.userAgent), gh.WithHTTPClient(plain)}
 	if token != "" {
 		ghOpts = append(ghOpts, gh.WithAuthToken(token))
 	}
@@ -79,10 +90,6 @@ func New(token string, opts ...Option) (*Client, error) {
 	c, err := gh.NewClient(ghOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("github: %w", err)
-	}
-	plain := cfg.httpClient
-	if plain == nil {
-		plain = http.DefaultClient
 	}
 	return &Client{gh: c, http: plain, token: token, userAgent: cfg.userAgent}, nil
 }
@@ -141,16 +148,21 @@ func convertError(err error) error {
 		apiErr.StatusCode = statusOf(rateErr.Response)
 		apiErr.Message = rateErr.Message
 		apiErr.Details = []string{fmt.Sprintf("rate limit resets at %s", rateErr.Rate.Reset.Time.UTC().Format("2006-01-02T15:04:05Z"))}
+		apiErr.RetryAt = rateErr.Rate.Reset.Time
 	case errors.As(err, &abuseErr):
 		apiErr.StatusCode = statusOf(abuseErr.Response)
 		apiErr.Message = abuseErr.Message
 		if abuseErr.RetryAfter != nil {
 			apiErr.Details = []string{fmt.Sprintf("retry after %s", *abuseErr.RetryAfter)}
+			apiErr.RetryAt = time.Now().Add(*abuseErr.RetryAfter)
 		}
 	case errors.As(err, &respErr):
 		apiErr.StatusCode = statusOf(respErr.Response)
 		apiErr.Message = respErr.Message
 		apiErr.DocumentationURL = respErr.DocumentationURL
+		if respErr.Response != nil {
+			apiErr.RetryAt, _ = retry.RetryAt(respErr.Response.Header, time.Now())
+		}
 		for _, e := range respErr.Errors {
 			apiErr.Details = append(apiErr.Details, errorDetail(e))
 		}

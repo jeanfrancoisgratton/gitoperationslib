@@ -8,7 +8,7 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 - [x] API stability: new areas land as optional interfaces found by type assertion, never as methods on existing interfaces (README, "Installation"). Decided for 1.1.0, see docs/DESIGN-1.1.0.md.
 - [ ] Areas no consumer exercises yet (gitclt uses repositories, branches, tags, releases, pull requests, `Directory` and `Admin`): webhooks, issues/labels/milestones, branch and tag protection. Mark them experimental in the documentation, or exercise them first.
-- [ ] Transport hardening: retries/backoff on transient errors, GitHub rate-limit handling (see the Transport sections), and typed errors for the HTTP 500 refusals (Forgejo "org still owns repositories" and "last member of owner team", Bitbucket protected-branch deletion).
+- [x] Transport hardening: retries/backoff on transient errors, GitHub rate-limit handling (see the Transport sections), and typed errors for the HTTP 500 refusals (Forgejo "org still owns repositories" and "last member of owner team", Bitbucket protected-branch deletion). 1.1.0 increment 1.
 - [ ] Unit-test coverage: GitHub backend ~76%, Bitbucket ~53%.
 
 ## Next priority
@@ -24,13 +24,13 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] Multipart upload for release assets (streamed, exact Content-Length). Increment 6.
 - [ ] `Sudo` header option: admin acting as another user.
 - [ ] Basic auth with TOTP (`X-FORGEJO-OTP`) for accounts with 2FA. Important but not a priority yet; needed before token management works for 2FA-enabled accounts.
-- [ ] Retries / backoff on transient errors (5xx, connection reset). Forgejo sends no rate-limit headers.
+- [x] Retries / backoff on transient errors (5xx, connection reset). Forgejo sends no rate-limit headers. 1.1.0 increment 1 (`internal/retry`, shared by all backends).
 - [ ] `/api/forgejo/v1` namespace client, for Forgejo-only endpoints. Its swagger was not found at `/api/forgejo/v1/swagger.json` on 15.0.2; locate it.
 
 ## Transport (GitHub)
 
-- [ ] Rate-limit handling: go-github returns `RateLimitError` (converted to `APIError` with reset time); consider waiting/retrying or exposing the reset time as a field.
-- [ ] GitHub returns 409 "conflicting repository operation is still in progress" for edits/deletes right after a create with `AutoInit`. Contract tests retry; decide whether the library should retry itself.
+- [x] Rate-limit handling: short waits are retried; longer ones return `APIError.RetryAt`. 1.1.0 increment 1. go-github also refuses requests on its own while it knows the limit is exhausted (no request sent); those errors carry `RetryAt` too.
+- [x] GitHub returns 409 "conflicting repository operation is still in progress" for edits/deletes right after a create with `AutoInit`: the library retries it (1.1.0 increment 1). The contract tests' own `retryConflict` can go once a live GitHub run confirms the message matches.
 - [ ] Org-repo endpoints with an actual GitHub org are untested (the test account uses the personal namespace as "org"); unit tests cover the `/orgs/{org}/repos` path.
 - [ ] `DefaultBranch` on create returns `ErrNotSupported`; possible emulation (create with `AutoInit`, then rename branch) if needed.
 
@@ -93,7 +93,7 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 - [x] 5a Users: list, get, create, edit, rename, delete (purge). Increment 5a.
 - [x] 5b Orgs (get, list, list all, create incl. for another user, edit, rename, delete) and members (list, check, remove). Increment 5b.
-- [ ] Forgejo returns HTTP 500 (not 4xx) for "org still owns repositories" and "last member of owner team". Consider mapping these to a typed error, or reporting upstream.
+- [x] Forgejo returns HTTP 500 (not 4xx) for "org still owns repositories" and "last member of owner team": recognised as `ErrOwnsRepos` / `ErrLastOwner` (1.1.0 increment 1, messages checked on 15.0.11). Still worth reporting upstream.
 - [x] 5c Teams (list, get, get by name, create, edit, delete), members and repos. `TeamAccess` hides Forgejo's permission/units_map interplay; owner team protected by `ErrOwnerTeam`. Increment 5c.
 - [ ] Forgejo lets an admin delete an org's owner team (204) and rename it; the library refuses both. Consider reporting upstream.
 - [ ] Forgejo 15.0.x bug: `PATCH /admin/users/{u}` ignores `"visibility":"public"` (zero value of its enum). `Users.Edit` returns `ErrNotSupported` with the updated user when the server keeps the old value. Consider reporting upstream at codeberg.org/forgejo/forgejo.
@@ -123,7 +123,7 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 - [x] Bitbucket Cloud backend (`bitbucket/`, REST 2.0, hand-written transport in `internal/bitbucketapi`): repositories, branches, tags, branch protection (branch restrictions), pull requests and reviews, webhooks; `webhook` package receives Bitbucket deliveries. Contract checks pass on the user's workspace. Users/workspace administration deliberately not implemented.
 - [ ] Not available on Bitbucket Cloud (`ErrNotSupported`): releases (only a repository-wide Downloads area: a Bitbucket-only `Downloads` interface was declined for now), issues/labels/milestones (tracker retired, CHANGE-3071, HTTP 410), tag protection, branch rename, reopening declined pull requests, auto-merge, team reviewers, named status checks (only "N passing builds"), webhook ping, form payloads.
-- [ ] Bitbucket answers **HTTP 500 "Something went wrong"** when deleting a branch protected by a restriction (it is a refusal: the same delete succeeds once the restriction is gone). Consider mapping it to a clearer error.
+- [x] Bitbucket answers **HTTP 500 "Something went wrong"** when deleting a branch protected by a restriction (it is a refusal: the same delete succeeds once the restriction is gone). Recognised as `ErrBranchProtected` after checking the delete restrictions (1.1.0 increment 1); not yet confirmed live.
 - [ ] Receiving Bitbucket webhooks follows the documentation (synthetic fixtures); verify against a live delivery once a public endpoint is available.
 - [ ] `ApplyToAdmins` has no Bitbucket equivalent (ignored on write, reported true). Resetting stale approvals and enforced merge checks need a Premium plan (the server error is passed through).
 - [ ] Users have no public login: nicknames are reported; nickname → UUID lookups use workspace members only.

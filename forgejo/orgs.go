@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 )
 
 type orgJSON struct {
@@ -173,7 +174,7 @@ func (o orgs) Rename(ctx context.Context, name, newName string) error {
 
 func (o orgs) Delete(ctx context.Context, name string) error {
 	_, err := o.c.api.Do(ctx, http.MethodDelete, forgejoapi.Path("orgs", name), nil, nil, nil)
-	return err
+	return refusal.Mark(err, refusal.Rule{Status: http.StatusInternalServerError, Fragment: "still has ownership of repositories", Sentinel: gitoperationslib.ErrOwnsRepos})
 }
 
 func (o orgs) Members(ctx context.Context, org string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
@@ -197,5 +198,5 @@ func (o orgs) IsMember(ctx context.Context, org, user string) (bool, error) {
 
 func (o orgs) RemoveMember(ctx context.Context, org, user string) error {
 	_, err := o.c.api.Do(ctx, http.MethodDelete, forgejoapi.Path("orgs", org, "members", user), nil, nil, nil)
-	return err
+	return refusal.Mark(err, refusal.Rule{Status: http.StatusInternalServerError, Fragment: "last member of owner team", Sentinel: gitoperationslib.ErrLastOwner})
 }

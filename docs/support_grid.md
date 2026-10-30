@@ -1,6 +1,6 @@
 # Support grid
 
-Support level of every feature, per backend, as of 2026-10-20. Backed by the integration checks run against Forgejo 15.0.2 (and 15.0.10 for the admin checks), github.com and Bitbucket Cloud unless marked †.
+Support level of every feature, per backend, as of 2026-10-30. Backed by the integration checks run against Forgejo 15.0.2 (and 15.0.10 for the admin checks), github.com and Bitbucket Cloud unless marked †.
 
 | Mark | Meaning |
 |---|---|
@@ -38,6 +38,8 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Self-hosted instances | ✅ any base URL | ✅ GitHub Enterprise Server | ❌ Cloud only (Data Center is a different API) |
 | Server version check | ✅ refuses < 11.0.10 | — | — |
 | Custom HTTP client, user agent | ✅ | ✅ | ✅ |
+| Retries on transient errors (`WithRetry`) | ✅ | ✅† also the 409 after `AutoInit` | ✅† |
+| Rate-limit reset as data (`APIError.RetryAt`) | ✅ `Retry-After` (Forgejo sends no rate-limit headers) | ✅† | ✅† `Retry-After` |
 
 ## Repositories
 
@@ -104,7 +106,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Block on rejected reviews / official review requests | ✅ | ❌ | ❌ |
 | Protected / unprotected file patterns | ✅ | ❌ | ❌ |
 | `ApplyToAdmins` | ✅ | ✅ (admin-role bypass when false) | ⚠️ no equivalent: ignored, reported true |
-| Deleting a protected branch is refused | ✅ HTTP 403 | ✅ HTTP 422 | ⚠️ HTTP 500 (it is a refusal) |
+| Deleting a protected branch is refused (`ErrBranchProtected`) | ✅ HTTP 403 | ✅† HTTP 422 | ✅† HTTP 500, confirmed against the branch restrictions |
 
 ## Tag protection
 

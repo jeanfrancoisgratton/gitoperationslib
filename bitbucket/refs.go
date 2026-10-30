@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 )
 
 type refJSON struct {
@@ -143,7 +145,34 @@ func (b branches) Rename(context.Context, string, string, string, string) (*gito
 
 func (b branches) Delete(ctx context.Context, owner, repo, name string) error {
 	_, err := b.c.api.Do(ctx, http.MethodDelete, repoPath(owner, repo, "refs", "branches", name), nil, nil, nil)
+	if gitoperationslib.StatusCode(err) == http.StatusInternalServerError && b.deleteRestricted(ctx, owner, repo, name) {
+		// Bitbucket refuses with HTTP 500 "Something went wrong".
+		return refusal.Mark(err, refusal.Rule{Sentinel: gitoperationslib.ErrBranchProtected})
+	}
 	return err
+}
+
+// deleteRestricted reports whether a branch restriction forbids deleting
+// name. Errors count as "no": the caller keeps the original error.
+func (b branches) deleteRestricted(ctx context.Context, owner, repo, name string) bool {
+	rs, err := branchProtections(b).all(ctx, owner, repo)
+	if err != nil {
+		return false
+	}
+	for _, r := range rs {
+		if r.Kind == kindDelete && globMatch(r.Pattern, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// globMatch matches name against a Bitbucket branch pattern, where "*"
+// matches any run of characters, "/" included.
+func globMatch(pattern, name string) bool {
+	re := "^" + strings.NewReplacer(`\*`, ".*", `\?`, ".").Replace(regexp.QuoteMeta(pattern)) + "$"
+	ok, _ := regexp.MatchString(re, name)
+	return ok
 }
 
 // Compare counts commits, as Bitbucket has no comparison endpoint: the commits of head excluding base's, and the reverse.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 )
 
 type userJSON struct {
@@ -207,5 +208,7 @@ func (u users) Delete(ctx context.Context, login string, opts gitoperationslib.D
 		q = url.Values{"purge": {"true"}}
 	}
 	_, err := u.c.api.Do(ctx, http.MethodDelete, forgejoapi.Path("admin", "users", login), q, nil, nil)
-	return err
+	return refusal.Mark(err,
+		refusal.Rule{Status: http.StatusUnprocessableEntity, Fragment: "still has ownership of repositories", Sentinel: gitoperationslib.ErrOwnsRepos},
+		refusal.Rule{Status: http.StatusUnprocessableEntity, Fragment: "still has membership of organizations", Sentinel: gitoperationslib.ErrOrgMember})
 }

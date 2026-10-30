@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // ErrNotSupported is matched (via errors.Is) by every error returned when a
@@ -15,6 +16,28 @@ var ErrNotSupported = errors.New("operation not supported")
 // owner team, rename it, or change its permissions. Forgejo allows deleting
 // it, which leaves the organisation without owners.
 var ErrOwnerTeam = errors.New("refusing to delete, rename or change the permissions of an owner team")
+
+// Refusals recognised in a server's error response. The *APIError keeps the
+// server's status and message, and matches the sentinel through errors.Is:
+//
+//	if errors.Is(err, gitoperationslib.ErrOwnsRepos) { … }
+//
+// Recognition relies on the server's wording; an unrecognised refusal is
+// reported as a plain *APIError, as before.
+var (
+	// ErrOwnsRepos: deleting an organisation (Forgejo: HTTP 500) or a user
+	// without Purge (HTTP 422) that still owns repositories.
+	ErrOwnsRepos = errors.New("the account still owns repositories")
+	// ErrOrgMember: deleting a user without Purge who still belongs to
+	// organisations (Forgejo).
+	ErrOrgMember = errors.New("the user still belongs to organisations")
+	// ErrLastOwner: removing the last member of an organisation's owner team,
+	// from the organisation or from the team (Forgejo: HTTP 500).
+	ErrLastOwner = errors.New("cannot remove the last owner of an organisation")
+	// ErrBranchProtected: deleting a branch a protection rule covers
+	// (Forgejo 403, GitHub 422, Bitbucket 500).
+	ErrBranchProtected = errors.New("the branch is protected")
+)
 
 // NotSupportedError describes which operation a backend refused.
 type NotSupportedError struct {
@@ -59,7 +82,15 @@ type APIError struct {
 	DocumentationURL string `json:"documentationUrl,omitzero"`
 	// Details holds GitHub's errors[] entries, flattened to strings.
 	Details []string `json:"details,omitzero"`
+	// RetryAt is when the server allows the request again: from Retry-After,
+	// or from a rate limit's reset time. Zero when the server did not say.
+	RetryAt time.Time `json:"retryAt,omitzero"`
+	// Err is the recognised refusal (ErrOwnsRepos, ErrBranchProtected…), or
+	// nil. It is what errors.Is and errors.As see through Unwrap.
+	Err error `json:"-"`
 }
+
+func (e *APIError) Unwrap() error { return e.Err }
 
 func (e *APIError) Error() string {
 	msg := e.Message

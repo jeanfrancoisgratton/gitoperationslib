@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/retry"
 )
 
 // maxErrorBody caps how much of an error response is read.
@@ -19,6 +21,7 @@ func decodeError(resp *http.Response) error {
 		Backend:    gitoperationslib.BackendForgejo,
 		StatusCode: resp.StatusCode,
 	}
+	apiErr.RetryAt, _ = retry.RetryAt(resp.Header, time.Now())
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 
 	var body struct {

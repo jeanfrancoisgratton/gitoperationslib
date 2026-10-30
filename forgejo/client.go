@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/retry"
 )
 
 // Credentials authenticate requests. Create them with Token or BasicAuth.
@@ -35,6 +36,7 @@ type Option func(*config)
 type config struct {
 	httpClient *http.Client
 	userAgent  string
+	retry      gitoperationslib.RetryPolicy
 }
 
 // WithHTTPClient sets the HTTP client, e.g. for timeouts, proxies or a custom
@@ -43,6 +45,11 @@ func WithHTTPClient(c *http.Client) Option { return func(cfg *config) { cfg.http
 
 // WithUserAgent sets the User-Agent header.
 func WithUserAgent(ua string) Option { return func(cfg *config) { cfg.userAgent = ua } }
+
+// WithRetry sets the retry policy; the default is
+// gitoperationslib.DefaultRetryPolicy, and gitoperationslib.NoRetry disables
+// retries.
+func WithRetry(p gitoperationslib.RetryPolicy) Option { return func(cfg *config) { cfg.retry = p } }
 
 // Client is a Forgejo backend client.
 type Client struct {
@@ -63,7 +70,7 @@ var (
 // returning *gitoperationslib.UnsupportedVersionError otherwise.
 // Nil creds means anonymous access.
 func New(ctx context.Context, baseURL string, creds Credentials, opts ...Option) (*Client, error) {
-	cfg := config{userAgent: "gitoperationslib"}
+	cfg := config{userAgent: "gitoperationslib", retry: gitoperationslib.DefaultRetryPolicy}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -71,7 +78,7 @@ func New(ctx context.Context, baseURL string, creds Credentials, opts ...Option)
 	if creds != nil {
 		authorize = creds.apply
 	}
-	api, err := forgejoapi.NewClient(baseURL, cfg.httpClient, authorize, cfg.userAgent)
+	api, err := forgejoapi.NewClient(baseURL, retry.Wrap(cfg.httpClient, cfg.retry), authorize, cfg.userAgent)
 	if err != nil {
 		return nil, err
 	}

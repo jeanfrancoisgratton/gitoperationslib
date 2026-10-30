@@ -11,6 +11,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 )
 
 type teamJSON struct {
@@ -252,7 +253,7 @@ func (t teams) AddMember(ctx context.Context, id int64, user string) error {
 
 func (t teams) RemoveMember(ctx context.Context, id int64, user string) error {
 	_, err := t.c.api.Do(ctx, http.MethodDelete, teamPath(id, "members", user), nil, nil, nil)
-	return err
+	return refusal.Mark(err, refusal.Rule{Status: http.StatusInternalServerError, Fragment: "last member of owner team", Sentinel: gitoperationslib.ErrLastOwner})
 }
 
 func (t teams) Repos(ctx context.Context, id int64, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {

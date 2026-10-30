@@ -11,8 +11,21 @@ change the public API.
 ### Added
 - Capability bits `CapAccount`, `CapTokens` and `CapSecrets`, appended after `CapDirectory` (existing
   values are unchanged). No backend reports them yet.
+- Retries on transient failures, in all three backends (`internal/retry`), configured with the new
+  `WithRetry(RetryPolicy)` option; `DefaultRetryPolicy` (3 attempts, server-requested waits up to 30 s)
+  applies by default, `NoRetry` disables it. Requests the server did not process (HTTP 429, rate limits,
+  GitHub's 409 "conflicting repository operation is still in progress") are retried whatever their
+  method; 502/503/504 and dropped connections only for GET, HEAD, PUT and DELETE. Refused connections,
+  timeouts and streamed uploads are never retried.
+- `APIError.RetryAt`: when the server allows the request again (`Retry-After`, rate-limit reset).
+- Recognised refusals: `ErrOwnsRepos`, `ErrOrgMember`, `ErrLastOwner`, `ErrBranchProtected`, matched with
+  `errors.Is` through the new `APIError.Err` field and `APIError.Unwrap`. The `*APIError` keeps the
+  server's status and message.
 
 ### Changed
+- Transient failures that used to be returned at once are now retried (see Added); pass
+  `WithRetry(gitoperationslib.NoRetry)` for the previous behaviour.
+- Contract and admin integration tests require the recognised refusals instead of any error.
 - API-stability rules for 1.x, in the README: new areas arrive as optional interfaces found by type
   assertion; no method is ever added to an existing interface.
 

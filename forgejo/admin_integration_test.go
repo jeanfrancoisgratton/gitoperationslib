@@ -180,11 +180,9 @@ func TestIntegrationAdminDeleteNeedsPurge(t *testing.T) {
 	}
 
 	err := c.Users().Delete(ctx, login, gitoperationslib.DeleteUserOptions{})
-	var apiErr *gitoperationslib.APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("delete without purge: err = %v, want an API error", err)
+	if !errors.Is(err, gitoperationslib.ErrOwnsRepos) {
+		t.Fatalf("delete without purge: err = %v, want ErrOwnsRepos", err)
 	}
-	t.Logf("delete without purge: %v", err)
 
 	if err := c.Users().Delete(ctx, login, gitoperationslib.DeleteUserOptions{Purge: true}); err != nil {
 		t.Fatalf("delete with purge: %v", err)
@@ -311,8 +309,8 @@ func TestIntegrationAdminOrgs(t *testing.T) {
 	}
 	if err := orgs.RemoveMember(ctx, theirs, user); err == nil {
 		t.Error("removing the last owner succeeded")
-	} else {
-		t.Logf("remove last owner: %v", err)
+	} else if !errors.Is(err, gitoperationslib.ErrLastOwner) {
+		t.Errorf("remove last owner: err = %v, want ErrLastOwner", err)
 	}
 
 	// Deleting an organisation that owns repositories fails.
@@ -321,8 +319,8 @@ func TestIntegrationAdminOrgs(t *testing.T) {
 	}
 	if err := orgs.Delete(ctx, own); err == nil {
 		t.Fatal("deleting an org that owns repositories succeeded")
-	} else {
-		t.Logf("delete org with repos: %v", err)
+	} else if !errors.Is(err, gitoperationslib.ErrOwnsRepos) {
+		t.Errorf("delete org with repos: err = %v, want ErrOwnsRepos", err)
 	}
 	if err := c.Repos().Delete(ctx, own, contracttest.RepoPrefix+"org-owned"); err != nil {
 		t.Fatal(err)

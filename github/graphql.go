@@ -8,11 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/retry"
 )
 
 // graphqlURL derives the GraphQL endpoint from the REST base URL:
@@ -86,9 +86,10 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		apiErr := &gitoperationslib.APIError{Backend: gitoperationslib.BackendGitHub, StatusCode: resp.StatusCode, Message: body.Message}
-		if reset := resp.Header.Get("X-RateLimit-Reset"); reset != "" && resp.Header.Get("X-RateLimit-Remaining") == "0" {
-			if sec, err := strconv.ParseInt(reset, 10, 64); err == nil {
-				apiErr.Details = []string{"rate limit resets at " + time.Unix(sec, 0).UTC().Format("2006-01-02T15:04:05Z")}
+		if at, ok := retry.RetryAt(resp.Header, time.Now()); ok {
+			apiErr.RetryAt = at
+			if resp.Header.Get("X-RateLimit-Remaining") == "0" {
+				apiErr.Details = []string{"rate limit resets at " + at.UTC().Format("2006-01-02T15:04:05Z")}
 			}
 		}
 		return apiErr

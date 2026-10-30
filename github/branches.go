@@ -9,6 +9,7 @@ import (
 	gh "github.com/google/go-github/v93/github"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 )
 
 // resolveCommit turns a branch, tag or commit SHA into a commit SHA; empty
@@ -150,7 +151,12 @@ func (b branches) Rename(ctx context.Context, owner, repo, name, newName string)
 
 func (b branches) Delete(ctx context.Context, owner, repo, name string) error {
 	_, err := b.c.gh.Git.DeleteRef(ctx, owner, repo, "heads/"+name)
-	return convertError(err)
+	// Rulesets refuse with "Repository rule violations found"; classic
+	// protection (not used by this library, but possibly set by hand) with
+	// "protected branch".
+	return refusal.Mark(convertError(err),
+		refusal.Rule{Status: http.StatusUnprocessableEntity, Fragment: "rule violation", Sentinel: gitoperationslib.ErrBranchProtected},
+		refusal.Rule{Status: http.StatusUnprocessableEntity, Fragment: "protected branch", Sentinel: gitoperationslib.ErrBranchProtected})
 }
 
 func (b branches) Compare(ctx context.Context, owner, repo, base, head string) (*gitoperationslib.Comparison, error) {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/retry"
 )
 
 // Credentials authenticate requests. Create them with Token, APIToken or
@@ -53,6 +54,7 @@ type config struct {
 	httpClient *http.Client
 	userAgent  string
 	baseURL    string
+	retry      gitoperationslib.RetryPolicy
 }
 
 // WithHTTPClient sets the HTTP client (timeouts, proxies).
@@ -63,6 +65,11 @@ func WithUserAgent(ua string) Option { return func(cfg *config) { cfg.userAgent 
 
 // WithBaseURL overrides the API root (default https://api.bitbucket.org/2.0/).
 func WithBaseURL(u string) Option { return func(cfg *config) { cfg.baseURL = u } }
+
+// WithRetry sets the retry policy; the default is
+// gitoperationslib.DefaultRetryPolicy, and gitoperationslib.NoRetry disables
+// retries.
+func WithRetry(p gitoperationslib.RetryPolicy) Option { return func(cfg *config) { cfg.retry = p } }
 
 // Client is a Bitbucket Cloud backend client.
 type Client struct {
@@ -77,7 +84,7 @@ var _ gitoperationslib.Client = (*Client)(nil)
 // New returns a Bitbucket Cloud client. No request is made. Nil creds means
 // anonymous access.
 func New(creds Credentials, opts ...Option) (*Client, error) {
-	cfg := config{userAgent: "gitoperationslib"}
+	cfg := config{userAgent: "gitoperationslib", retry: gitoperationslib.DefaultRetryPolicy}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -85,7 +92,7 @@ func New(creds Credentials, opts ...Option) (*Client, error) {
 	if creds != nil {
 		authorize = creds.apply
 	}
-	api, err := bitbucketapi.NewClient(cfg.baseURL, cfg.httpClient, authorize, cfg.userAgent)
+	api, err := bitbucketapi.NewClient(cfg.baseURL, retry.Wrap(cfg.httpClient, cfg.retry), authorize, cfg.userAgent)
 	if err != nil {
 		return nil, err
 	}

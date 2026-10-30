@@ -102,8 +102,8 @@ func Protections(t *testing.T, env Env) {
 	check(err)
 	if err := env.Client.Branches().Delete(ctx, owner, *repo, "release/1.0"); err == nil {
 		t.Error("deleting a protected branch succeeded")
-	} else {
-		t.Logf("protected branch deletion refused: %v", err)
+	} else if !errors.Is(err, gitoperationslib.ErrBranchProtected) {
+		t.Errorf("protected branch deletion refused, but not recognised as ErrBranchProtected: %v", err)
 	}
 
 	// Backend-specific options are reported.

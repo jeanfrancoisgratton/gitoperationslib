@@ -63,14 +63,34 @@ import (
 
 ## 2. Connecting
 
-Each backend package has a constructor that returns a concrete `*Client`, and that type implements `gol.Client`. All three accept the same two options:
+Each backend package has a constructor that returns a concrete `*Client`, and that type implements `gol.Client`. All three accept the same options:
 
 | Option | Effect |
 |---|---|
-| `WithHTTPClient(*http.Client)` | Custom HTTP client: timeouts, proxies, custom CA, transport middleware. The default is `http.DefaultClient`. |
+| `WithHTTPClient(*http.Client)` | Custom HTTP client: timeouts, proxies, custom CA, transport middleware. The default is `http.DefaultClient`. The library wraps a copy of it and never modifies yours. |
 | `WithUserAgent(string)` | `User-Agent` header. The default is `gitoperationslib`. |
+| `WithRetry(gol.RetryPolicy)` | Retry policy (see below). The default is `gol.DefaultRetryPolicy`; `gol.NoRetry` disables retries. |
 
 Clients are safe for concurrent use. The few values they cache (such as the authenticated user's login) are protected by a mutex.
+
+**Retries.** Transient failures are retried automatically, by default up to 3 attempts in all, waiting about 1 s, then 2 s:
+
+| Failure | Retried for |
+|---|---|
+| HTTP 429, or a rate limit (`Retry-After`, GitHub's `X-RateLimit-Remaining: 0`) | every method: the server did not process the request |
+| GitHub 409 "conflicting repository operation is still in progress" (shortly after creating a repository with `AutoInit`) | every method, same reason |
+| HTTP 502, 503, 504 | idempotent methods only (`GET`, `HEAD`, `PUT`, `DELETE`) |
+| Connection reset or closed mid-request | idempotent methods only |
+
+Not retried:
+- refused connections, DNS errors and timeouts, so a server that is down still fails fast;
+- streamed uploads (release assets), whose body cannot be sent twice.
+
+A wait the server asks for (`Retry-After`, a rate limit's reset time) is honoured up to `RetryPolicy.MaxWait` (30 s by default). Beyond that, the error is returned at once, with `APIError.RetryAt` saying when to try again. Cancelling the context ends a wait.
+
+```go
+client, err := github.New(token, github.WithRetry(gol.RetryPolicy{MaxAttempts: 5, MaxWait: 2 * time.Minute}))
+```
 
 ### 2.1 Forgejo
 
@@ -149,7 +169,7 @@ client, err = github.New(token, github.WithEnterpriseURL("https://github.example
 
 Notes:
 - **Uploads and downloads.** The custom HTTP client is also used for release asset uploads (GitHub's separate upload host) and for downloads, which are redirected to GitHub's storage host. The token is never sent to the storage host.
-- **Rate limits.** When GitHub enforces its primary or secondary rate limit, you get a `*gol.APIError` whose `Details` say when the limit resets or how long to wait (see [Errors](#33-errors)).
+- **Rate limits.** Short rate-limit waits are absorbed by the retries (see [Connecting](#2-connecting)). When GitHub asks for a longer wait, you get a `*gol.APIError` whose `RetryAt` says when the limit resets (`Details` says it too, as text; see [Errors](#33-errors)).
 - **GraphQL.** A small GraphQL client is used where REST cannot do the job: toggling a pull request's draft status, auto-merge and its cancellation, and deleting an issue.
 
 ### 2.3 Bitbucket Cloud
@@ -277,9 +297,26 @@ if ext, ok := client.Releases().(gol.ExternalAssets); ok {
 | Error | Matched with | Meaning |
 |---|---|---|
 | `gol.ErrNotSupported` | `errors.Is` | The backend cannot perform the operation or honour an option. `errors.As` gives a `*gol.NotSupportedError{Backend, Operation, Reason}`. |
-| `*gol.APIError` | `errors.As` | The server answered with an error. Fields: `Backend`, `StatusCode`, `Message`, `DocumentationURL` (GitHub's `documentation_url`, Forgejo's `url`), `Details` (GitHub's `errors[]`, plus rate-limit reset or retry-after information). |
+| `*gol.APIError` | `errors.As` | The server answered with an error. Fields: `Backend`, `StatusCode`, `Message`, `DocumentationURL` (GitHub's `documentation_url`, Forgejo's `url`), `Details` (GitHub's `errors[]`, plus rate-limit reset or retry-after information), `RetryAt` (when the server allows the request again; zero if it did not say), `Err` (the recognised refusal below, or nil). |
 | `*gol.UnsupportedVersionError` | `errors.As` | `forgejo.New`: the server is older than the supported minimum. Fields: `Backend`, `Version`, `Minimum`. |
 | `gol.ErrOwnerTeam` | `errors.Is` | The call would delete or rename an organisation's owner team, or change its permissions, so it was refused. |
+
+**Recognised refusals.** Some servers refuse an operation with an unhelpful status, such as Forgejo's HTTP 500 for "organisation still owns repositories", or a bare message. The library recognises these refusals. The error stays a `*gol.APIError` with the server's own status and message, and it also matches a sentinel through `errors.Is`:
+
+| Sentinel | Call | Server answer |
+|---|---|---|
+| `gol.ErrOwnsRepos` | `Orgs().Delete`, `Users().Delete` without `Purge` (Forgejo) | 500 / 422 "user still has ownership of repositories" |
+| `gol.ErrOrgMember` | `Users().Delete` without `Purge` (Forgejo) | 422 "user still has membership of organizations" |
+| `gol.ErrLastOwner` | `Orgs().RemoveMember`, `Teams().RemoveMember` (Forgejo) | 500 "user is the last member of owner team" |
+| `gol.ErrBranchProtected` | `Branches().Delete` | Forgejo 403 "branch protected"; GitHub 422 "Repository rule violations found"; Bitbucket 500 "Something went wrong", confirmed by checking the branch's delete restrictions |
+
+Recognition relies on the servers' wording (checked against Forgejo 15.0.11). A refusal the library does not recognise is still returned as a plain `*gol.APIError`.
+
+```go
+if err := admin.Orgs().Delete(ctx, "acme"); errors.Is(err, gol.ErrOwnsRepos) {
+	fmt.Println("move or delete acme's repositories first")
+}
+```
 
 Helpers, which look for the first `*APIError` in the error chain:
 
