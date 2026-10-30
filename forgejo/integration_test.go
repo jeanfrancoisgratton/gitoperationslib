@@ -86,3 +86,5 @@ func TestIntegrationIssues(t *testing.T) {
 func TestIntegrationDirectory(t *testing.T) { contracttest.Directory(t, integrationEnv(t)) }
 
 func TestIntegrationAccount(t *testing.T) { contracttest.Account(t, integrationEnv(t)) }
+
+func TestIntegrationCI(t *testing.T) { contracttest.CI(t, integrationEnv(t)) }

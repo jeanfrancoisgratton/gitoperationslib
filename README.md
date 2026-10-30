@@ -40,7 +40,7 @@ How 1.x grows without breaking anyone:
 - GitHub: github.com, or GitHub Enterprise Server.
 - Bitbucket: Bitbucket Cloud only. Data Center has a different API.
 
-The module has a single third-party dependency: [`google/go-github`](https://github.com/google/go-github) (v93), and only the GitHub backend uses it.
+The module has two third-party dependencies, both used only by the GitHub backend: [`google/go-github`](https://github.com/google/go-github) (v93), and [`golang.org/x/crypto`](https://pkg.go.dev/golang.org/x/crypto), which encrypts Actions secrets the way GitHub requires (libsodium sealed box).
 
 ## Quick start
 
@@ -103,7 +103,7 @@ client, err := bitbucket.New(bitbucket.APIToken(os.Getenv("BITBUCKET_EMAIL"), os
 ```
 gitoperationslib/             interfaces, domain types, errors, pagination  (no backend code)
 ├── forgejo/                  Forgejo backend      → internal/forgejoapi    (net/http)
-├── github/                   GitHub backend       → google/go-github v93 + a small GraphQL client
+├── github/                   GitHub backend       → google/go-github v93 + a small GraphQL client (+ x/crypto for secrets)
 ├── bitbucket/                Bitbucket backend    → internal/bitbucketapi  (net/http)
 ├── webhook/                  receiving deliveries (depends on the root package only)
 └── internal/
@@ -116,9 +116,9 @@ gitoperationslib/             interfaces, domain types, errors, pagination  (no 
 | Package | Import path | Role |
 |---|---|---|
 | root | `github.com/jeanfrancoisgratton/gitoperationslib` | `Client` and the area interfaces, domain types, errors, `Page`/`All`, `Ptr` |
-| `forgejo` | `…/gitoperationslib/forgejo` | Forgejo backend; implements `Client`, `Admin`, `Account` and `ExternalAssets` |
-| `github` | `…/gitoperationslib/github` | GitHub backend; implements `Client` and `Account` |
-| `bitbucket` | `…/gitoperationslib/bitbucket` | Bitbucket Cloud backend; implements `Client` and `Account` |
+| `forgejo` | `…/gitoperationslib/forgejo` | Forgejo backend; implements `Client`, `Admin`, `Account`, `CI` and `ExternalAssets` |
+| `github` | `…/gitoperationslib/github` | GitHub backend; implements `Client`, `Account` and `CI` |
+| `bitbucket` | `…/gitoperationslib/bitbucket` | Bitbucket Cloud backend; implements `Client`, `Account` and `CI` |
 | `webhook` | `…/gitoperationslib/webhook` | Verifies, identifies and decodes webhook deliveries from all three forges |
 
 How a call flows:
@@ -135,7 +135,7 @@ The `webhook` package depends only on the root package, so a service that only r
 - **One interface, several forges.** The domain types model what the forges share. Features only some forges have are separate, optional interfaces (`Admin`, `ExternalAssets`), so the shared model is not bent around one vendor. Check for them with `Capabilities()` or a type assertion.
 - **Explicit refusals.** When a forge cannot do something (a merge method, an option, a whole area), the call returns `ErrNotSupported` with a `*NotSupportedError` naming the backend, the operation and the reason. A few calls also return the result along with that error: this happens when the server applied the request but silently ignored part of it, so you can see what actually happened.
 - **No third-party types in the public API.** Every exported type belongs to this library, and conversion happens inside each backend. A `go-github` major version bump therefore never breaks callers.
-- **Few dependencies.** The Forgejo and Bitbucket backends are small hand-written HTTP clients on `net/http`, not SDKs. The Forgejo SDK was rejected because of its churn, and because its minimum Go version would have become ours (see [DESIGN-NOTES.md](docs/DESIGN-NOTES.md)). Only GitHub uses an SDK (`go-github`, pinned), plus a minimal GraphQL client for what REST cannot do: draft toggling, auto-merge and issue deletion.
+- **Few dependencies.** The Forgejo and Bitbucket backends are small hand-written HTTP clients on `net/http`, not SDKs. The Forgejo SDK was rejected because of its churn, and because its minimum Go version would have become ours (see [DESIGN-NOTES.md](docs/DESIGN-NOTES.md)). Only GitHub uses an SDK (`go-github`, pinned), plus a minimal GraphQL client for what REST cannot do: draft toggling, auto-merge and issue deletion, and `golang.org/x/crypto` to encrypt Actions secrets (the standard library has no XSalsa20-Poly1305).
 - **Consistent conventions:**
   - Every call takes a `context.Context`.
   - Lists are paginated the same way everywhere (`ListOptions`, `Page[T]`, `All`).

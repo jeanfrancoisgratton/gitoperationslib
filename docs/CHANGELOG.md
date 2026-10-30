@@ -30,6 +30,12 @@ change the public API.
   the new sentinel `ErrPasswordRequired`. GitHub and Bitbucket return `ErrNotSupported`.
   Forgejo cannot verify GPG keys whose ID starts with 0 (server bug, HTTP 500): `Verify` then matches
   `ErrNotSupported`, and the key can be added again with the signature.
+- `CI` (optional interface, `CapSecrets`, all three backends): CI secrets (`Secrets`: list, set, delete;
+  write-only values) and variables (`Variables`: list, get, set, delete) at repository (`RepoCI`),
+  organisation or workspace (`OrgCI`) and user (`UserCI`, Forgejo only) level, for Forgejo Actions, GitHub
+  Actions and Bitbucket Pipelines. GitHub secrets are encrypted with the scope's public key (libsodium sealed
+  box); Bitbucket secrets are secured Pipelines variables.
+- New dependency `golang.org/x/crypto` (v0.58.0), used by the GitHub backend only, for the sealed box.
 - Bitbucket: `Directory().Me()` now reads GPG keys (`/users/{uuid}/gpg-keys`) instead of recording them as
   not supported, and `SSHKey.ID` is derived from the key's UUID (it was 0).
 - Forgejo: `BasicAuthOTP(user, password, code)` and `BasicAuthOTPFunc(user, password, func() string)` for

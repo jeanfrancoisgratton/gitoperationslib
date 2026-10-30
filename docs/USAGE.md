@@ -26,6 +26,7 @@ This guide covers every package, interface, type and option of the library, with
 17. [Administration (Forgejo): managing users, organisations, teams](#17-administration-forgejo)
 18. [Recipes](#18-recipes)
 19. [Reference: errors returned without an HTTP call](#19-reference-errors-returned-without-an-http-call)
+20. [CI secrets and variables (`CI`)](#20-ci-secrets-and-variables-ci)
 
 ---
 
@@ -166,7 +167,7 @@ if client.Version().Compare(forgejo.Version{Major: 15}) >= 0 {
 }
 ```
 
-The Forgejo client implements `gol.Client`, `gol.Admin` and `gol.Account`. Its `Releases()` value also implements `gol.ExternalAssets`.
+The Forgejo client implements `gol.Client`, `gol.Admin`, `gol.Account` and `gol.CI`. Its `Releases()` value also implements `gol.ExternalAssets`.
 
 ### 2.2 GitHub
 
@@ -2589,3 +2590,57 @@ These errors are detected by the library itself, before it changes anything on t
 | `webhook.Verify` with an empty secret | plain error |
 
 Server-side refusals, such as permissions, conflicts or protected branches, are always `*APIError`.
+
+---
+
+## 20. CI secrets and variables (`CI`)
+
+Named values for CI workflows: Forgejo Actions, GitHub Actions, Bitbucket Pipelines. **Secrets** are write-only: once stored, they can be replaced or deleted, never read back. **Variables** are readable. All three clients implement `gol.CI` (`CapSecrets`):
+
+```go
+ci, ok := client.(gol.CI)
+
+scope := gol.RepoCI("acme", "widget") // or gol.OrgCI("acme"), gol.UserCI()
+err := ci.Secrets().Set(ctx, scope, "DEPLOY_TOKEN", token) // creates or replaces
+err = ci.Variables().Set(ctx, scope, "ENVIRONMENT", "prod")
+v, err := ci.Variables().Get(ctx, scope, "ENVIRONMENT")
+```
+
+| | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| Repository (`RepoCI`) | ✅ | ✅ | ✅ |
+| Organisation / workspace (`OrgCI`) | ✅ | ✅ visible to all the organisation's repositories | ✅ workspace variables |
+| User (`UserCI`) | ✅ (secrets cannot be listed) | ❌ (user secrets are Codespaces') | ❌ refused with API tokens |
+| Names | upper-cased | upper-cased | kept as given |
+| Dates | secrets: created | created, updated | — |
+| Secret encryption | none (sent over TLS) | sealed box with the scope's public key, done by the library | none; a secret is a secured variable |
+
+```go
+type Secrets interface {
+	List(ctx, scope, ListOptions) (Page[Secret], error) // names and dates only
+	Set(ctx, scope, name, value string) error           // create or replace
+	Delete(ctx, scope, name string) error
+}
+type Variables interface {
+	List(ctx, scope, ListOptions) (Page[Variable], error)
+	Get(ctx, scope, name string) (*Variable, error)
+	Set(ctx, scope, name, value string) error           // create or change
+	Delete(ctx, scope, name string) error
+}
+```
+
+Rules every forge enforces, answering 4xx otherwise:
+- **Names** are letters, digits and underscores, and don't start with a digit. Forgejo also refuses the `GITEA_`, `GITHUB_` and `FORGEJO_` prefixes.
+- **Values** cannot be empty.
+- **Line endings:** Forgejo turns them into LF, so base64-encode values whose exact bytes matter.
+
+Notes per forge:
+- **GitHub:**
+  - An organisation secret or variable is created visible to all the organisation's repositories. A `Set` on an existing one keeps its visibility.
+  - Repository-level calls need the `repo` scope; organisation-level ones need `admin:org`.
+- **Bitbucket, one list for both kinds:** secrets and variables share a single list of Pipelines variables. `Secrets` shows its secured entries and `Variables` the others.
+  - A name already used by one kind cannot be `Set` as the other: the call fails and asks you to delete the entry first, so a value never silently turns secret or public.
+  - Lists return everything as one page.
+- **Bitbucket, delay after writes:** the workspace list lags about half a second behind writes. `Get` and `Delete` look a name up again for up to two seconds before reporting it missing (404).
+- **Not included:** GitHub environment secrets, Bitbucket deployment variables, and GitHub's selection of repositories for an organisation secret.
+

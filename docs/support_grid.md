@@ -27,6 +27,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Receiving and verifying deliveries | ✅ | ✅ | ⚠️ from documentation, not yet checked against live deliveries |
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
+| CI secrets and variables (`CI`) | ✅ | ✅ | ✅ |
 | Own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`) | ✅ | ✅ no avatar, no tokens | ⚠️ e-mail addresses read-only, no profile, no tokens |
 
 ## Connecting
@@ -274,4 +275,13 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | GitHub profile fields (company, public e-mail, hireable, Twitter) | ❌ | ✅ | ❌ |
 | Set, delete avatar | ✅ | ❌ | ❌ |
 | Access tokens: list (any credentials), create, delete (password only) | ✅ | ❌ | ❌ |
+
+## CI secrets and variables (`CI`)
+
+| Feature | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| Repository secrets: list, set, delete | ✅ | ✅ sealed-box encryption | ✅ secured Pipelines variables |
+| Repository variables: list, get, set, delete | ✅ | ✅ | ✅ |
+| Organisation / workspace secrets and variables | ✅ | ✅† visible to all repositories | ✅ workspace variables |
+| User secrets and variables | ⚠️ secrets cannot be listed | ❌ | ❌ refused with API tokens |
 
