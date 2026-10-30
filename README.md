@@ -29,6 +29,11 @@ go get github.com/jeanfrancoisgratton/gitoperationslib
 
 Versions follow [Semantic Versioning](https://semver.org): 1.0.0 is the first stable release, and the public API only breaks with a new major version.
 
+How 1.x grows without breaking anyone:
+- No method is ever added to an existing interface: that would break every other implementation of it, mocks included.
+- New areas arrive as new optional interfaces, implemented by the backend clients, found with a type assertion and announced by a new `Capability` bit (like `Admin` and `ExternalAssets`).
+- Minor versions may add struct fields, methods on concrete types, sentinel errors, constants and backend options.
+
 **Requirements:**
 - Go 1.27.2 or later.
 - Forgejo 11.0.10 or later. `forgejo.New` checks the server version and refuses older servers.

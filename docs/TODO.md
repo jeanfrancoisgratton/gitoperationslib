@@ -6,7 +6,7 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 1.0.0 (2026-10-29) is feature-complete: no new features are planned. The points below were weighed before the release and deferred, with no date yet:
 
-- [ ] API stability: how future additions land without breaking implementers (see "Interfaces are frozen" under API surface).
+- [x] API stability: new areas land as optional interfaces found by type assertion, never as methods on existing interfaces (README, "Installation"). Decided for 1.1.0, see docs/DESIGN-1.1.0.md.
 - [ ] Areas no consumer exercises yet (gitclt uses repositories, branches, tags, releases, pull requests, `Directory` and `Admin`): webhooks, issues/labels/milestones, branch and tag protection. Mark them experimental in the documentation, or exercise them first.
 - [ ] Transport hardening: retries/backoff on transient errors, GitHub rate-limit handling (see the Transport sections), and typed errors for the HTTP 500 refusals (Forgejo "org still owns repositories" and "last member of owner team", Bitbucket protected-branch deletion).
 - [ ] Unit-test coverage: GitHub backend ~76%, Bitbucket ~53%.
@@ -97,7 +97,7 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] 5c Teams (list, get, get by name, create, edit, delete), members and repos. `TeamAccess` hides Forgejo's permission/units_map interplay; owner team protected by `ErrOwnerTeam`. Increment 5c.
 - [ ] Forgejo lets an admin delete an org's owner team (204) and rename it; the library refuses both. Consider reporting upstream.
 - [ ] Forgejo 15.0.x bug: `PATCH /admin/users/{u}` ignores `"visibility":"public"` (zero value of its enum). `Users.Edit` returns `ErrNotSupported` with the updated user when the server keeps the old value. Consider reporting upstream at codeberg.org/forgejo/forgejo.
-- [ ] Interfaces are frozen since 1.0.0: adding a method to an existing interface (as `Admin` gained `Orgs()`/`Teams()`, or `Branches` gained `Compare` in 0.4.0) breaks external implementations such as mocks, so it needs a new major version. Add new behaviour through new optional interfaces, found by type assertion like `Admin`, and decide this strategy before the next addition.
+- [x] Interfaces are frozen since 1.0.0: adding a method to an existing interface (as `Admin` gained `Orgs()`/`Teams()`, or `Branches` gained `Compare` in 0.4.0) breaks external implementations such as mocks, so it needs a new major version. New behaviour goes through new optional interfaces, found by type assertion like `Admin` (decided for 1.1.0). At 2.0.0 they may be folded into `Client`.
 
 ## Open items from DESIGN-NOTES §8
 

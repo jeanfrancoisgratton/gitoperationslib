@@ -6,6 +6,16 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [Unreleased]
+
+### Added
+- Capability bits `CapAccount`, `CapTokens` and `CapSecrets`, appended after `CapDirectory` (existing
+  values are unchanged). No backend reports them yet.
+
+### Changed
+- API-stability rules for 1.x, in the README: new areas arrive as optional interfaces found by type
+  assertion; no method is ever added to an existing interface.
+
 ## [1.0.0] — 2026-10-29
 
 First stable release. From here on, the public API (types, interfaces, error types and JSON key names)

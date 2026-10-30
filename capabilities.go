@@ -21,6 +21,11 @@ const (
 	CapTagProtection
 	CapIssues
 	CapDirectory
+	// Added in 1.1.0. New bits are only ever appended, so existing values
+	// never change.
+	CapAccount // the authenticated user's own account (Account)
+	CapTokens  // access token management (Account.Tokens)
+	CapSecrets // CI secrets and variables (CI)
 )
 
 var capabilityNames = []struct {
@@ -42,6 +47,9 @@ var capabilityNames = []struct {
 	{CapTagProtection, "tag-protection"},
 	{CapIssues, "issues"},
 	{CapDirectory, "directory"},
+	{CapAccount, "account"},
+	{CapTokens, "tokens"},
+	{CapSecrets, "secrets"},
 }
 
 // Has reports whether c includes every capability in want.

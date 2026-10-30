@@ -89,6 +89,25 @@ func TestCapability(t *testing.T) {
 	}
 }
 
+// Capability values are part of the API: new bits are appended, existing
+// ones never move.
+func TestCapabilityValues(t *testing.T) {
+	want := []Capability{
+		CapRepos, CapMirrors, CapMigrate, CapAdmin, CapWebhooks, CapSystemWebhooks,
+		CapReleases, CapPullRequests, CapExternalAssets, CapBranches, CapTags,
+		CapBranchProtection, CapTagProtection, CapIssues, CapDirectory,
+		CapAccount, CapTokens, CapSecrets,
+	}
+	for i, c := range want {
+		if c != 1<<i {
+			t.Errorf("capability %d (%s) = %#x, want %#x", i, c, uint64(c), uint64(1)<<i)
+		}
+	}
+	if len(capabilityNames) != len(want) {
+		t.Errorf("capabilityNames has %d entries, want %d", len(capabilityNames), len(want))
+	}
+}
+
 // fakePages serves items in pages of size n, recording requested page numbers.
 func fakePages(items []int, n int, requested *[]int) func(context.Context, ListOptions) (Page[int], error) {
 	return func(_ context.Context, o ListOptions) (Page[int], error) {
