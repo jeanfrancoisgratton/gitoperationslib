@@ -144,3 +144,18 @@ func TestProfileGitHub(t *testing.T) {
 		t.Errorf("%d requests, want 1", calls)
 	}
 }
+
+func TestTokensNotSupportedGitHub(t *testing.T) {
+	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected %s %s", r.Method, r.URL.Path) })
+	ctx := context.Background()
+	_, errList := c.Tokens().List(ctx, gitoperationslib.ListOptions{})
+	_, errCreate := c.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x"})
+	for _, err := range []error{errList, errCreate, c.Tokens().Delete(ctx, 1), c.Tokens().DeleteByName(ctx, "x")} {
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("err = %v, want ErrNotSupported", err)
+		}
+	}
+	if c.Capabilities().Has(gitoperationslib.CapTokens) {
+		t.Error("GitHub reports CapTokens")
+	}
+}

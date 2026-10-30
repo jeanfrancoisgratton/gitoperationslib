@@ -205,3 +205,69 @@ func TestProfileForgejo(t *testing.T) {
 type zeros struct{}
 
 func (zeros) Read(p []byte) (int, error) { clear(p); return len(p), nil }
+
+func TestTokensForgejo(t *testing.T) {
+	var requests []string
+	var created map[string]any
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		switch r.Method + " " + r.URL.Path {
+		case "POST /api/v1/users/me/tokens":
+			json.NewDecoder(r.Body).Decode(&created)
+			w.WriteHeader(http.StatusCreated)
+			io.WriteString(w, `{"id": 3, "name": "ci", "sha1": "11af98fd0c193dda1961f3fb4926d6375f7f7a19", "token_last_eight": "5f7f7a19",
+				"scopes": ["read:repository"], "repositories": [{"id": 54, "name": "r1", "owner": "me", "full_name": "me/r1"}]}`)
+		case "GET /api/v1/users/me/tokens":
+			io.WriteString(w, `[{"id": 6, "name": "123", "sha1": "", "token_last_eight": "aaaaaaaa", "scopes": ["all"], "repositories": null}]`)
+		case "DELETE /api/v1/users/me/tokens/6":
+			w.WriteHeader(http.StatusNoContent)
+		case "DELETE /api/v1/users/me/tokens/9":
+			w.WriteHeader(http.StatusUnauthorized)
+			io.WriteString(w, `{"message":"auth method not allowed"}`)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+	ctx := context.Background()
+
+	tok, err := c.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "ci", Scopes: []string{"read:repository"}, Repositories: []string{"me/r1"}})
+	if err != nil || tok.Secret != "11af98fd0c193dda1961f3fb4926d6375f7f7a19" || tok.LastEight != "5f7f7a19" ||
+		!reflect.DeepEqual(tok.Repositories, []string{"me/r1"}) {
+		t.Errorf("Create = %+v, %v", tok, err)
+	}
+	want := map[string]any{"name": "ci", "scopes": []any{"read:repository"}, "repositories": []any{map[string]any{"owner": "me", "name": "r1"}}}
+	if !reflect.DeepEqual(created, want) {
+		t.Errorf("POST body %v, want %v", created, want)
+	}
+	if page, err := c.Tokens().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 || page.Items[0].Repositories != nil {
+		t.Errorf("List = %+v, %v", page, err)
+	}
+	// "123" is found by listing and deleted by ID 6, not taken for ID 123.
+	if err := c.Tokens().DeleteByName(ctx, "123"); err != nil {
+		t.Error(err)
+	}
+	if err := c.Tokens().DeleteByName(ctx, "none"); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("DeleteByName(unknown): err = %v, want 404", err)
+	}
+	if err := c.Tokens().Delete(ctx, 9); !errors.Is(err, gitoperationslib.ErrPasswordRequired) {
+		t.Errorf("Delete with a token: err = %v, want ErrPasswordRequired", err)
+	}
+
+	n := len(requests)
+	for _, bad := range []gitoperationslib.CreateTokenOptions{
+		{Scopes: []string{"all"}},
+		{Name: "x", Scopes: []string{"all"}, Repositories: []string{"no-slash"}},
+		{Name: "x", Scopes: []string{"all"}, Repositories: []string{"a/b/c"}},
+	} {
+		if _, err := c.Tokens().Create(ctx, bad); err == nil {
+			t.Errorf("Create(%+v) accepted", bad)
+		}
+	}
+	if len(requests) != n {
+		t.Errorf("invalid options sent %v", requests[n:])
+	}
+	if got := strings.Join(requests[:n], ", "); !strings.Contains(got, "DELETE /api/v1/users/me/tokens/6") {
+		t.Errorf("requests %s", got)
+	}
+}

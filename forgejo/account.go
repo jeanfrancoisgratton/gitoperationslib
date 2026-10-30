@@ -247,3 +247,100 @@ func leadingZeroBug(keyID string, err error) error {
 	}
 	return err
 }
+
+func (c *Client) Tokens() gitoperationslib.Tokens { return tokens{c} }
+
+type tokens struct{ c *Client }
+
+type accessTokenJSON struct {
+	ID           int64    `json:"id"`
+	Name         string   `json:"name"`
+	SHA1         string   `json:"sha1"`
+	LastEight    string   `json:"token_last_eight"`
+	Scopes       []string `json:"scopes"`
+	Repositories []struct {
+		FullName string `json:"full_name"`
+	} `json:"repositories"`
+}
+
+func (t *accessTokenJSON) toAccessToken() gitoperationslib.AccessToken {
+	tok := gitoperationslib.AccessToken{ID: t.ID, Name: t.Name, Scopes: t.Scopes, LastEight: t.LastEight, Secret: t.SHA1}
+	for _, r := range t.Repositories {
+		tok.Repositories = append(tok.Repositories, r.FullName)
+	}
+	return tok
+}
+
+// passwordRequired recognises Forgejo's refusal of token authentication.
+var passwordRequired = refusal.Rule{Status: http.StatusUnauthorized, Fragment: "auth method not allowed", Sentinel: gitoperationslib.ErrPasswordRequired}
+
+func (t tokens) path(ctx context.Context, rest ...string) (string, error) {
+	login, err := t.c.currentLogin(ctx)
+	if err != nil {
+		return "", err
+	}
+	return forgejoapi.Path(append([]string{"users", login, "tokens"}, rest...)...), nil
+}
+
+func (t tokens) List(ctx context.Context, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.AccessToken], error) {
+	path, err := t.path(ctx)
+	if err != nil {
+		return gitoperationslib.Page[gitoperationslib.AccessToken]{}, err
+	}
+	return listAt(t.c, path, (*accessTokenJSON).toAccessToken)(ctx, opts)
+}
+
+func (t tokens) Create(ctx context.Context, opts gitoperationslib.CreateTokenOptions) (*gitoperationslib.AccessToken, error) {
+	if opts.Name == "" {
+		return nil, errors.New("forgejo: tokens.create: name is required")
+	}
+	type repoTarget struct {
+		Owner string `json:"owner"`
+		Name  string `json:"name"`
+	}
+	body := struct {
+		Name         string       `json:"name"`
+		Scopes       []string     `json:"scopes"`
+		Repositories []repoTarget `json:"repositories,omitempty"`
+	}{Name: opts.Name, Scopes: opts.Scopes}
+	for _, r := range opts.Repositories {
+		owner, name, ok := strings.Cut(r, "/")
+		if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+			return nil, fmt.Errorf("forgejo: tokens.create: repository %q is not owner/name", r)
+		}
+		body.Repositories = append(body.Repositories, repoTarget{owner, name})
+	}
+	path, err := t.path(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out accessTokenJSON
+	if _, err := t.c.api.Do(ctx, http.MethodPost, path, nil, body, &out); err != nil {
+		return nil, refusal.Mark(err, passwordRequired)
+	}
+	tok := out.toAccessToken()
+	return &tok, nil
+}
+
+func (t tokens) Delete(ctx context.Context, id int64) error {
+	path, err := t.path(ctx, strconv.FormatInt(id, 10))
+	if err != nil {
+		return err
+	}
+	_, err = t.c.api.Do(ctx, http.MethodDelete, path, nil, nil, nil)
+	return refusal.Mark(err, passwordRequired)
+}
+
+// DeleteByName deletes by ID: Forgejo takes a numeric name for an ID, so
+// tokens named "123" could not be deleted by name.
+func (t tokens) DeleteByName(ctx context.Context, name string) error {
+	for tok, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, t.List) {
+		if err != nil {
+			return err
+		}
+		if tok.Name == name {
+			return t.Delete(ctx, tok.ID)
+		}
+	}
+	return &gitoperationslib.APIError{Backend: gitoperationslib.BackendForgejo, StatusCode: http.StatusNotFound, Message: fmt.Sprintf("no access token called %q", name)}
+}

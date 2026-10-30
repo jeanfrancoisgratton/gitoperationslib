@@ -22,7 +22,7 @@ This guide covers every package, interface, type and option of the library, with
 14. [Managing webhooks](#14-managing-webhooks)
 15. [Receiving webhooks (`webhook` package)](#15-receiving-webhooks-webhook-package)
 16. [Users, organisations and teams (Directory)](#16-users-organisations-and-teams-directory)
-   - [Your own account: e-mail addresses, SSH and GPG keys, profile (`Account`)](#165-managing-your-own-account-account)
+   - [Your own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`)](#165-managing-your-own-account-account)
 17. [Administration (Forgejo): managing users, organisations, teams](#17-administration-forgejo)
 18. [Recipes](#18-recipes)
 19. [Reference: errors returned without an HTTP call](#19-reference-errors-returned-without-an-http-call)
@@ -331,6 +331,7 @@ if ext, ok := client.Releases().(gol.ExternalAssets); ok {
 | `gol.ErrLastOwner` | `Orgs().RemoveMember`, `Teams().RemoveMember` (Forgejo) | 500 "user is the last member of owner team" |
 | `gol.ErrBranchProtected` | `Branches().Delete` | Forgejo 403 "branch protected"; GitHub 422 "Repository rule violations found"; Bitbucket 500 "Something went wrong", confirmed by checking the branch's delete restrictions |
 | `gol.ErrInvalidOTP` | any Forgejo call, `forgejo.New` included | 401 "invalid provided OTP": basic authentication of a 2FA account without a valid code |
+| `gol.ErrPasswordRequired` | `Tokens().Create`, `Delete`, `DeleteByName` (Forgejo) | 401 "auth method not allowed": token authentication is refused here |
 | `gol.ErrGPGSignature` | `GPGKeys().Add`, `Verify` (Forgejo) | 404 when none of the key's addresses belongs to the account, 422 when the signature does not match: both say "provide a valid signature for the token" |
 
 Recognition relies on the servers' wording (checked against Forgejo 15.0.11). A refusal the library does not recognise is still returned as a plain `*gol.APIError`.
@@ -2133,6 +2134,7 @@ type Account interface {
 	SSHKeys() SSHKeys // List, Get(id), Add(AddSSHKeyOptions), Delete(id)
 	GPGKeys() GPGKeys // List, Get(id), Add(armored, signature), Delete(id), VerificationToken, Verify(keyID, signature)
 	Profile() Profile // Edit(EditProfileOptions), SetAvatar(io.Reader), DeleteAvatar
+	Tokens() Tokens   // List, Create(CreateTokenOptions), Delete(id), DeleteByName(name); Forgejo only
 }
 ```
 
@@ -2146,6 +2148,7 @@ type Account interface {
 | GPG key verification by signature | ✅ (not for key IDs starting with 0, see below) | ❌ (GitHub checks e-mail addresses) | ❌ (same) |
 | Profile: edit | ✅ | ✅ | ❌ no API (the profile is the Atlassian account's) |
 | Avatar: set, delete | ✅ | ❌ no API | ❌ |
+| Access tokens: list, create, delete (`CapTokens`) | ✅ | ❌ no API | ❌ no API |
 
 Token permissions:
 - **GitHub, classic tokens:** scopes `user` (e-mail addresses), `admin:public_key` and `admin:gpg_key`.
@@ -2192,6 +2195,24 @@ u, err := acct.Profile().Edit(ctx, gol.EditProfileOptions{
 	Website:  gol.Ptr(""), // clear it
 })
 ```
+
+**Access tokens (Forgejo).** Forgejo lists tokens with any credentials, but creates and deletes them only with username and password: `forgejo.BasicAuth`, or `BasicAuthOTP`/`BasicAuthOTPFunc` with two-factor authentication. With a token, even an administrator's, `Create` and `Delete` fail with HTTP 401 "auth method not allowed", which matches `gol.ErrPasswordRequired`.
+
+```go
+client, _ := forgejo.New(ctx, url, forgejo.BasicAuth(user, password))
+tok, err := client.Tokens().Create(ctx, gol.CreateTokenOptions{
+	Name:         "ci-deploy",
+	Scopes:       []string{"write:repository"},
+	Repositories: []string{"acme/widget"}, // optional: limit the token to these
+})
+fmt.Println(tok.Secret) // shown once: List never returns it, and JSON never contains it
+```
+
+Notes:
+- **Scopes** are passed to the server unchecked. Forgejo refuses an unknown scope, an empty list, a duplicate name, or an unknown repository, with HTTP 400.
+- **The token is limited by its scopes.** A token created with only `read:user` cannot do more than read the user, whatever its owner may do.
+- **`DeleteByName` finds the token's ID first.** Forgejo itself takes a name made of digits ("123") for an ID.
+- **Other users' tokens are out of reach:** tokens are always the authenticated user's. A site administrator can read anyone's tokens with the API but cannot create or delete them, so `WithSudo` does not help.
 
 `SetAvatar` (Forgejo only) uploads an image of up to `gol.MaxAvatarSize` (10 MiB), whatever the instance's own avatar settings. Forgejo checks the image and answers HTTP 500 for an unknown format or a side over 4096 pixels. `DeleteAvatar` restores the default avatar; the old image is gone.
 

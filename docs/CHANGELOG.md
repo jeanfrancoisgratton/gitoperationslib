@@ -24,6 +24,10 @@ change the public API.
   elsewhere. New sentinel `ErrGPGSignature` for Forgejo's "provide a valid signature" refusals (404/422).
   `Account.Profile()`: `Edit(EditProfileOptions)` on Forgejo and GitHub (`EditSettings` for Forgejo's
   preferences), `SetAvatar`/`DeleteAvatar` on Forgejo (`MaxAvatarSize`, 10 MiB); Bitbucket has no API.
+  `Account.Tokens()`: Forgejo access tokens (`List`, `Create` with scopes and an optional repository
+  restriction, `Delete`, `DeleteByName`; `AccessToken`, `CreateTokenOptions`; `CapTokens`). The secret is
+  returned once, by `Create`, and never serialised. Creating and deleting need a password: with a token,
+  the new sentinel `ErrPasswordRequired`. GitHub and Bitbucket return `ErrNotSupported`.
   Forgejo cannot verify GPG keys whose ID starts with 0 (server bug, HTTP 500): `Verify` then matches
   `ErrNotSupported`, and the key can be added again with the signature.
 - Bitbucket: `Directory().Me()` now reads GPG keys (`/users/{uuid}/gpg-keys`) instead of recording them as

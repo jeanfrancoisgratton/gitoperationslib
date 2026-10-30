@@ -31,6 +31,7 @@ func Account(t *testing.T, env Env) {
 	t.Run("ssh keys", func(t *testing.T) { accountSSHKeys(t, acct.SSHKeys()) })
 	t.Run("gpg keys", func(t *testing.T) { accountGPGKeys(t, env, acct) })
 	t.Run("profile", func(t *testing.T) { accountProfile(t, env, acct.Profile()) })
+	t.Run("tokens", func(t *testing.T) { accountTokens(t, env, acct.Tokens()) })
 }
 
 // skipForbidden skips the test when the token lacks the permission.
@@ -334,5 +335,30 @@ func accountProfile(t *testing.T, env Env, profile gitoperationslib.Profile) {
 	}
 	if !forgejo && !errors.Is(profile.DeleteAvatar(ctx), gitoperationslib.ErrNotSupported) {
 		t.Error("GitHub DeleteAvatar: want ErrNotSupported")
+	}
+}
+
+// accountTokens checks what token credentials allow: listing on Forgejo, but
+// not creating (the full cycle needs a password: see the Forgejo admin
+// tests). Other forges have no token API.
+func accountTokens(t *testing.T, env Env, tokens gitoperationslib.Tokens) {
+	ctx := testContext(t)
+	_, err := tokens.List(ctx, gitoperationslib.ListOptions{})
+	if !env.Client.Capabilities().Has(gitoperationslib.CapTokens) {
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("List: err = %v, want ErrNotSupported", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := tokens.Create(ctx, gitoperationslib.CreateTokenOptions{Name: RepoPrefix + randomHex(t), Scopes: []string{"read:user"}})
+	if err == nil {
+		t.Cleanup(func() { _ = tokens.Delete(context.Background(), tok.ID) })
+		t.Skip("the test credentials are a password: token creation is covered by the admin tests")
+	}
+	if !errors.Is(err, gitoperationslib.ErrPasswordRequired) {
+		t.Errorf("Create with a token: err = %v, want ErrPasswordRequired", err)
 	}
 }

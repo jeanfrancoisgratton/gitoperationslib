@@ -18,6 +18,8 @@ type Account interface {
 	SSHKeys() SSHKeys
 	GPGKeys() GPGKeys
 	Profile() Profile
+	// Tokens manages access tokens; Forgejo only (CapTokens).
+	Tokens() Tokens
 }
 
 // Emails manages the authenticated user's e-mail addresses. Bitbucket only
@@ -131,4 +133,47 @@ type EditSettings struct {
 	HideActivity        *bool   `json:"hideActivity,omitzero"`
 	HidePronouns        *bool   `json:"hidePronouns,omitzero"`
 	EnableRepoUnitHints *bool   `json:"enableRepoUnitHints,omitzero"`
+}
+
+// Tokens manages the authenticated user's personal access tokens. Only
+// Forgejo implements it (CapTokens): GitHub and Bitbucket cannot create or
+// revoke personal tokens through their API, and return ErrNotSupported.
+//
+// Forgejo lists tokens with any credentials, but creates and deletes them
+// only with username and password (forgejo.BasicAuth, or BasicAuthOTP with
+// two-factor authentication). With a token, Create and Delete fail with an
+// error matching ErrPasswordRequired.
+type Tokens interface {
+	List(ctx context.Context, opts ListOptions) (Page[AccessToken], error)
+	// Create mints a token. Its secret is only ever returned here, in
+	// AccessToken.Secret.
+	Create(ctx context.Context, opts CreateTokenOptions) (*AccessToken, error)
+	Delete(ctx context.Context, id int64) error
+	// DeleteByName finds the token called name and deletes it (a 404
+	// *APIError when there is none).
+	DeleteByName(ctx context.Context, name string) error
+}
+
+// AccessToken is a personal access token.
+type AccessToken struct {
+	ID     int64    `json:"id"`
+	Name   string   `json:"name"`
+	Scopes []string `json:"scopes"` // e.g. "write:repository", "all"
+	// Repositories limits the token to these repositories ("owner/name");
+	// empty means all of them.
+	Repositories []string `json:"repositories,omitzero"`
+	LastEight    string   `json:"lastEight"` // the secret's last eight characters
+	// Secret is the token itself, set by Create only. It is never
+	// serialised: print or store it explicitly.
+	Secret string `json:"-"`
+}
+
+// CreateTokenOptions describes a token to create.
+type CreateTokenOptions struct {
+	Name string `json:"name"` // required, unique per user
+	// Scopes are passed to the server unchecked; at least one is required
+	// ("all", "read:user", "write:repository"…).
+	Scopes []string `json:"scopes"`
+	// Repositories ("owner/name") limits the token to those repositories.
+	Repositories []string `json:"repositories,omitzero"`
 }

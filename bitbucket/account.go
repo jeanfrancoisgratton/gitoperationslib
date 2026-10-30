@@ -267,3 +267,25 @@ func (profile) SetAvatar(context.Context, io.Reader) error {
 func (profile) DeleteAvatar(context.Context) error {
 	return notSupported("profile.deleteavatar", noProfile)
 }
+
+// Tokens is not available: personal access tokens cannot be created or
+// revoked through the API.
+func (c *Client) Tokens() gitoperationslib.Tokens { return tokens{} }
+
+type tokens struct{}
+
+const noTokens = "personal access tokens cannot be created or revoked through the API"
+
+func (tokens) List(context.Context, gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.AccessToken], error) {
+	return gitoperationslib.Page[gitoperationslib.AccessToken]{}, notSupported("tokens.list", noTokens)
+}
+
+func (tokens) Create(context.Context, gitoperationslib.CreateTokenOptions) (*gitoperationslib.AccessToken, error) {
+	return nil, notSupported("tokens.create", noTokens)
+}
+
+func (tokens) Delete(context.Context, int64) error { return notSupported("tokens.delete", noTokens) }
+
+func (tokens) DeleteByName(context.Context, string) error {
+	return notSupported("tokens.delete", noTokens)
+}

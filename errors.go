@@ -46,6 +46,10 @@ var (
 	// the key's e-mail addresses belongs to the account, and 422 when the
 	// signature does not match.
 	ErrGPGSignature = errors.New("the GPG key needs a valid signature of the verification token")
+	// ErrPasswordRequired: the operation needs username and password
+	// authentication, not a token (Forgejo: HTTP 401 "auth method not
+	// allowed" when creating or deleting access tokens).
+	ErrPasswordRequired = errors.New("the operation needs username and password authentication")
 )
 
 // NotSupportedError describes which operation a backend refused.

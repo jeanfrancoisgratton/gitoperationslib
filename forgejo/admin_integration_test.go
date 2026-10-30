@@ -27,6 +27,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -781,6 +782,19 @@ func TestIntegrationOTP(t *testing.T) {
 			t.Errorf("%s: Me() = %v, %v", name, me, err)
 		}
 	}
+
+	// Token management with two-factor authentication.
+	c, err := New(ctx, rawURL, BasicAuthOTPFunc(user, password, func() string { return totp(t, secret, time.Now()) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := c.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: contracttest.RepoPrefix + "otp", Scopes: []string{"read:user"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Tokens().Delete(ctx, tok.ID); err != nil {
+		t.Error(err)
+	}
 }
 
 // totp computes an RFC 6238 code (SHA-1, 6 digits, 30-second period).
@@ -843,5 +857,91 @@ func TestIntegrationAdminAvatar(t *testing.T) {
 	}
 	if got := avatarURL(); got != original {
 		t.Errorf("avatar URL after DeleteAvatar = %s, want the default %s", got, original)
+	}
+}
+
+// TestIntegrationAdminTokens runs the whole token cycle as a throwaway user
+// with a password (Forgejo refuses token authentication for it).
+func TestIntegrationAdminTokens(t *testing.T) {
+	ctx, c := adminEnv(t)
+	login := testLogin(t)
+	const password = "Tokens-Passw0rd!"
+	cleanupUser(t, c, &login)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: login, Email: login + "@example.com", Password: password, MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Owner: login, Name: "limited"}); err != nil {
+		t.Fatal(err)
+	}
+	rawURL := os.Getenv("GITOPSLIB_TESTENV_URL")
+	user, err := New(ctx, rawURL, BasicAuth(login, password))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens := user.Tokens()
+
+	tok, err := tokens.Create(ctx, gitoperationslib.CreateTokenOptions{Name: "123", Scopes: []string{"write:user", "read:repository"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Secret == "" || len(tok.LastEight) != 8 || !strings.HasSuffix(tok.Secret, tok.LastEight) || len(tok.Scopes) != 2 {
+		t.Errorf("Create returned %+v", tok)
+	}
+	// The new token works, but even with write:user it cannot manage
+	// tokens.
+	viaToken, err := New(ctx, rawURL, Token(tok.Secret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if me, err := viaToken.Directory().User(ctx, login); err != nil || me.Login != login {
+		t.Errorf("with the new token: %v, %v", me, err)
+	}
+	if _, err := viaToken.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x", Scopes: []string{"read:user"}}); !errors.Is(err, gitoperationslib.ErrPasswordRequired) {
+		t.Errorf("Create with a token: err = %v, want ErrPasswordRequired", err)
+	}
+
+	limited, err := tokens.Create(ctx, gitoperationslib.CreateTokenOptions{Name: "limited", Scopes: []string{"read:repository"}, Repositories: []string{login + "/limited"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited.Repositories) != 1 || limited.Repositories[0] != login+"/limited" {
+		t.Errorf("Repositories = %v", limited.Repositories)
+	}
+	if _, err := tokens.Create(ctx, gitoperationslib.CreateTokenOptions{Name: "limited", Scopes: []string{"read:user"}}); gitoperationslib.StatusCode(err) != http.StatusBadRequest {
+		t.Errorf("duplicate name: err = %v, want 400", err)
+	}
+
+	var names []string
+	for tk, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, tokens.List) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tk.Secret != "" {
+			t.Errorf("List exposes the secret of %s", tk.Name)
+		}
+		names = append(names, tk.Name)
+	}
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"123", "limited"}) {
+		t.Errorf("tokens = %v", names)
+	}
+
+	// A numeric name is not taken for an ID.
+	if err := tokens.DeleteByName(ctx, "123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tokens.Delete(ctx, limited.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tokens.DeleteByName(ctx, "gone"); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("DeleteByName(unknown): err = %v, want 404", err)
+	}
+	if page, err := tokens.List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 0 {
+		t.Errorf("after deletion: %+v, %v", page.Items, err)
+	}
+	if _, err := viaToken.Directory().User(ctx, login); !gitoperationslib.IsUnauthorized(err) {
+		t.Errorf("revoked token still works: err = %v", err)
 	}
 }

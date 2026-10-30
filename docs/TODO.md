@@ -13,7 +13,7 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 ## Next priority
 
-- [ ] **Forgejo access tokens** (`Tokens` interface), released alone as v0.2.0: list, create (name, scopes such as `write:repository`, optional repository restriction), revoke by name or ID, via `GET`/`POST /users/{username}/tokens` and `DELETE /users/{username}/tokens/{token}`. The secret is returned only once, by create. Scopes are passed through as strings, not validated. Forgejo is expected to require username/password authentication (a token cannot mint tokens): confirm on the disposable instance, and whether a site admin can manage other users' tokens. Expose it as an optional interface found by type assertion (like `Admin`), not as a new `Client` method, so the addition is not breaking. GitHub: not implemented (personal access tokens cannot be created or revoked through the API). Accounts with 2FA are out of scope for now (see TOTP under Transport).
+- [x] **Forgejo access tokens**: `Account.Tokens()` (list, create with scopes and repository restriction, delete by ID or name), 1.1.0 increment 5. Findings on 15.0.11: listing accepts tokens (and a site admin lists anyone's), creating and deleting need basic auth (401 "auth method not allowed" → `ErrPasswordRequired`, even for an admin with Sudo); a numeric name is taken for an ID on delete, so `DeleteByName` lists first; 2FA accounts work with `BasicAuthOTP`.
 
 ## Deferred: GitHub App authentication
 

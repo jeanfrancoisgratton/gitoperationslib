@@ -98,3 +98,17 @@ func TestAccountBitbucket(t *testing.T) {
 		t.Errorf("read-only key: err = %v, want ErrNotSupported", err)
 	}
 }
+
+func TestProfileAndTokensNotSupportedBitbucket(t *testing.T) {
+	c := fakeBitbucket(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected %s %s", r.Method, r.URL.Path) })
+	ctx := context.Background()
+	_, errEdit := c.Profile().Edit(ctx, gitoperationslib.EditProfileOptions{})
+	_, errList := c.Tokens().List(ctx, gitoperationslib.ListOptions{})
+	_, errCreate := c.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x"})
+	for _, err := range []error{errEdit, c.Profile().SetAvatar(ctx, nil), c.Profile().DeleteAvatar(ctx),
+		errList, errCreate, c.Tokens().Delete(ctx, 1), c.Tokens().DeleteByName(ctx, "x")} {
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("err = %v, want ErrNotSupported", err)
+		}
+	}
+}

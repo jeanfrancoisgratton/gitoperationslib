@@ -27,7 +27,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Receiving and verifying deliveries | ✅ | ✅ | ⚠️ from documentation, not yet checked against live deliveries |
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
-| Own account: e-mail addresses, SSH and GPG keys, profile (`Account`) | ✅ | ✅ no avatar | ⚠️ e-mail addresses read-only, no profile |
+| Own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`) | ✅ | ✅ no avatar, no tokens | ⚠️ e-mail addresses read-only, no profile, no tokens |
 
 ## Connecting
 
@@ -273,4 +273,5 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | Forgejo profile fields (pronouns, language, settings) | ✅ | ❌ | ❌ |
 | GitHub profile fields (company, public e-mail, hireable, Twitter) | ❌ | ✅ | ❌ |
 | Set, delete avatar | ✅ | ❌ | ❌ |
+| Access tokens: list (any credentials), create, delete (password only) | ✅ | ❌ | ❌ |
 
