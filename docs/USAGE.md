@@ -111,7 +111,27 @@ Credentials:
 |---|---|
 | `forgejo.Token(token)` | `Authorization: token <token>`: a personal access token, created under *Settings → Applications* |
 | `forgejo.BasicAuth(user, password)` | HTTP basic authentication |
+| `forgejo.BasicAuthOTP(user, password, code)` | Basic authentication plus `X-FORGEJO-OTP: <code>`, for accounts with two-factor authentication |
+| `forgejo.BasicAuthOTPFunc(user, password, func() string)` | The same, asking the function for the code before every request |
 | `nil` | Nothing: anonymous access, public data only |
+
+**Two-factor authentication.** With 2FA enabled, plain `BasicAuth` fails on every request, starting with `New`'s version check: the error is a 401 that matches `gol.ErrInvalidOTP`. Tokens are not affected. A wrong or expired code gives the same error.
+
+A code is accepted for any number of requests, until the end of the 30-second period after the one it was generated in, so for 30 to 60 seconds. `BasicAuthOTP` therefore suits short tasks. For longer ones, `BasicAuthOTPFunc` asks for the current code before each request. The function can compute the code from the account's TOTP secret, or return a prompted code until it expires; it may be called from several goroutines at once.
+
+```go
+client, err := forgejo.New(ctx, url, forgejo.BasicAuth(user, password))
+if errors.Is(err, gol.ErrInvalidOTP) {
+	code := prompt("2FA code: ")
+	client, err = forgejo.New(ctx, url, forgejo.BasicAuthOTP(user, password, code))
+}
+```
+
+Forgejo-only options, in addition to the common ones:
+
+| Option | Effect |
+|---|---|
+| `forgejo.WithSudo(login)` | Every request acts as `login` (`Sudo` header): that user's permissions apply, changes are attributed to them, and `Directory().Me()` returns them. Site administrators only. Other callers get HTTP 403 "Only administrators allowed to sudo", and an unknown login gives HTTP 404 on every request, `New` included. |
 
 ```go
 client, err := forgejo.New(ctx, "https://git.example.com", forgejo.Token(os.Getenv("FORGEJO_TOKEN")),
@@ -309,6 +329,7 @@ if ext, ok := client.Releases().(gol.ExternalAssets); ok {
 | `gol.ErrOrgMember` | `Users().Delete` without `Purge` (Forgejo) | 422 "user still has membership of organizations" |
 | `gol.ErrLastOwner` | `Orgs().RemoveMember`, `Teams().RemoveMember` (Forgejo) | 500 "user is the last member of owner team" |
 | `gol.ErrBranchProtected` | `Branches().Delete` | Forgejo 403 "branch protected"; GitHub 422 "Repository rule violations found"; Bitbucket 500 "Something went wrong", confirmed by checking the branch's delete restrictions |
+| `gol.ErrInvalidOTP` | any Forgejo call, `forgejo.New` included | 401 "invalid provided OTP": basic authentication of a 2FA account without a valid code |
 
 Recognition relies on the servers' wording (checked against Forgejo 15.0.11). A refusal the library does not recognise is still returned as a plain `*gol.APIError`.
 

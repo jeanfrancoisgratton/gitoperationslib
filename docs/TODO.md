@@ -22,8 +22,9 @@ Deferred items and open questions. Remove entries when done; note the increment 
 ## Transport (Forgejo)
 
 - [x] Multipart upload for release assets (streamed, exact Content-Length). Increment 6.
-- [ ] `Sudo` header option: admin acting as another user.
-- [ ] Basic auth with TOTP (`X-FORGEJO-OTP`) for accounts with 2FA. Important but not a priority yet; needed before token management works for 2FA-enabled accounts.
+- [x] `Sudo` header option: admin acting as another user (`forgejo.WithSudo`). 1.1.0 increment 2.
+- [x] Basic auth with TOTP (`X-FORGEJO-OTP`) for accounts with 2FA: `BasicAuthOTP` (fixed code) and `BasicAuthOTPFunc` (code per request); `ErrInvalidOTP` when the code is missing or invalid. A code is valid from its 30-second period through the next one (Forgejo accepts ±1 period). 1.1.0 increment 2.
+- [ ] `scripts/forgejo-testenv.sh` could enrol a 2FA user for `TestIntegrationOTP` (web-only flow: log in, read the secret on `/user/settings/security/two_factor/enroll`, post a code). Done by hand with a Python script on 2026-10-30.
 - [x] Retries / backoff on transient errors (5xx, connection reset). Forgejo sends no rate-limit headers. 1.1.0 increment 1 (`internal/retry`, shared by all backends).
 - [ ] `/api/forgejo/v1` namespace client, for Forgejo-only endpoints. Its swagger was not found at `/api/forgejo/v1/swagger.json` on 15.0.2; locate it.
 

@@ -17,6 +17,10 @@ change the public API.
   GitHub's 409 "conflicting repository operation is still in progress") are retried whatever their
   method; 502/503/504 and dropped connections only for GET, HEAD, PUT and DELETE. Refused connections,
   timeouts and streamed uploads are never retried.
+- Forgejo: `BasicAuthOTP(user, password, code)` and `BasicAuthOTPFunc(user, password, func() string)` for
+  accounts with two-factor authentication (`X-FORGEJO-OTP`), and `ErrInvalidOTP`, which a missing,
+  wrong or expired code produces (HTTP 401, from `New` on). A code is accepted for 30 to 60 seconds.
+- Forgejo: `WithSudo(login)`, for site administrators acting as another user (`Sudo` header).
 - `APIError.RetryAt`: when the server allows the request again (`Retry-After`, rate-limit reset).
 - Recognised refusals: `ErrOwnsRepos`, `ErrOrgMember`, `ErrLastOwner`, `ErrBranchProtected`, matched with
   `errors.Is` through the new `APIError.Err` field and `APIError.Unwrap`. The `*APIError` keeps the

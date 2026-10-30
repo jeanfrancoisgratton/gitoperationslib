@@ -9,14 +9,20 @@ package forgejo
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha1"
+	"encoding/base32"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -700,4 +706,89 @@ func TestIntegrationAdminWebhookDeliveries(t *testing.T) {
 	if rel.Action != "published" || rel.Release.TagName != "v1.0.0" || rel.Release.Name != "1.0.0" {
 		t.Errorf("release event = %+v", rel)
 	}
+}
+
+func TestIntegrationAdminSudo(t *testing.T) {
+	ctx, c := adminEnv(t)
+	login := testLogin(t)
+	cleanupUser(t, c, &login)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: login, Email: login + "@example.com", Password: "Sudo-Passw0rd!", MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sudo, err := New(ctx, os.Getenv("GITOPSLIB_TESTENV_URL"), Token(os.Getenv("GITOPSLIB_TESTENV_ADMIN_TOKEN")), WithSudo(login))
+	if err != nil {
+		t.Fatal(err)
+	}
+	me, err := sudo.Directory().Me(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if me.Login != login {
+		t.Errorf("Me() = %s, want %s", me.Login, login)
+	}
+	// Changes are made as the user: a repository created without an owner
+	// lands in their namespace.
+	repo, err := sudo.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Name: contracttest.RepoPrefix + "sudo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.Owner != login {
+		t.Errorf("repository owner = %s, want %s", repo.Owner, login)
+	}
+
+	if _, err := New(ctx, os.Getenv("GITOPSLIB_TESTENV_URL"), Token(os.Getenv("GITOPSLIB_TESTENV_ADMIN_TOKEN")), WithSudo("gitopslib-no-such-user")); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("sudo to an unknown user: err = %v, want 404", err)
+	}
+}
+
+// TestIntegrationOTP needs an account with two-factor authentication on the
+// test instance; Forgejo only enrols TOTP through the web interface:
+//
+//	GITOPSLIB_TESTENV_OTP_USER, GITOPSLIB_TESTENV_OTP_PASSWORD
+//	GITOPSLIB_TESTENV_OTP_SECRET  the base32 secret shown at enrolment
+func TestIntegrationOTP(t *testing.T) {
+	ctx, _ := adminEnv(t)
+	user, password, secret := os.Getenv("GITOPSLIB_TESTENV_OTP_USER"), os.Getenv("GITOPSLIB_TESTENV_OTP_PASSWORD"), os.Getenv("GITOPSLIB_TESTENV_OTP_SECRET")
+	if user == "" || password == "" || secret == "" {
+		t.Skip("GITOPSLIB_TESTENV_OTP_USER, _PASSWORD and _SECRET must be set")
+	}
+	rawURL := os.Getenv("GITOPSLIB_TESTENV_URL")
+
+	if _, err := New(ctx, rawURL, BasicAuth(user, password)); !errors.Is(err, gitoperationslib.ErrInvalidOTP) {
+		t.Errorf("without a code: err = %v, want ErrInvalidOTP", err)
+	}
+	if _, err := New(ctx, rawURL, BasicAuthOTP(user, password, "000000")); !errors.Is(err, gitoperationslib.ErrInvalidOTP) {
+		t.Errorf("wrong code: err = %v, want ErrInvalidOTP", err)
+	}
+	for name, creds := range map[string]Credentials{
+		"fixed code": BasicAuthOTP(user, password, totp(t, secret, time.Now())),
+		"code func":  BasicAuthOTPFunc(user, password, func() string { return totp(t, secret, time.Now()) }),
+	} {
+		c, err := New(ctx, rawURL, creds)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if me, err := c.Directory().Me(ctx); err != nil || me.Login != user {
+			t.Errorf("%s: Me() = %v, %v", name, me, err)
+		}
+	}
+}
+
+// totp computes an RFC 6238 code (SHA-1, 6 digits, 30-second period).
+func totp(t *testing.T, secret string, at time.Time) string {
+	t.Helper()
+	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(strings.TrimRight(secret, "=")))
+	if err != nil {
+		t.Fatalf("TOTP secret: %v", err)
+	}
+	mac := hmac.New(sha1.New, key)
+	_ = binary.Write(mac, binary.BigEndian, uint64(at.Unix()/30))
+	sum := mac.Sum(nil)
+	off := sum[len(sum)-1] & 0x0f
+	code := binary.BigEndian.Uint32(sum[off:off+4]) & 0x7fffffff
+	return fmt.Sprintf("%06d", code%1000000)
 }

@@ -96,6 +96,92 @@ func TestNewBasicAuth(t *testing.T) {
 	}
 }
 
+// headerServer answers the version check, and /api/v1/user with a 401 like
+// Forgejo's when the OTP header is missing; it records each request's
+// headers.
+func headerServer(t *testing.T, got *[]http.Header) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*got = append(*got, r.Header.Clone())
+		if _, _, ok := r.BasicAuth(); ok && r.Header.Get("X-FORGEJO-OTP") == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			io.WriteString(w, `{"message":"invalid provided OTP","url":"https://git.example/api/swagger"}`)
+			return
+		}
+		io.WriteString(w, `{"version":"15.0.11+gitea-1.22.0","login":"me"}`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestNewBasicAuthOTP(t *testing.T) {
+	var got []http.Header
+	srv := headerServer(t, &got)
+	ctx := context.Background()
+
+	// Without a code, the 2FA account is refused from the version check on.
+	_, err := New(ctx, srv.URL, BasicAuth("jf", "pw"), WithHTTPClient(srv.Client()))
+	if !errors.Is(err, gitoperationslib.ErrInvalidOTP) || !gitoperationslib.IsUnauthorized(err) {
+		t.Fatalf("BasicAuth on a 2FA account: err = %v, want ErrInvalidOTP (401)", err)
+	}
+
+	got = nil
+	c, err := New(ctx, srv.URL, BasicAuthOTP("jf", "pw", "123456"), WithHTTPClient(srv.Client()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.currentLogin(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("%d requests, want 2", len(got))
+	}
+	for i, h := range got {
+		if h.Get("Authorization") != "Basic amY6cHc=" || h.Get("X-FORGEJO-OTP") != "123456" {
+			t.Errorf("request %d: Authorization %q, OTP %q", i+1, h.Get("Authorization"), h.Get("X-FORGEJO-OTP"))
+		}
+	}
+}
+
+func TestNewBasicAuthOTPFunc(t *testing.T) {
+	var got []http.Header
+	srv := headerServer(t, &got)
+	ctx := context.Background()
+	codes := []string{"111111", "222222"}
+	calls := 0
+	next := func() string { c := codes[min(calls, len(codes)-1)]; calls++; return c }
+
+	c, err := New(ctx, srv.URL, BasicAuthOTPFunc("jf", "pw", next), WithHTTPClient(srv.Client()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.currentLogin(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Get("X-FORGEJO-OTP") != "111111" || got[1].Get("X-FORGEJO-OTP") != "222222" {
+		t.Errorf("codes sent: %v, want one fresh code per request", got)
+	}
+}
+
+func TestWithSudo(t *testing.T) {
+	var got []http.Header
+	srv := headerServer(t, &got)
+	if _, err := New(context.Background(), srv.URL, Token("admin"), WithSudo("alice"), WithHTTPClient(srv.Client())); err != nil {
+		t.Fatal(err)
+	}
+	if h := got[0]; h.Get("Sudo") != "alice" || h.Get("Authorization") != "token admin" {
+		t.Errorf("Sudo %q, Authorization %q", h.Get("Sudo"), h.Get("Authorization"))
+	}
+
+	got = nil
+	if _, err := New(context.Background(), srv.URL, Token("admin"), WithHTTPClient(srv.Client())); err != nil {
+		t.Fatal(err)
+	}
+	if s, ok := got[0]["Sudo"]; ok {
+		t.Errorf("Sudo sent without WithSudo: %q", s)
+	}
+}
+
 func TestNewAnonymous(t *testing.T) {
 	var auth string
 	srv := versionServer(t, "15.0.2", &auth)

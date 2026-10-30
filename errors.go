@@ -37,6 +37,10 @@ var (
 	// ErrBranchProtected: deleting a branch a protection rule covers
 	// (Forgejo 403, GitHub 422, Bitbucket 500).
 	ErrBranchProtected = errors.New("the branch is protected")
+	// ErrInvalidOTP: basic authentication of an account with two-factor
+	// authentication, without a valid code (Forgejo: HTTP 401 on every
+	// request, forgejo.New included). Retry with forgejo.BasicAuthOTP.
+	ErrInvalidOTP = errors.New("two-factor authentication code missing or invalid")
 )
 
 // NotSupportedError describes which operation a backend refused.

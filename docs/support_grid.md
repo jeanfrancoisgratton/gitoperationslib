@@ -34,6 +34,8 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 |---|---|---|---|
 | Token authentication | ✅ `Authorization: token` | ✅ bearer | ✅ bearer (access tokens); Atlassian API tokens through basic auth with the account e-mail (`APIToken`) |
 | Username + password / app password | ✅ | ❌ (GitHub removed it) | ✅ |
+| Two-factor code with basic auth (`BasicAuthOTP`, `BasicAuthOTPFunc`) | ✅ | — | — |
+| Acting as another user (`WithSudo`, site admins) | ✅ | ❌ | ❌ |
 | Anonymous access | ✅ | ✅ | ✅ |
 | Self-hosted instances | ✅ any base URL | ✅ GitHub Enterprise Server | ❌ Cloud only (Data Center is a different API) |
 | Server version check | ✅ refuses < 11.0.10 | — | — |

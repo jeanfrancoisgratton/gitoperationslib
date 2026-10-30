@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/retry"
 )
 
@@ -33,6 +34,7 @@ func decodeError(resp *http.Response) error {
 		return apiErr
 	}
 	apiErr.Message = body.Message
+	refusal.Mark(apiErr, refusal.Rule{Status: http.StatusUnauthorized, Fragment: "invalid provided OTP", Sentinel: gitoperationslib.ErrInvalidOTP})
 	apiErr.DocumentationURL = body.URL
 	for _, raw := range body.Errors {
 		var s string
