@@ -2,6 +2,15 @@
 
 Deferred items and open questions. Remove entries when done; note the increment that resolved them.
 
+## After 1.0.0
+
+1.0.0 (2026-10-29) is feature-complete: no new features are planned. The points below were weighed before the release and deferred, with no date yet:
+
+- [ ] API stability: how future additions land without breaking implementers (see "Interfaces are frozen" under API surface).
+- [ ] Areas no consumer exercises yet (gitclt uses repositories, branches, tags, releases, pull requests, `Directory` and `Admin`): webhooks, issues/labels/milestones, branch and tag protection. Mark them experimental in the documentation, or exercise them first.
+- [ ] Transport hardening: retries/backoff on transient errors, GitHub rate-limit handling (see the Transport sections), and typed errors for the HTTP 500 refusals (Forgejo "org still owns repositories" and "last member of owner team", Bitbucket protected-branch deletion).
+- [ ] Unit-test coverage: GitHub backend ~76%, Bitbucket ~53%.
+
 ## Next priority
 
 - [ ] **Forgejo access tokens** (`Tokens` interface), released alone as v0.2.0: list, create (name, scopes such as `write:repository`, optional repository restriction), revoke by name or ID, via `GET`/`POST /users/{username}/tokens` and `DELETE /users/{username}/tokens/{token}`. The secret is returned only once, by create. Scopes are passed through as strings, not validated. Forgejo is expected to require username/password authentication (a token cannot mint tokens): confirm on the disposable instance, and whether a site admin can manage other users' tokens. Expose it as an optional interface found by type assertion (like `Admin`), not as a new `Client` method, so the addition is not breaking. GitHub: not implemented (personal access tokens cannot be created or revoked through the API). Accounts with 2FA are out of scope for now (see TOTP under Transport).
@@ -88,7 +97,7 @@ Deferred items and open questions. Remove entries when done; note the increment 
 - [x] 5c Teams (list, get, get by name, create, edit, delete), members and repos. `TeamAccess` hides Forgejo's permission/units_map interplay; owner team protected by `ErrOwnerTeam`. Increment 5c.
 - [ ] Forgejo lets an admin delete an org's owner team (204) and rename it; the library refuses both. Consider reporting upstream.
 - [ ] Forgejo 15.0.x bug: `PATCH /admin/users/{u}` ignores `"visibility":"public"` (zero value of its enum). `Users.Edit` returns `ErrNotSupported` with the updated user when the server keeps the old value. Consider reporting upstream at codeberg.org/forgejo/forgejo.
-- [ ] Interfaces grow as areas are added (e.g. `Admin` gained `Orgs()`/`Teams()`): breaks external implementations such as mocks. Acceptable before the first tagged release; freeze after.
+- [ ] Interfaces are frozen since 1.0.0: adding a method to an existing interface (as `Admin` gained `Orgs()`/`Teams()`, or `Branches` gained `Compare` in 0.4.0) breaks external implementations such as mocks, so it needs a new major version. Add new behaviour through new optional interfaces, found by type assertion like `Admin`, and decide this strategy before the next addition.
 
 ## Open items from DESIGN-NOTES §8
 
