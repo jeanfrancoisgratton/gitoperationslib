@@ -6,7 +6,17 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
-## [Unreleased]
+## [1.0.0] — 2026-10-29
+
+First stable release. From here on, the public API (types, interfaces, error types and JSON key names)
+follows Semantic Versioning.
+
+### Fixed
+- Forgejo: a pull request whose head branch was deleted (after a merge with `DeleteBranch`, typically)
+  reported `refs/pull/N/head` as `Head.Ref`. The branch name is now read from Forgejo's `label`, both by
+  the `PullRequests` calls and by `webhook` pull request deliveries.
+
+## [0.4.0] — 2026-10-27
 
 ### Added
 - `Branch.LastCommit` (`CommitSummary`: message, author name, author date). `Get` always fills

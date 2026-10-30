@@ -25,15 +25,22 @@ func (l *loginJSON) login() string {
 }
 
 type prBranchJSON struct {
-	Ref  string `json:"ref"`
-	SHA  string `json:"sha"`
-	Repo *struct {
+	Label string `json:"label"` // the branch name
+	Ref   string `json:"ref"`
+	SHA   string `json:"sha"`
+	Repo  *struct {
 		FullName string `json:"full_name"`
 	} `json:"repo"`
 }
 
 func (b *prBranchJSON) toBranch() gitoperationslib.PRBranch {
-	br := gitoperationslib.PRBranch{Ref: b.Ref, SHA: b.SHA}
+	// Once the head branch is deleted (after a merge, typically), Forgejo reports the pull request's own ref
+	// (refs/pull/N/head) as ref; the label still holds the branch name.
+	ref := b.Ref
+	if strings.HasPrefix(ref, "refs/pull/") && b.Label != "" {
+		ref = b.Label
+	}
+	br := gitoperationslib.PRBranch{Ref: ref, SHA: b.SHA}
 	if b.Repo != nil {
 		br.Repo = b.Repo.FullName
 	}

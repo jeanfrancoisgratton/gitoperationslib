@@ -34,6 +34,25 @@ func TestPullConversion(t *testing.T) {
 	}
 }
 
+// A merged pull request whose head branch was deleted: Forgejo reports refs/pull/N/head as ref, the label keeps the name
+func TestPullConversion_DeletedHead(t *testing.T) {
+	var j pullJSON
+	resp := `{"number": 1, "state": "closed", "merged": true,
+		"head": {"label": "feature", "ref": "refs/pull/1/head", "sha": "abc", "repo": {"full_name": "acme/widget"}},
+		"base": {"label": "main", "ref": "main", "sha": "def", "repo": {"full_name": "acme/widget"}}}`
+	if err := json.Unmarshal([]byte(resp), &j); err != nil {
+		t.Fatal(err)
+	}
+	if pr := j.toPR(); pr.Head.Ref != "feature" || pr.Base.Ref != "main" {
+		t.Errorf("head %q, base %q", pr.Head.Ref, pr.Base.Ref)
+	}
+	// Without a label, the ref is kept as it is
+	j.Head.Label = ""
+	if pr := j.toPR(); pr.Head.Ref != "refs/pull/1/head" {
+		t.Errorf("head %q", pr.Head.Ref)
+	}
+}
+
 func TestDraftTitle(t *testing.T) {
 	for _, tt := range []struct {
 		title string

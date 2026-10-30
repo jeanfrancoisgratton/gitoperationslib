@@ -27,6 +27,8 @@ A Go library for managing git forges through one set of interfaces. Write your c
 go get github.com/jeanfrancoisgratton/gitoperationslib
 ```
 
+Versions follow [Semantic Versioning](https://semver.org): 1.0.0 is the first stable release, and the public API only breaks with a new major version.
+
 **Requirements:**
 - Go 1.27.2 or later.
 - Forgejo 11.0.10 or later. `forgejo.New` checks the server version and refuses older servers.

@@ -1088,7 +1088,7 @@ type PullRequests interface {
 | `State PRState` | `open` or `closed`. Merged pull requests are `closed` with `Merged` true. |
 | `Draft bool` | |
 | `Author` | Login (Bitbucket: nickname) |
-| `Head`, `Base PRBranch` | `{Ref, SHA, Repo}`. `Repo` is `"owner/name"` and differs from the base repository for forks. |
+| `Head`, `Base PRBranch` | `{Ref, SHA, Repo}`. `Ref` is the branch name, even once the head branch is deleted. `Repo` is `"owner/name"` and differs from the base repository for forks. |
 | `Mergeable *bool` | `nil` when unknown. GitHub computes it in the background, so it can be `nil` right after creation. Bitbucket: always `nil`. |
 | `Merged`, `MergedBy`, `MergedAt`, `MergeCommitSHA` | |
 | `HTMLURL`, `CreatedAt`, `UpdatedAt`, `ClosedAt` | |

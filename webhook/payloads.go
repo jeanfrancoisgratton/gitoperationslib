@@ -158,15 +158,22 @@ func (e *Event) Push() (*PushEvent, error) {
 }
 
 type branchJSON struct {
-	Ref  string `json:"ref"`
-	SHA  string `json:"sha"`
-	Repo *struct {
+	Label string `json:"label"` // Forgejo: the branch name; GitHub: "owner:branch"
+	Ref   string `json:"ref"`
+	SHA   string `json:"sha"`
+	Repo  *struct {
 		FullName string `json:"full_name"`
 	} `json:"repo"`
 }
 
 func (b *branchJSON) toBranch() gitoperationslib.PRBranch {
-	br := gitoperationslib.PRBranch{Ref: b.Ref, SHA: b.SHA}
+	// Once the head branch is deleted, Forgejo sends the pull request's own ref (refs/pull/N/head) as ref; its
+	// label still holds the branch name. GitHub always sends the branch name as ref.
+	ref := b.Ref
+	if strings.HasPrefix(ref, "refs/pull/") && b.Label != "" {
+		ref = b.Label
+	}
+	br := gitoperationslib.PRBranch{Ref: ref, SHA: b.SHA}
 	if b.Repo != nil {
 		br.Repo = b.Repo.FullName
 	}

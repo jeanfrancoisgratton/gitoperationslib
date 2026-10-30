@@ -177,6 +177,23 @@ func TestPullRequest(t *testing.T) {
 	}
 }
 
+// A delivery sent after the head branch was deleted: Forgejo's ref is refs/pull/N/head, its label the branch name;
+// GitHub's label ("owner:branch") is never used, as its ref is always the branch name
+func TestBranchRef(t *testing.T) {
+	for _, tc := range []struct {
+		b    branchJSON
+		want string
+	}{
+		{branchJSON{Label: "feat", Ref: "refs/pull/3/head"}, "feat"},
+		{branchJSON{Label: "acme:feat", Ref: "feat"}, "feat"},
+		{branchJSON{Ref: "refs/pull/3/head"}, "refs/pull/3/head"},
+	} {
+		if got := tc.b.toBranch().Ref; got != tc.want {
+			t.Errorf("%+v: %q, want %q", tc.b, got, tc.want)
+		}
+	}
+}
+
 func TestRelease(t *testing.T) {
 	for _, name := range []string{"forgejo-release", "github-release"} {
 		t.Run(name, func(t *testing.T) {
