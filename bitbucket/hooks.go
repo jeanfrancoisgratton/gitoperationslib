@@ -65,9 +65,10 @@ func fromEventKeys(keys []string) []gitoperationslib.HookEvent {
 	return events
 }
 
-// hookID derives a stable numeric ID from a webhook's UUID (Bitbucket has no
-// numeric IDs): the first 15 hex digits.
-func hookID(uuid string) int64 {
+// hexID derives a stable numeric ID from a Bitbucket UUID or fingerprint
+// (webhooks, SSH and GPG keys; Bitbucket has no numeric IDs): the first 15
+// hex digits.
+func hexID(uuid string) int64 {
 	hex := strings.NewReplacer("{", "", "}", "", "-", "").Replace(uuid)
 	if len(hex) > 15 {
 		hex = hex[:15]
@@ -88,7 +89,7 @@ type hookJSON struct {
 
 func (h *hookJSON) toWebhook() gitoperationslib.Webhook {
 	return gitoperationslib.Webhook{
-		ID: hookID(h.UUID), URL: h.URL, ContentType: gitoperationslib.HookContentJSON,
+		ID: hexID(h.UUID), URL: h.URL, ContentType: gitoperationslib.HookContentJSON,
 		Events: fromEventKeys(h.Events), Active: h.Active, CreatedAt: h.CreatedAt, UpdatedAt: h.CreatedAt,
 	}
 }
@@ -119,7 +120,7 @@ func (w webhooks) find(ctx context.Context, scope gitoperationslib.HookScope, id
 		return nil, "", err
 	}
 	for i := range all {
-		if hookID(all[i].UUID) == id {
+		if hexID(all[i].UUID) == id {
 			return &all[i], base + "/" + bitbucketapi.Path(all[i].UUID), nil
 		}
 	}

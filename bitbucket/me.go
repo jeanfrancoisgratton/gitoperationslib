@@ -30,6 +30,7 @@ type emailJSON struct {
 }
 
 type sshKeyJSON struct {
+	UUID        string    `json:"uuid"`
 	Key         string    `json:"key"`
 	Comment     string    `json:"comment"`
 	Label       string    `json:"label"`
@@ -40,7 +41,7 @@ type sshKeyJSON struct {
 
 func (k *sshKeyJSON) toSSHKey() gitoperationslib.SSHKey {
 	key := gitoperationslib.SSHKey{
-		Title: k.Label, Key: k.Key, Fingerprint: k.Fingerprint, CreatedAt: k.CreatedOn, LastUsed: k.LastUsed,
+		ID: hexID(k.UUID), Title: k.Label, Key: k.Key, Fingerprint: k.Fingerprint, CreatedAt: k.CreatedOn, LastUsed: k.LastUsed,
 	}
 	if key.Title == "" {
 		key.Title = k.Comment
@@ -61,10 +62,9 @@ type workspaceAccessJSON struct {
 }
 
 const noMeTeams = "Bitbucket Cloud groups are not exposed by the REST API 2.0"
-const noMeGPG = "GPG keys are not implemented for Bitbucket Cloud"
 
-// Me reports workspaces as organisations. Teams and GPG keys are recorded in
-// Incomplete as not supported.
+// Me reports workspaces as organisations. Teams are recorded in Incomplete
+// as not supported.
 func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error) {
 	var u meJSON
 	if _, err := d.c.api.Do(ctx, http.MethodGet, "user", nil, nil, &u); err != nil {
@@ -134,7 +134,14 @@ func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error
 	if err := res.Add("SSH keys", err); err != nil {
 		return nil, err
 	}
-	if err := res.Add("GPG keys", notSupported("directory.me", noMeGPG)); err != nil {
+	gpg, err := bitbucketapi.All[gpgKeyJSON](ctx, d.c.api, bitbucketapi.Path("users", u.UUID, "gpg-keys"), nil)
+	if err == nil {
+		me.GPGKeys = make([]gitoperationslib.GPGKey, len(gpg))
+		for i := range gpg {
+			me.GPGKeys[i] = gpg[i].toGPGKey()
+		}
+	}
+	if err := res.Add("GPG keys", err); err != nil {
 		return nil, err
 	}
 	me.Incomplete, me.Missing = res.Err(), res.Parts()

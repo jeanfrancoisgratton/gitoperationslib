@@ -116,9 +116,9 @@ gitoperationslib/             interfaces, domain types, errors, pagination  (no 
 | Package | Import path | Role |
 |---|---|---|
 | root | `github.com/jeanfrancoisgratton/gitoperationslib` | `Client` and the area interfaces, domain types, errors, `Page`/`All`, `Ptr` |
-| `forgejo` | `…/gitoperationslib/forgejo` | Forgejo backend; implements `Client`, `Admin` and `ExternalAssets` |
-| `github` | `…/gitoperationslib/github` | GitHub backend; implements `Client` |
-| `bitbucket` | `…/gitoperationslib/bitbucket` | Bitbucket Cloud backend; implements `Client` |
+| `forgejo` | `…/gitoperationslib/forgejo` | Forgejo backend; implements `Client`, `Admin`, `Account` and `ExternalAssets` |
+| `github` | `…/gitoperationslib/github` | GitHub backend; implements `Client` and `Account` |
+| `bitbucket` | `…/gitoperationslib/bitbucket` | Bitbucket Cloud backend; implements `Client` and `Account` |
 | `webhook` | `…/gitoperationslib/webhook` | Verifies, identifies and decodes webhook deliveries from all three forges |
 
 How a call flows:

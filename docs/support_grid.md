@@ -27,6 +27,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Receiving and verifying deliveries | ✅ | ✅ | ⚠️ from documentation, not yet checked against live deliveries |
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
+| Own account: e-mail addresses, SSH and GPG keys (`Account`) | ✅ | ✅† (needs account permissions on the token) | ⚠️ e-mail addresses read-only |
 
 ## Connecting
 
@@ -108,7 +109,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Block on rejected reviews / official review requests | ✅ | ❌ | ❌ |
 | Protected / unprotected file patterns | ✅ | ❌ | ❌ |
 | `ApplyToAdmins` | ✅ | ✅ (admin-role bypass when false) | ⚠️ no equivalent: ignored, reported true |
-| Deleting a protected branch is refused (`ErrBranchProtected`) | ✅ HTTP 403 | ✅† HTTP 422 | ✅† HTTP 500, confirmed against the branch restrictions |
+| Deleting a protected branch is refused (`ErrBranchProtected`) | ✅ HTTP 403 | ✅ HTTP 422 | ✅ HTTP 500, confirmed against the branch restrictions |
 
 ## Tag protection
 
@@ -257,3 +258,15 @@ Works with any token; the server filters what the caller may see. Forgejo checks
 | Owner team protected (`ErrOwnerTeam`) | ✅ | — | — |
 
 See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
+
+## Own account (`Account`)
+
+| Feature | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| List e-mail addresses | ✅ | ✅† | ✅ |
+| Add, delete e-mail addresses | ✅ | ✅† (verification e-mail sent) | ❌ refused with token authentication |
+| List, get, add, delete SSH keys | ✅ | ✅† | ✅ `ID` derived from the UUID |
+| Read-only SSH keys | ✅ | ❌ | ❌ |
+| List, get, add, delete GPG keys | ✅ | ✅† | ✅ `ID` derived from the fingerprint; key must bear an account address |
+| GPG verification by signed token | ✅ | ❌ | ❌ |
+

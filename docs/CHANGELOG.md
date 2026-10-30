@@ -17,6 +17,13 @@ change the public API.
   GitHub's 409 "conflicting repository operation is still in progress") are retried whatever their
   method; 502/503/504 and dropped connections only for GET, HEAD, PUT and DELETE. Refused connections,
   timeouts and streamed uploads are never retried.
+- `Account` (optional interface, `CapAccount`, implemented by all three backends): the authenticated
+  user's e-mail addresses (`Emails`: list, add, delete), SSH keys (`SSHKeys`: list, get, add, delete;
+  `AddSSHKeyOptions`) and GPG keys (`GPGKeys`: list, get, add, delete, and on Forgejo verification by a
+  signed token). Bitbucket only lists e-mail addresses; Forgejo-only features return `ErrNotSupported`
+  elsewhere. New sentinel `ErrGPGSignature` for Forgejo's "provide a valid signature" refusals (404/422).
+- Bitbucket: `Directory().Me()` now reads GPG keys (`/users/{uuid}/gpg-keys`) instead of recording them as
+  not supported, and `SSHKey.ID` is derived from the key's UUID (it was 0).
 - Forgejo: `BasicAuthOTP(user, password, code)` and `BasicAuthOTPFunc(user, password, func() string)` for
   accounts with two-factor authentication (`X-FORGEJO-OTP`), and `ErrInvalidOTP`, which a missing,
   wrong or expired code produces (HTTP 401, from `New` on). A code is accepted for 30 to 60 seconds.

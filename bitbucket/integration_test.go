@@ -87,3 +87,5 @@ func TestIntegrationReleases(t *testing.T) { contracttest.Releases(t, integratio
 func TestIntegrationIssues(t *testing.T) { contracttest.Issues(t, integrationEnv(t)) }
 
 func TestIntegrationDirectory(t *testing.T) { contracttest.Directory(t, integrationEnv(t)) }
+
+func TestIntegrationAccount(t *testing.T) { contracttest.Account(t, integrationEnv(t)) }

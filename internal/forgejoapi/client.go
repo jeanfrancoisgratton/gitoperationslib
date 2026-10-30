@@ -144,6 +144,26 @@ func (c *Client) doJSON(req *http.Request, out any) (*Response, error) {
 	}, nil
 }
 
+// Text GETs path (relative to /api/v1, already escaped) and returns the
+// response body, for the few endpoints that answer text/plain.
+func (c *Client) Text(ctx context.Context, path string) (string, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, c.apiURL(path, nil), nil, "")
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "text/plain")
+	resp, err := c.send(req)
+	if err != nil {
+		return "", err
+	}
+	defer closeBody(resp)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+	if err != nil {
+		return "", fmt.Errorf("forgejo: read response from GET %s: %w", req.URL.Path, err)
+	}
+	return string(data), nil
+}
+
 // closeBody drains a little of the body, so the connection can be reused,
 // and closes it.
 func closeBody(resp *http.Response) {

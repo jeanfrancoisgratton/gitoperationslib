@@ -237,7 +237,7 @@ func TestHookEvents(t *testing.T) {
 	if fmt.Sprint(back) != "[push pull_request_review repo:commit_status_updated pullrequest:created]" {
 		t.Errorf("fromEventKeys = %v (an incomplete pull_request group stays raw)", back)
 	}
-	if id := hookID("{0b6a4b8e-1234-4000-8000-000000000000}"); id != 0x0b6a4b8e1234400 {
+	if id := hexID("{0b6a4b8e-1234-4000-8000-000000000000}"); id != 0x0b6a4b8e1234400 {
 		t.Errorf("hookID = %x", id)
 	}
 }

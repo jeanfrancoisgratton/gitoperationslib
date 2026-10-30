@@ -22,6 +22,7 @@ This guide covers every package, interface, type and option of the library, with
 14. [Managing webhooks](#14-managing-webhooks)
 15. [Receiving webhooks (`webhook` package)](#15-receiving-webhooks-webhook-package)
 16. [Users, organisations and teams (Directory)](#16-users-organisations-and-teams-directory)
+   - [Your own account: e-mail addresses, SSH and GPG keys (`Account`)](#165-managing-your-own-account-account)
 17. [Administration (Forgejo): managing users, organisations, teams](#17-administration-forgejo)
 18. [Recipes](#18-recipes)
 19. [Reference: errors returned without an HTTP call](#19-reference-errors-returned-without-an-http-call)
@@ -165,7 +166,7 @@ if client.Version().Compare(forgejo.Version{Major: 15}) >= 0 {
 }
 ```
 
-The Forgejo client implements `gol.Client` and `gol.Admin`. Its `Releases()` value also implements `gol.ExternalAssets`.
+The Forgejo client implements `gol.Client`, `gol.Admin` and `gol.Account`. Its `Releases()` value also implements `gol.ExternalAssets`.
 
 ### 2.2 GitHub
 
@@ -330,6 +331,7 @@ if ext, ok := client.Releases().(gol.ExternalAssets); ok {
 | `gol.ErrLastOwner` | `Orgs().RemoveMember`, `Teams().RemoveMember` (Forgejo) | 500 "user is the last member of owner team" |
 | `gol.ErrBranchProtected` | `Branches().Delete` | Forgejo 403 "branch protected"; GitHub 422 "Repository rule violations found"; Bitbucket 500 "Something went wrong", confirmed by checking the branch's delete restrictions |
 | `gol.ErrInvalidOTP` | any Forgejo call, `forgejo.New` included | 401 "invalid provided OTP": basic authentication of a 2FA account without a valid code |
+| `gol.ErrGPGSignature` | `GPGKeys().Add`, `Verify` (Forgejo) | 404 when none of the key's addresses belongs to the account, 422 when the signature does not match: both say "provide a valid signature for the token" |
 
 Recognition relies on the servers' wording (checked against Forgejo 15.0.11). A refusal the library does not recognise is still returned as a plain `*gol.APIError`.
 
@@ -2111,11 +2113,63 @@ Per backend:
 | `Teams` | `/user/teams` | `/user/teams` | not supported (recorded in `Incomplete`) |
 | `Repos` | `/user/repos` | `/user/repos` | every workspace's repositories |
 | `SSHKeys` | `/user/keys` | `/user/keys` | `/users/{uuid}/ssh-keys`; `Title` is the label, else the key comment |
-| `GPGKeys` | `/user/gpg_keys` | `/user/gpg_keys` | not supported (recorded in `Incomplete`) |
+| `GPGKeys` | `/user/gpg_keys` | `/user/gpg_keys` | `/users/{uuid}/gpg-keys` (no e-mail addresses or capabilities reported) |
 
 On Bitbucket, `Me` needs credentials that belong to a user (API token or app password). Workspace, project and repository access tokens have no user behind them and get an error from `/user`.
 
 `Me` costs about eight requests plus one per extra page of each list.
+
+### 16.5 Managing your own account (`Account`)
+
+`Me` reads the account; `Account` changes it. All three clients implement `gol.Account` (`CapAccount`), found with a type assertion:
+
+```go
+acct, ok := client.(gol.Account)
+```
+
+```go
+type Account interface {
+	Emails() Emails   // List, Add(addresses...), Delete(addresses...)
+	SSHKeys() SSHKeys // List, Get(id), Add(AddSSHKeyOptions), Delete(id)
+	GPGKeys() GPGKeys // List, Get(id), Add(armored, signature), Delete(id), VerificationToken, Verify(keyID, signature)
+}
+```
+
+| | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| E-mail addresses: list | ✅ | ✅ | ✅ |
+| E-mail addresses: add, delete | ✅ | ✅ (sends a verification e-mail) | ❌ refused with token authentication |
+| SSH keys: list, get, add, delete | ✅ | ✅ | ✅ (`ID` derived from the key's UUID) |
+| Read-only SSH keys (`AddSSHKeyOptions.ReadOnly`) | ✅ | ❌ | ❌ |
+| GPG keys: list, get, add, delete | ✅ | ✅ | ✅ (`ID` derived from the fingerprint) |
+| GPG key verification by signature | ✅ | ❌ (GitHub checks e-mail addresses) | ❌ (same) |
+
+Token permissions:
+- **GitHub, classic tokens:** scopes `user` (e-mail addresses), `admin:public_key` and `admin:gpg_key`.
+- **GitHub, fine-grained tokens:** the account permissions "Email addresses", "Git SSH keys" and "GPG keys", read and write.
+- **Forgejo:** `write:user`.
+
+Without them, the calls fail with HTTP 403.
+
+```go
+key, err := acct.SSHKeys().Add(ctx, gol.AddSSHKeyOptions{Title: "laptop", Key: pubKey})
+// …
+err = acct.SSHKeys().Delete(ctx, key.ID)
+```
+
+**GPG keys and signatures.**
+- **Forgejo:**
+  - A key bearing one of the account's addresses is added unverified.
+  - `Verify` marks it verified, given a detached, armored signature of the token from `VerificationToken`.
+  - A key with none of the account's addresses can only be added together with that signature. Otherwise Forgejo answers HTTP 404, which matches `gol.ErrGPGSignature`; a signature that does not match gives 422, also `ErrGPGSignature`.
+- **Bitbucket:** refuses (HTTP 400) a key with none of the account's addresses.
+- **GitHub:** accepts any key and marks it verified per address.
+
+```go
+token, _ := acct.GPGKeys().VerificationToken(ctx)
+// echo -n "$token" | gpg -a --default-key KEYID --detach-sig
+key, err := acct.GPGKeys().Add(ctx, armoredKey, signature)
+```
 
 ---
 

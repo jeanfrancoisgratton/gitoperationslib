@@ -41,6 +41,11 @@ var (
 	// authentication, without a valid code (Forgejo: HTTP 401 on every
 	// request, forgejo.New included). Retry with forgejo.BasicAuthOTP.
 	ErrInvalidOTP = errors.New("two-factor authentication code missing or invalid")
+	// ErrGPGSignature: a GPG key needs a valid signature of the verification
+	// token (GPGKeys.VerificationToken). Forgejo answers HTTP 404 when none of
+	// the key's e-mail addresses belongs to the account, and 422 when the
+	// signature does not match.
+	ErrGPGSignature = errors.New("the GPG key needs a valid signature of the verification token")
 )
 
 // NotSupportedError describes which operation a backend refused.
