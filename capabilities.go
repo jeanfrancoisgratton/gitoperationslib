@@ -26,6 +26,7 @@ const (
 	CapAccount // the authenticated user's own account (Account)
 	CapTokens  // access token management (Account.Tokens)
 	CapSecrets // CI secrets and variables (CI)
+	CapCommits // commit history (History)
 )
 
 var capabilityNames = []struct {
@@ -50,6 +51,7 @@ var capabilityNames = []struct {
 	{CapAccount, "account"},
 	{CapTokens, "tokens"},
 	{CapSecrets, "secrets"},
+	{CapCommits, "commits"},
 }
 
 // Has reports whether c includes every capability in want.

@@ -27,6 +27,7 @@ This guide covers every package, interface, type and option of the library, with
 18. [Recipes](#18-recipes)
 19. [Reference: errors returned without an HTTP call](#19-reference-errors-returned-without-an-http-call)
 20. [CI secrets and variables (`CI`)](#20-ci-secrets-and-variables-ci)
+21. [Commit history (`History`)](#21-commit-history-history)
 
 ---
 
@@ -167,7 +168,7 @@ if client.Version().Compare(forgejo.Version{Major: 15}) >= 0 {
 }
 ```
 
-The Forgejo client implements `gol.Client`, `gol.Admin`, `gol.Account` and `gol.CI`. Its `Releases()` value also implements `gol.ExternalAssets`.
+The Forgejo client implements `gol.Client`, `gol.Admin`, `gol.Account`, `gol.CI` and `gol.History`. Its `Releases()` value also implements `gol.ExternalAssets`.
 
 ### 2.2 GitHub
 
@@ -289,6 +290,10 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapWebhooks` | `webhooks` | ✅ | ✅ | ✅ |
 | `CapDirectory` | `directory` | ✅ | ✅ | |
 | `CapAdmin` | `admin` | ✅ | | |
+| `CapAccount` | `account` (your own account: `gol.Account`) | ✅ | ✅ | ✅ |
+| `CapTokens` | `tokens` (`Account().Tokens()`) | ✅ | | |
+| `CapSecrets` | `secrets` (CI secrets and variables: `gol.CI`) | ✅ | ✅ | ✅ |
+| `CapCommits` | `commits` (commit history: `gol.History`) | ✅ | ✅ | ✅ |
 | `CapMirrors`, `CapMigrate`, `CapSystemWebhooks` | reserved for future features | | | |
 
 ```go
@@ -312,7 +317,22 @@ if admin, ok := client.(gol.Admin); ok {
 if ext, ok := client.Releases().(gol.ExternalAssets); ok {
 	_ = ext
 }
+
+// Your own account (§16.5) and CI secrets and variables (§20): all three backends.
+if acct, ok := client.(gol.Account); ok {
+	_ = acct.SSHKeys()
+}
+if ci, ok := client.(gol.CI); ok {
+	_ = ci.Secrets()
+}
+
+// Commit history (§21): all three backends.
+if h, ok := client.(gol.History); ok {
+	_ = h.Commits()
+}
 ```
+
+Since 1.0.0, new areas arrive this way rather than as new `Client` methods, so code that implements `gol.Client` (mocks, wrappers) keeps compiling. A wrapper that embeds a client must forward the optional interfaces itself, or type assertions on it fail.
 
 ### 3.3 Errors
 
@@ -2643,4 +2663,54 @@ Notes per forge:
   - Lists return everything as one page.
 - **Bitbucket, delay after writes:** the workspace list lags about half a second behind writes. `Get` and `Delete` look a name up again for up to two seconds before reporting it missing (404).
 - **Not included:** GitHub environment secrets, Bitbucket deployment variables, and GitHub's selection of repositories for an organisation secret.
+
+---
+
+## 21. Commit history (`History`)
+
+A repository's commits, read from the server like `git log`. No local clone is needed. Only **pushed** commits are seen, so the result can differ from `git log` in a working copy that has commits not yet pushed. All three clients implement `gol.History` (`CapCommits`):
+
+```go
+h, ok := client.(gol.History)
+
+// git log develop -- src/  (newest first, one page)
+page, err := h.Commits().List(ctx, "acme", "widget", gol.ListCommitsOptions{
+	Ref:  "develop", // branch, tag or SHA; empty = default branch
+	Path: "src/",    // optional: commits touching this file or directory
+})
+
+// git show --stat <ref>: one commit with its changed files
+c, err := h.Commits().Get(ctx, "acme", "widget", "develop") // branch head; or a tag, or a (short) SHA
+for _, f := range c.Files {
+	fmt.Println(f.Status, f.Path, f.PreviousPath, f.Additions, f.Deletions)
+}
+```
+
+`List` returns `Commit` values without `Files` or `Stats`, which keeps it to one request per page on every forge. `Get` adds them:
+
+```go
+type Commit struct {
+	SHA       string
+	Message   string        // full message; first line = title
+	Author    CommitAuthor  // Name, Email, Login (the matching forge account, if any), Date
+	Committer CommitAuthor  // not reported by Bitbucket
+	Parents   []string      // two or more for a merge
+	HTMLURL   string
+	Stats     *CommitStats  // Get only: Additions, Deletions
+	Files     []ChangedFile // Get only: Path, PreviousPath, Status, Additions, Deletions
+}
+```
+
+`ChangedFile.Status` is `gol.FileAdded`, `FileModified`, `FileRemoved` or `FileRenamed`. Other values a forge reports, such as GitHub's `copied`, are passed through unchanged. Files are compared against the first parent.
+
+| | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| `List`: ref, path, pages | ✅ (with `Path`, Forgejo ignores `PerPage`) | ✅ | ✅ |
+| `List`: `Since`, `Until` | ❌ | ✅ | ❌ |
+| `Get` by SHA, branch (slashes included), tag | ✅ | ✅ | ✅ (two requests for a branch with `/`) |
+| Per-file line counts | ❌ always 0; `Stats` has the totals | ✅ | ✅ |
+| Renames | ❌ reported as removed plus added | ✅ with `PreviousPath` | ✅ with `PreviousPath` |
+| Requests for `Get` | 1 | 1 per 300 files | 2 (commit, then diffstat) |
+
+A `git log --name-status` over many commits costs one `Get` per commit on top of the `List`, which counts against GitHub's rate limits on long histories.
 

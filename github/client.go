@@ -99,7 +99,7 @@ func (c *Client) Backend() gitoperationslib.Backend { return gitoperationslib.Ba
 func (c *Client) Capabilities() gitoperationslib.Capability {
 	return gitoperationslib.CapRepos | gitoperationslib.CapReleases | gitoperationslib.CapPullRequests | gitoperationslib.CapWebhooks |
 		gitoperationslib.CapBranches | gitoperationslib.CapTags | gitoperationslib.CapBranchProtection | gitoperationslib.CapTagProtection | gitoperationslib.CapIssues |
-		gitoperationslib.CapDirectory | gitoperationslib.CapAccount | gitoperationslib.CapSecrets
+		gitoperationslib.CapDirectory | gitoperationslib.CapAccount | gitoperationslib.CapSecrets | gitoperationslib.CapCommits
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }

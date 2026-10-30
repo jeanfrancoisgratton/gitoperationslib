@@ -4,14 +4,23 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 ## After 1.0.0
 
-1.0.0 (2026-10-29) is feature-complete: no new features are planned. The points below were weighed before the release and deferred, with no date yet:
+1.0.0 (2026-10-29) was meant to be feature-complete. 1.1.0 (2026-10-30) reopened it for the gaps found in gitclt: `Account`, `CI`, `History` (commit log), Forgejo 2FA and Sudo, transport hardening (see docs/DESIGN-1.1.0.md). The points weighed before 1.0.0:
 
 - [x] API stability: new areas land as optional interfaces found by type assertion, never as methods on existing interfaces (README, "Installation"). Decided for 1.1.0, see docs/DESIGN-1.1.0.md.
-- [ ] Areas no consumer exercises yet (gitclt uses repositories, branches, tags, releases, pull requests, `Directory` and `Admin`): webhooks, issues/labels/milestones, branch and tag protection. Mark them experimental in the documentation, or exercise them first.
+- [ ] Areas no consumer exercises yet (gitclt uses repositories, branches, tags, releases, pull requests, `Directory` and `Admin`): webhooks, issues/labels/milestones, branch and tag protection, and since 1.1.0 `Account`, `CI` and `History` (covered by the live contract tests on all three forges, but not by a real tool). Mark them experimental in the documentation, or exercise them first.
 - [x] Transport hardening: retries/backoff on transient errors, GitHub rate-limit handling (see the Transport sections), and typed errors for the HTTP 500 refusals (Forgejo "org still owns repositories" and "last member of owner team", Bitbucket protected-branch deletion). 1.1.0 increment 1.
-- [ ] Unit-test coverage: GitHub backend ~76%, Bitbucket ~53%.
+- [ ] Unit-test coverage: GitHub backend ~75%, Bitbucket ~65% (was ~53% before 1.1.0), Forgejo ~85%.
 
-## Next priority
+## Candidates for 1.2.0
+
+From the 1.1.0 review of gitclt; nothing decided.
+- [ ] Repository settings: collaborators (`/collaborators`, permissions), deploy keys (`/repos/.../keys`), push mirrors and mirror sync (`CapMirrors`, `CapMigrate` are reserved for them).
+- [ ] CI: GitHub environment secrets, Bitbucket deployment variables, GitHub organisation secrets limited to selected repositories.
+- [ ] Commit statuses (`POST /statuses/{sha}`): would let the live tests exercise auto-merge's success path.
+- [ ] Pull request extras: diff/patch, changed files, commits, line comments. A PR's commits and files can reuse `Commit` and `ChangedFile` (1.1.0).
+- [ ] Commit history: `git log A..B` (Forgejo `not`, Bitbucket `exclude`; GitHub only through compare), author filter (GitHub `author`), diffs/patches of a commit.
+
+## Access tokens (Forgejo)
 
 - [x] **Forgejo access tokens**: `Account.Tokens()` (list, create with scopes and repository restriction, delete by ID or name), 1.1.0 increment 5. Findings on 15.0.11: listing accepts tokens (and a site admin lists anyone's), creating and deleting need basic auth (401 "auth method not allowed" → `ErrPasswordRequired`, even for an admin with Sudo); a numeric name is taken for an ID on delete, so `DeleteByName` lists first; 2FA accounts work with `BasicAuthOTP`.
 

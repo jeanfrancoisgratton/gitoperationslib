@@ -1,6 +1,6 @@
 # Support grid
 
-Support level of every feature, per backend, as of 2026-10-30. Backed by the integration checks run against Forgejo 15.0.2 (and 15.0.10 for the admin checks), github.com and Bitbucket Cloud unless marked †.
+Support level of every feature, per backend, as of 2026-10-30. Backed by the integration checks run against Forgejo 15.0.2 (and the disposable 15.0.11 container for the admin, account, token and CI checks), github.com and Bitbucket Cloud unless marked †.
 
 | Mark | Meaning |
 |---|---|
@@ -28,6 +28,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
 | CI secrets and variables (`CI`) | ✅ | ✅ | ✅ |
+| Commit history and changed files (`History`) | ⚠️ no per-file line counts, no renames, no date filter | ✅ | ⚠️ no date filter |
 | Own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`) | ✅ | ✅ no avatar, no tokens | ⚠️ e-mail addresses read-only, no profile, no tokens |
 
 ## Connecting
@@ -284,4 +285,16 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | Repository variables: list, get, set, delete | ✅ | ✅ | ✅ |
 | Organisation / workspace secrets and variables | ✅ | ✅† visible to all repositories | ✅ workspace variables |
 | User secrets and variables | ⚠️ secrets cannot be listed | ❌ | ❌ refused with API tokens |
+
+## Commit history (`History`)
+
+| Feature | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| List commits from a branch, tag or SHA (default branch when empty) | ✅ | ✅ | ✅ |
+| Filter by path | ✅ (page size ignored) | ✅ | ✅ |
+| Filter by date (`Since`, `Until`) | ❌ | ✅ | ❌ |
+| Get a commit with its changed files and totals | ✅ | ✅ | ✅ |
+| Per-file line counts | ❌ | ✅ | ✅ |
+| Rename detection (`PreviousPath`) | ❌ removed + added | ✅† | ✅† |
+| Committer distinct from author | ✅ | ✅ | ❌ |
 

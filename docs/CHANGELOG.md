@@ -6,53 +6,65 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
-## [Unreleased]
+## [1.1.0] — 2026-10-30
+
+Three new optional interfaces (`Account`, `CI`, `History`), transport hardening and Forgejo two-factor
+authentication.
+Nothing existing was removed or changed incompatibly: new areas are optional interfaces found by type
+assertion, following the API-stability rules now in the README.
 
 ### Added
-- Capability bits `CapAccount`, `CapTokens` and `CapSecrets`, appended after `CapDirectory` (existing
-  values are unchanged). No backend reports them yet.
-- Retries on transient failures, in all three backends (`internal/retry`), configured with the new
-  `WithRetry(RetryPolicy)` option; `DefaultRetryPolicy` (3 attempts, server-requested waits up to 30 s)
-  applies by default, `NoRetry` disables it. Requests the server did not process (HTTP 429, rate limits,
-  GitHub's 409 "conflicting repository operation is still in progress") are retried whatever their
-  method; 502/503/504 and dropped connections only for GET, HEAD, PUT and DELETE. Refused connections,
-  timeouts and streamed uploads are never retried.
-- `Account` (optional interface, `CapAccount`, implemented by all three backends): the authenticated
-  user's e-mail addresses (`Emails`: list, add, delete), SSH keys (`SSHKeys`: list, get, add, delete;
-  `AddSSHKeyOptions`) and GPG keys (`GPGKeys`: list, get, add, delete, and on Forgejo verification by a
-  signed token). Bitbucket only lists e-mail addresses; Forgejo-only features return `ErrNotSupported`
-  elsewhere. New sentinel `ErrGPGSignature` for Forgejo's "provide a valid signature" refusals (404/422).
-  `Account.Profile()`: `Edit(EditProfileOptions)` on Forgejo and GitHub (`EditSettings` for Forgejo's
-  preferences), `SetAvatar`/`DeleteAvatar` on Forgejo (`MaxAvatarSize`, 10 MiB); Bitbucket has no API.
-  `Account.Tokens()`: Forgejo access tokens (`List`, `Create` with scopes and an optional repository
-  restriction, `Delete`, `DeleteByName`; `AccessToken`, `CreateTokenOptions`; `CapTokens`). The secret is
-  returned once, by `Create`, and never serialised. Creating and deleting need a password: with a token,
-  the new sentinel `ErrPasswordRequired`. GitHub and Bitbucket return `ErrNotSupported`.
-  Forgejo cannot verify GPG keys whose ID starts with 0 (server bug, HTTP 500): `Verify` then matches
-  `ErrNotSupported`, and the key can be added again with the signature.
-- `CI` (optional interface, `CapSecrets`, all three backends): CI secrets (`Secrets`: list, set, delete;
-  write-only values) and variables (`Variables`: list, get, set, delete) at repository (`RepoCI`),
-  organisation or workspace (`OrgCI`) and user (`UserCI`, Forgejo only) level, for Forgejo Actions, GitHub
-  Actions and Bitbucket Pipelines. GitHub secrets are encrypted with the scope's public key (libsodium sealed
-  box); Bitbucket secrets are secured Pipelines variables.
-- New dependency `golang.org/x/crypto` (v0.58.0), used by the GitHub backend only, for the sealed box.
-- Bitbucket: `Directory().Me()` now reads GPG keys (`/users/{uuid}/gpg-keys`) instead of recording them as
-  not supported, and `SSHKey.ID` is derived from the key's UUID (it was 0).
-- Forgejo: `BasicAuthOTP(user, password, code)` and `BasicAuthOTPFunc(user, password, func() string)` for
-  accounts with two-factor authentication (`X-FORGEJO-OTP`), and `ErrInvalidOTP`, which a missing,
-  wrong or expired code produces (HTTP 401, from `New` on). A code is accepted for 30 to 60 seconds.
-- Forgejo: `WithSudo(login)`, for site administrators acting as another user (`Sudo` header).
+- **`Account`** (`CapAccount`, all three backends): the authenticated user's own account.
+  - `Emails()`: list, add, delete. Bitbucket only lists.
+  - `SSHKeys()`: list, get, add (`AddSSHKeyOptions`; read-only keys on Forgejo), delete.
+  - `GPGKeys()`: list, get, add, delete. On Forgejo also `VerificationToken` and `Verify`, and adding a key
+    together with a signature of the token.
+  - `Profile()`: `Edit(EditProfileOptions)` on Forgejo and GitHub (`EditSettings` for Forgejo's
+    preferences); `SetAvatar`/`DeleteAvatar` on Forgejo (`MaxAvatarSize`, 10 MiB). Bitbucket has no API.
+  - `Tokens()` (`CapTokens`, Forgejo only): `List`, `Create` (`CreateTokenOptions`: scopes, optional
+    repository restriction), `Delete`, `DeleteByName`. The secret is in `AccessToken.Secret`, returned once
+    by `Create` and never serialised. Creating and deleting need a password.
+- **`CI`** (`CapSecrets`, all three backends): secrets (`Secrets`: list, set, delete; write-only values)
+  and variables (`Variables`: list, get, set, delete) for Forgejo Actions, GitHub Actions and Bitbucket
+  Pipelines, at repository (`RepoCI`), organisation or workspace (`OrgCI`) and user (`UserCI`, Forgejo
+  only) level. GitHub secrets are encrypted with the scope's public key (libsodium sealed box); Bitbucket
+  secrets are secured Pipelines variables.
+- **`History`** (`CapCommits`, all three backends): commit history read from the server, like `git log`.
+  `Commits().List(owner, repo, ListCommitsOptions)` lists the commits reachable from a ref (default branch
+  when empty), newest first, optionally limited to a path (and on GitHub to a date range).
+  `Commits().Get(owner, repo, ref)` returns one commit, by SHA, branch or tag, with its changed files
+  (`ChangedFile`: path, previous path, `FileStatus`, line counts) and totals (`CommitStats`). Forgejo reports
+  no per-file line counts and no renames.
+- **Retries** in all three backends: `WithRetry(RetryPolicy)`, `DefaultRetryPolicy` (3 attempts,
+  server-requested waits up to 30 s, on by default), `NoRetry`.
+  - Requests the server did not process are retried whatever their method: HTTP 429, rate limits, and
+    GitHub's 409 "conflicting repository operation is still in progress".
+  - HTTP 502/503/504 and dropped connections are retried only for GET, HEAD, PUT and DELETE.
+  - Refused connections, timeouts and streamed uploads are never retried.
 - `APIError.RetryAt`: when the server allows the request again (`Retry-After`, rate-limit reset).
-- Recognised refusals: `ErrOwnsRepos`, `ErrOrgMember`, `ErrLastOwner`, `ErrBranchProtected`, matched with
-  `errors.Is` through the new `APIError.Err` field and `APIError.Unwrap`. The `*APIError` keeps the
-  server's status and message.
+- **Recognised refusals**, matched with `errors.Is` through the new `APIError.Err` field and
+  `APIError.Unwrap`. The `*APIError` keeps the server's status and message.
+  - `ErrOwnsRepos`, `ErrOrgMember`, `ErrLastOwner`: Forgejo user and organisation administration.
+  - `ErrBranchProtected`: all three forges.
+  - `ErrInvalidOTP`: Forgejo 2FA.
+  - `ErrGPGSignature`: Forgejo GPG keys.
+  - `ErrPasswordRequired`: Forgejo token management.
+- Forgejo: `BasicAuthOTP(user, password, code)` and `BasicAuthOTPFunc(user, password, func() string)` for
+  accounts with two-factor authentication (`X-FORGEJO-OTP`). A code is accepted for 30 to 60 seconds.
+- Forgejo: `WithSudo(login)`, for site administrators acting as another user.
+- Capability bits `CapAccount`, `CapTokens`, `CapSecrets` and `CapCommits`, appended after `CapDirectory`; existing
+  values are unchanged and pinned by a test.
+- New dependency `golang.org/x/crypto` (v0.58.0), used by the GitHub backend only, for the sealed box.
 
 ### Changed
-- Transient failures that used to be returned at once are now retried (see Added); pass
+- Transient failures that used to be returned at once are now retried. Pass
   `WithRetry(gitoperationslib.NoRetry)` for the previous behaviour.
-- Contract and admin integration tests require the recognised refusals instead of any error.
-- API-stability rules for 1.x, in the README: new areas arrive as optional interfaces found by type
-  assertion; no method is ever added to an existing interface.
+- Bitbucket: `Directory().Me()` now reads GPG keys (`/users/{uuid}/gpg-keys`): `Missing` no longer lists
+  "GPG keys". `SSHKey.ID` is derived from the key's UUID (it was 0).
+- Forgejo: `GPGKeys().Verify` of a key whose ID starts with 0 fails on the server (HTTP 500, a Forgejo
+  bug); the error matches `ErrNotSupported`, and the key can be added again with the signature instead.
+- Contract and admin integration tests require the recognised refusals instead of any error, and cover
+  `Account`, `CI` and `History` on all three forges.
 
 ## [1.0.0] — 2026-10-29
 

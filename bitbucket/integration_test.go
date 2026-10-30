@@ -91,3 +91,5 @@ func TestIntegrationDirectory(t *testing.T) { contracttest.Directory(t, integrat
 func TestIntegrationAccount(t *testing.T) { contracttest.Account(t, integrationEnv(t)) }
 
 func TestIntegrationCI(t *testing.T) { contracttest.CI(t, integrationEnv(t)) }
+
+func TestIntegrationCommits(t *testing.T) { contracttest.Commits(t, integrationEnv(t)) }
