@@ -1,6 +1,6 @@
 module github.com/jeanfrancoisgratton/gitoperationslib
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/google/go-github/v93 v93.0.0
