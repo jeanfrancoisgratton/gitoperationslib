@@ -297,6 +297,9 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapCommits` | `commits` (commit history: `gol.History`) | ✅ | ✅ | ✅ |
 | `CapOrgAvatars` | `org-avatars` (organisation avatars: `gol.OrgAvatars`) | ✅ | | |
 | `CapUserWebhooks` | `user-webhooks` (your own webhooks: `gol.UserHooks`) | ✅ | | |
+| `CapCommitDiffs` | `commit-diffs` (a commit's raw diff: `gol.CommitDiffs`) | ✅ | ✅ | ✅ |
+| `CapPRContents` | `pr-contents` (a pull request's diff, files and commits: `gol.PRContents`) | ✅ | ✅ | ✅ |
+| `CapReviewComments` | `review-comments` (comments on a pull request's lines: `gol.ReviewComments`) | ✅ | ✅ | ✅ |
 | `CapSystemWebhooks` | `system-webhooks` (system and default webhooks: `gol.SiteHooks`) | ✅ | | |
 | `CapMirrors`, `CapMigrate` | reserved for future features | | | |
 
@@ -1348,6 +1351,53 @@ for _, r := range reviews.Items {
 | Approving one's own pull request | refused by the server | refused by the server | allowed |
 
 On Forgejo, `ListReviews` also reports pending review requests (`ReviewRequested`).
+
+**What a pull request changes** is a separate optional interface, `gol.PRContents` (`CapPRContents`), implemented by all three backends:
+
+```go
+c, ok := client.(gol.PRContents)
+
+// git diff; or gol.DiffPatch for the format-patch form. The caller closes the stream.
+stream, err := c.PullRequestDiff(ctx, "acme", "widget", pr.Number, gol.DiffUnified)
+if err == nil {
+	defer stream.Close()
+	io.Copy(os.Stdout, stream)
+}
+
+files, err := c.PullRequestFiles(ctx, "acme", "widget", pr.Number, gol.ListOptions{})
+commits, err := c.PullRequestCommits(ctx, "acme", "widget", pr.Number, gol.ListOptions{}) // newest first, no Files or Stats
+```
+
+| | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| Size limits | | diffs that are too large are refused (HTTP 406); at most 3000 files, 250 commits | |
+| `PullRequestFiles` pages | ✅ | ✅ | ✅ |
+| `PullRequestCommits` pages | ✅ | ✅ with one more request per page, to read them newest first | ❌ all at once: page tokens cannot be expressed as a `NextPage` number |
+
+**Comments on lines** are another optional interface, `gol.ReviewComments` (`CapReviewComments`):
+
+```go
+rc, ok := client.(gol.ReviewComments)
+
+// Exactly one of Line (new version of the file) and OldLine (old version, for a removed line).
+comment, err := rc.CreateReviewComment(ctx, "acme", "widget", pr.Number, gol.CreateReviewCommentOptions{
+	Path: "main.go",
+	Line: 12,
+	Body: "This can return nil.",
+	// CommitID: "abc123", // default: the pull request's head; not on Bitbucket
+})
+comments, err := rc.ListReviewComments(ctx, "acme", "widget", pr.Number, gol.ListOptions{})
+err = rc.DeleteReviewComment(ctx, "acme", "widget", pr.Number, comment.ID)
+```
+
+| | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| A line outside the diff, or an unknown path | ⚠️ accepted | refused | |
+| `Create` | creates a review holding the comment | 2 requests without `CommitID` | 1 request |
+| `List` | all at once, one more request per review with comments | pages | all at once, without general comments or deleted ones |
+| `Delete` | lists the comments first; the empty review stays | 1 request | 1 request |
+| `CommitID` | ✅ | ✅ | ❌ `ErrNotSupported` |
+| `ReviewComment.CommitID`, `ReviewID` | ✅ | ✅ | ❌ always empty |
 
 ---
 
@@ -2770,10 +2820,21 @@ page, err := h.Commits().List(ctx, "acme", "widget", gol.ListCommitsOptions{
 	Path: "src/",    // optional: commits touching this file or directory
 })
 
+// git log main..develop: the commits of develop that main does not have
+page, err = h.Commits().List(ctx, "acme", "widget", gol.ListCommitsOptions{Ref: "develop", Exclude: "main"})
+
 // git show --stat <ref>: one commit with its changed files
 c, err := h.Commits().Get(ctx, "acme", "widget", "develop") // branch head; or a tag, or a (short) SHA
 for _, f := range c.Files {
 	fmt.Println(f.Status, f.Path, f.PreviousPath, f.Additions, f.Deletions)
+}
+
+// git show <ref>: the raw diff, through a separate optional interface (CapCommitDiffs)
+d, ok := client.(gol.CommitDiffs)
+stream, err := d.CommitDiff(ctx, "acme", "widget", c.SHA, gol.DiffUnified) // or gol.DiffPatch, for git format-patch's form
+if err == nil {
+	defer stream.Close()
+	io.Copy(os.Stdout, stream)
 }
 ```
 
@@ -2798,6 +2859,8 @@ type Commit struct {
 |---|---|---|---|
 | `List`: ref, path, pages | ✅ (with `Path`, Forgejo ignores `PerPage`) | ✅ | ✅ |
 | `List`: `Since`, `Until` | ❌ | ✅ | ❌ |
+| `List`: `Exclude` | ✅ | ⚠️ one more request per page; not with `Path`, `Author`, `Since` or `Until` | ✅ |
+| `List`: `Author` | ❌ | ✅ login or e-mail address | ❌ |
 | `Get` by SHA, branch (slashes included), tag | ✅ | ✅ | ✅ (two requests for a branch with `/`) |
 | Per-file line counts | ❌ always 0; `Stats` has the totals | ✅ | ✅ |
 | Renames | ❌ reported as removed plus added | ✅ with `PreviousPath` | ✅ with `PreviousPath` |

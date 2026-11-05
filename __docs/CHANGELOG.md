@@ -8,9 +8,17 @@ change the public API.
 
 ## [1.3.0] — 2026-11-05
 
-Forgejo's user, system and default webhooks, and fixes found by auditing pagination. Forgejo 15 is now the minimum.
+Forgejo's user, system and default webhooks, what a pull request changes, comments on its lines, commit ranges and raw
+diffs, and fixes found by auditing pagination. Forgejo 15 is now the minimum.
 
 ### Added
+- **`PRContents`** (`CapPRContents`, all backends): `PullRequestDiff` (diff or patch, streamed), `PullRequestFiles` and
+  `PullRequestCommits`, newest first.
+- **`ReviewComments`** (`CapReviewComments`, all backends): `ListReviewComments`, `CreateReviewComment` and
+  `DeleteReviewComment`, on a line of the new or the old version of a file.
+- **`CommitDiffs`** (`CapCommitDiffs`, all backends): `CommitDiff` streams a commit's diff or patch.
+- `ListCommitsOptions.Exclude`, like `git log A..B`, on all backends. `ListCommitsOptions.Author`, on GitHub; the other
+  backends return `ErrNotSupported`.
 - **`UserHooks`** (`CapUserWebhooks`, Forgejo only): `UserWebhooks()` lists, gets, creates, edits and deletes the
   authenticated user's own webhooks.
 - **`SiteHooks`** (`CapSystemWebhooks`, Forgejo only, site admins):
@@ -39,6 +47,8 @@ Forgejo's user, system and default webhooks, and fixes found by auditing paginat
 - `Merge` on Forgejo failed with HTTP 405 "Please try again later" while the server was still checking the pull
   request. It is now retried, under `RetryPolicy`.
 - Forgejo errors whose JSON is followed by other content, such as an HTML page, lost their message.
+- On Bitbucket, internal listings that read every page stopped early on an endpoint with page tokens instead of page
+  numbers. They now follow the next link.
 
 ## [1.2.0] — 2026-11-05
 

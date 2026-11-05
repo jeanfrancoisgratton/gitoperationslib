@@ -84,6 +84,9 @@ func (m commits) List(ctx context.Context, owner, repo string, opts gitoperation
 	if !opts.Since.IsZero() || !opts.Until.IsZero() {
 		return gitoperationslib.Page[gitoperationslib.Commit]{}, notSupported("commits.list", "Bitbucket cannot filter commits by date")
 	}
+	if opts.Author != "" {
+		return gitoperationslib.Page[gitoperationslib.Commit]{}, notSupported("commits.list", "Bitbucket cannot filter commits by author")
+	}
 	ref := opts.Ref
 	if ref == "" {
 		// /commits without a revision lists every branch.
@@ -96,6 +99,9 @@ func (m commits) List(ctx context.Context, owner, repo string, opts gitoperation
 	q := bitbucketapi.ListQuery(opts.ListOptions)
 	if opts.Path != "" {
 		q.Set("path", opts.Path)
+	}
+	if opts.Exclude != "" {
+		q.Set("exclude", opts.Exclude)
 	}
 	page, err := bitbucketapi.List[commitJSON](ctx, m.c.api, repoPath(owner, repo, "commits", ref), q)
 	if err != nil {

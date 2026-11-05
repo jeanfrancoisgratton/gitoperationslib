@@ -85,10 +85,28 @@ func (c *Client) PostForm(ctx context.Context, path string, form url.Values, out
 	return c.send(ctx, http.MethodPost, path, nil, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", out)
 }
 
-func (c *Client) send(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string, out any) (*Response, error) {
+// Stream GETs path (relative to the API root, already escaped; see Path) and
+// returns the response body, whatever its size. The caller must close it.
+func (c *Client) Stream(ctx context.Context, path string) (io.ReadCloser, error) {
 	u := c.baseURL.JoinPath(path)
-	u.RawQuery = query.Encode()
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
+	req, err := c.newRequest(ctx, http.MethodGet, u.String(), nil, "")
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/plain")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("bitbucket: GET %s: %w", u.Path, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		defer resp.Body.Close()
+		return nil, decodeError(resp)
+	}
+	return resp.Body, nil
+}
+
+func (c *Client) newRequest(ctx context.Context, method, rawURL string, body io.Reader, contentType string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("bitbucket: build request: %w", err)
 	}
@@ -101,6 +119,16 @@ func (c *Client) send(ctx context.Context, method, path string, query url.Values
 	}
 	if c.authorize != nil {
 		c.authorize(req)
+	}
+	return req, nil
+}
+
+func (c *Client) send(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string, out any) (*Response, error) {
+	u := c.baseURL.JoinPath(path)
+	u.RawQuery = query.Encode()
+	req, err := c.newRequest(ctx, method, u.String(), body, contentType)
+	if err != nil {
+		return nil, err
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -156,6 +184,7 @@ type Page[T any] struct {
 }
 
 // NextPage returns the page number of the next link, or 0 on the last page.
+// It cannot express a page token: endpoints that use them go through All.
 func (p *Page[T]) NextPage() int {
 	if p.Next == "" {
 		return 0
@@ -189,22 +218,27 @@ func List[T any](ctx context.Context, c *Client, path string, query url.Values) 
 	return &page, nil
 }
 
-// All fetches every page of path.
+// All fetches every page of path, following the next links: some endpoints,
+// such as a pull request's commits, have page tokens instead of page numbers.
 func All[T any](ctx context.Context, c *Client, path string, query url.Values) ([]T, error) {
 	if query == nil {
 		query = url.Values{}
 	}
 	query.Set("pagelen", "100")
 	var all []T
-	for page := 1; ; {
-		query.Set("page", strconv.Itoa(page))
+	for {
 		p, err := List[T](ctx, c, path, query)
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, p.Values...)
-		if page = p.NextPage(); page == 0 {
+		if p.Next == "" {
 			return all, nil
 		}
+		next, err := url.Parse(p.Next)
+		if err != nil {
+			return nil, fmt.Errorf("bitbucket: next page of %s: %w", path, err)
+		}
+		query = next.Query()
 	}
 }

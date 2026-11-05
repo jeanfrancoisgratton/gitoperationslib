@@ -148,6 +148,21 @@ func (c *Client) doJSON(req *http.Request, out any) (*Response, error) {
 	}, nil
 }
 
+// Stream GETs path (relative to /api/v1, already escaped) and returns the
+// response body, whatever its size. The caller must close it.
+func (c *Client) Stream(ctx context.Context, path string) (io.ReadCloser, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, c.apiURL(path, nil), nil, "")
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/plain")
+	resp, err := c.send(req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
+}
+
 // Text GETs path (relative to /api/v1, already escaped) and returns the
 // response body, for the few endpoints that answer text/plain.
 func (c *Client) Text(ctx context.Context, path string) (string, error) {

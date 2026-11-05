@@ -57,11 +57,60 @@ func TestPagination(t *testing.T) {
 	if err != nil || len(all) != 3 || all[2].N != 3 {
 		t.Fatalf("All = %+v, %v", all, err)
 	}
-	if strings.Join(seen, " ") != "page=1&pagelen=100 page=2&pagelen=100" {
+	if strings.Join(seen, " ") != "pagelen=100 page=2&pagelen=100" {
 		t.Errorf("queries = %v", seen)
 	}
 	if q := ListQuery(gitoperationslib.ListOptions{Page: 3, PerPage: 500}).Encode(); q != "page=3&pagelen=100" {
 		t.Errorf("ListQuery = %s (pagelen is capped at 100)", q)
+	}
+}
+
+func TestAllFollowsPageTokens(t *testing.T) {
+	var pages []string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		pages = append(pages, page)
+		switch page {
+		case "":
+			io.WriteString(w, `{"values":[{"n":1}],"next":"https://api.bitbucket.org/2.0/x?pagelen=100&page=67Fg"}`)
+		case "67Fg":
+			io.WriteString(w, `{"values":[{"n":2}],"next":"https://api.bitbucket.org/2.0/x?pagelen=100&page=8aZ"}`)
+		default:
+			io.WriteString(w, `{"values":[{"n":3}]}`)
+		}
+	})
+	type item struct{ N int }
+	all, err := All[item](context.Background(), c, Path("x"), nil)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("All = %+v, %v", all, err)
+	}
+	if strings.Join(pages, " ") != " 67Fg 8aZ" {
+		t.Errorf("pages = %q", pages)
+	}
+}
+
+func TestStream(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") != "text/plain" || r.Header.Get("Authorization") != "Bearer tok" {
+			t.Errorf("headers = %v", r.Header)
+		}
+		if r.URL.Path == "/2.0/gone" {
+			w.WriteHeader(http.StatusNotFound)
+			io.WriteString(w, `{"type":"error","error":{"message":"nope"}}`)
+			return
+		}
+		io.WriteString(w, "diff")
+	})
+	stream, err := c.Stream(context.Background(), "ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if data, _ := io.ReadAll(stream); string(data) != "diff" {
+		t.Errorf("body = %q", data)
+	}
+	if _, err := c.Stream(context.Background(), "gone"); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("err = %v, want 404", err)
 	}
 }
 

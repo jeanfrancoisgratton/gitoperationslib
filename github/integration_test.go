@@ -46,7 +46,7 @@ func integrationEnv(t *testing.T) contracttest.Env {
 		t.Fatal(err)
 	}
 	t.Logf("GitHub user %s, org %s", login, org)
-	return contracttest.Env{Client: c, Org: org, Login: login, CreateBranch: c.createBranch, CheckPing: c.checkPingDelivery, PublicProtectionRepo: true}
+	return contracttest.Env{Client: c, Org: org, Login: login, CreateBranch: c.createBranch, WriteFile: c.writeFile, CheckPing: c.checkPingDelivery, PublicProtectionRepo: true}
 }
 
 func TestIntegrationRepos(t *testing.T) {
@@ -78,6 +78,22 @@ func (c *Client) createBranch(ctx context.Context, owner, repo, branch, file, co
 	_, _, err = c.gh.Repositories.CreateFile(ctx, owner, repo, file, &gh.RepositoryContentFileOptions{
 		Message: gh.Ptr("Add " + file), Content: []byte(content), Branch: gh.Ptr(branch),
 	})
+	return convertError(err)
+}
+
+func TestIntegrationDiffs(t *testing.T) { contracttest.Diffs(t, integrationEnv(t)) }
+
+// writeFile commits file to branch, creating or replacing it.
+func (c *Client) writeFile(ctx context.Context, owner, repo, branch, file, content string) error {
+	opts := &gh.RepositoryContentFileOptions{Message: gh.Ptr("Write " + file), Content: []byte(content), Branch: gh.Ptr(branch)}
+	cur, _, _, err := c.gh.Repositories.GetContents(ctx, owner, repo, file, &gh.RepositoryContentGetOptions{Ref: branch})
+	if err = convertError(err); err != nil && !gitoperationslib.IsNotFound(err) {
+		return err
+	}
+	if err == nil {
+		opts.SHA = cur.SHA
+	}
+	_, _, err = c.gh.Repositories.UpdateFile(ctx, owner, repo, file, opts)
 	return convertError(err)
 }
 

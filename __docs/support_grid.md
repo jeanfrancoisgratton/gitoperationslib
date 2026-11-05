@@ -170,6 +170,11 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Approve, request changes, comment | ✅ | ✅ | ✅ |
 | Review a specific commit | ✅ | ✅ | ❌ |
 | Approving one's own pull request | refused by the server | refused by the server | allowed by the server |
+| Raw diff and patch (`PRContents`) | ✅ | ⚠️ too large: HTTP 406 | ✅ |
+| Changed files (`PRContents`) | ✅ | ✅ at most 3000 | ✅ |
+| Commits, newest first (`PRContents`) | ✅ | ✅ at most 250, one more request per page | ⚠️ all at once |
+| Comments on lines: list, create, delete (`ReviewComments`) | ⚠️ server checks neither path nor line; list all at once | ✅ | ⚠️ list all at once |
+| Comment on a specific commit (`ReviewComments`) | ✅ | ✅ | ❌ |
 
 ## Issues, labels, milestones and comments
 
@@ -295,6 +300,9 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | List commits from a branch, tag or SHA (default branch when empty) | ✅ | ✅ | ✅ |
 | Filter by path | ✅ (page size ignored) | ✅ | ✅ |
 | Filter by date (`Since`, `Until`) | ❌ | ✅ | ❌ |
+| Leave out another ref's commits (`Exclude`, like `git log A..B`) | ✅ | ⚠️ one more request per page; no other filters | ✅ |
+| Filter by author (`Author`) | ❌ | ✅ | ❌ |
+| Raw diff and patch of a commit (`CommitDiffs`) | ✅ | ✅ | ✅ |
 | Get a commit with its changed files and totals | ✅ | ✅ | ✅ |
 | Per-file line counts | ❌ | ✅ | ✅ |
 | Rename detection (`PreviousPath`) | ❌ removed + added | ✅† | ✅† |

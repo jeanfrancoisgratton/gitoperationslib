@@ -31,6 +31,9 @@ type Env struct {
 	// with one commit adding file. Pull request checks need it; the library
 	// has no branch or contents API yet.
 	CreateBranch func(ctx context.Context, owner, repo, branch, file, content string) error
+	// WriteFile commits file with content to an existing branch, creating
+	// or replacing it. The diff checks need it.
+	WriteFile func(ctx context.Context, owner, repo, branch, file, content string) error
 	// PublicProtectionRepo runs the protection checks in a public
 	// repository (GitHub free plans offer rulesets only there). It contains
 	// only the initial README and is deleted at the end of the test.

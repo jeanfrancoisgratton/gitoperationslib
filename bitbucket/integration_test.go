@@ -53,7 +53,7 @@ func integrationEnv(t *testing.T) contracttest.Env {
 	}
 	t.Logf("Bitbucket user %s, workspace %s", me.login(), workspace)
 	return contracttest.Env{
-		Client: c, Org: workspace, Login: me.login(), CreateBranch: c.createBranch,
+		Client: c, Org: workspace, Login: me.login(), CreateBranch: c.createBranch, WriteFile: c.writeFile,
 		HookURL: "https://example.com/gitopslib-hook", // must resolve in DNS
 	}
 }
@@ -69,6 +69,15 @@ func (c *Client) createBranch(ctx context.Context, owner, repo, branch, file, co
 	_, err = c.api.PostForm(ctx, repoPath(owner, repo, "src"), form, nil)
 	return err
 }
+
+// writeFile commits file to branch, creating or replacing it.
+func (c *Client) writeFile(ctx context.Context, owner, repo, branch, file, content string) error {
+	form := url.Values{file: {content}, "message": {"Write " + file}, "branch": {branch}}
+	_, err := c.api.PostForm(ctx, repoPath(owner, repo, "src"), form, nil)
+	return err
+}
+
+func TestIntegrationDiffs(t *testing.T) { contracttest.Diffs(t, integrationEnv(t)) }
 
 func TestIntegrationRepos(t *testing.T) { contracttest.Repos(t, integrationEnv(t)) }
 

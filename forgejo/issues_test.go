@@ -48,6 +48,8 @@ func TestIssuesRequests(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		case r.URL.Path == "/api/v1/repos/acme/widget/labels" && r.Method == http.MethodGet:
 			io.WriteString(w, `[{"id":1,"name":"bug","color":"d73a4a"},{"id":2,"name":"triage","color":"ededed"}]`)
+		case r.URL.Path == "/api/v1/orgs/acme/labels":
+			io.WriteString(w, `[]`)
 		case strings.Contains(r.URL.Path, "/issues/") && strings.HasSuffix(r.URL.Path, "/labels"):
 			io.WriteString(w, `[]`)
 		case strings.Contains(r.URL.Path, "/labels"):
@@ -109,6 +111,7 @@ func TestIssuesRequests(t *testing.T) {
 		"GET /api/v1/repos/acme/widget/labels?limit=50&page=1 ",
 		"DELETE /api/v1/repos/acme/widget/issues/5/labels/2? ",
 		"GET /api/v1/repos/acme/widget/labels?limit=50&page=1 ",
+		"GET /api/v1/orgs/acme/labels?limit=50&page=1 ", // a name missing from the repository
 		`POST /api/v1/repos/acme/widget/issues/5/comments? {"body":"hi"}`,
 		`PATCH /api/v1/repos/acme/widget/issues/comments/9? {"body":"hello"}`,
 		"DELETE /api/v1/repos/acme/widget/issues/comments/9? ",

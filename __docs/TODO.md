@@ -18,8 +18,8 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [ ] **5 →** Repository settings: collaborators (`/collaborators`, permissions), ~~deploy keys (`/repos/.../keys`),~~ push mirrors and mirror sync (`CapMirrors`, `CapMigrate` are reserved for them).
 - [ ] **6 →** CI: GitHub environment secrets, Bitbucket deployment variables, GitHub organisation secrets limited to selected repositories. Forgejo secrets already exist (repository, organisation, user; a user's cannot be listed).
 - [ ] **7 →** Commit statuses (`POST /statuses/{sha}`): would let the live tests exercise auto-merge's success path.
-- [ ] **8 →** Pull request extras: diff/patch, changed files, commits, line comments. A PR's commits and files can reuse `Commit` and `ChangedFile` (1.1.0).
-- [ ] **9 →** Commit history: `git log A..B` (Forgejo `not`, Bitbucket `exclude`; GitHub only through compare), author filter (GitHub `author`), diffs/patches of a commit.
+- [x] **8 →** Pull request extras: `PRContents` (diff/patch, changed files, commits) and `ReviewComments` (line comments: list, create, delete; not edit), 1.3.0.
+- [x] **9 →** Commit history: `ListCommitsOptions.Exclude` (`git log A..B`; GitHub through a comparison), `Author` (GitHub only), and `CommitDiffs` (diffs/patches of a commit), 1.3.0.
 
 ## Access tokens (Forgejo)
 
@@ -62,7 +62,7 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [x] **30 →** GitHub draft status changes and auto-merge via a minimal GraphQL client; `CancelAutoMerge` on both backends. Enhancement 1.
 - [ ] **31 →** GitHub auto-merge success path is unit-tested only: it needs a required status check, i.e. branch protection (public repositories on free plans).
 - [ ] **32 →** Forgejo drafts rely on the default `WORK_IN_PROGRESS_PREFIXES` (`WIP:`, `[WIP]`); a mismatch is reported, not worked around.
-- [ ] **33 →** Not exposed yet: line-level review comments, diff/patch, changed files, commits, update-branch, labels/milestones/assignees (wait for the issues area), `ListPROptions` head/base filters (GitHub only).
+- [ ] **33 →** Not exposed yet: editing a line comment, update-branch, labels/milestones/assignees (wait for the issues area), `ListPROptions` head/base filters (GitHub only).
 - [ ] **34 →** `IsMerged` reports false for a pull request that does not exist (both servers answer 404).
 
 ## Webhooks
@@ -149,6 +149,7 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [ ] **93 →**  IDs are derived from Bitbucket's UUIDs (first 15 hex digits); `Get`/`Edit`/`Delete` list the hooks to find them.
 - [ ] **94 →** `Repos().List("")` lists each workspace (Bitbucket retired `/repositories?role=member`); with several workspaces everything is returned as one page.
 - [ ] **95 →** Unit-test coverage of `bitbucket/` is ~53% (read paths and the ErrNotSupported stubs are covered by the integration checks only).
+- [ ] **96 →** Bitbucket answers a pull request's commits with page tokens (`page=67Fg`), which `Page.NextPage` cannot carry: `PullRequestCommits` returns them all at once, and the internal `All` now follows next links. Other public list calls still read `NextPage` as a number and were not audited: a token there would silently stop `All` after the first page.
 
 ## Very long term: more forges
 

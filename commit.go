@@ -38,6 +38,14 @@ type ListCommitsOptions struct {
 	// only; ErrNotSupported elsewhere.
 	Since time.Time `json:"since,omitzero"`
 	Until time.Time `json:"until,omitzero"`
+	// Exclude leaves out the commits reachable from this branch, tag or
+	// commit, like git log Exclude..Ref. On GitHub, which needs a comparison
+	// for this, it takes one more request per page, and cannot be combined
+	// with Path, Since, Until or Author (ErrNotSupported).
+	Exclude string `json:"exclude,omitzero"`
+	// Author keeps the commits of this account or e-mail address. GitHub
+	// only; ErrNotSupported elsewhere.
+	Author string `json:"author,omitzero"`
 }
 
 // Commit is a commit. Files and Stats are only filled by Commits.Get.
@@ -70,15 +78,17 @@ type CommitStats struct {
 	Deletions int `json:"deletions"`
 }
 
-// ChangedFile is a file a commit changed.
+// ChangedFile is a file a commit or a pull request changed.
 type ChangedFile struct {
 	Path string `json:"path"`
-	// PreviousPath is the old path of a renamed file. Forgejo does not
-	// detect renames: it reports the old path removed and the new one added.
+	// PreviousPath is the old path of a renamed file. In a commit, Forgejo
+	// does not detect renames: it reports the old path removed and the new
+	// one added.
 	PreviousPath string     `json:"previousPath,omitzero"`
 	Status       FileStatus `json:"status"`
-	// Additions and Deletions count the file's changed lines; always 0 on
-	// Forgejo, which only reports the commit's totals (Commit.Stats).
+	// Additions and Deletions count the file's changed lines. In a commit,
+	// they are always 0 on Forgejo, which only reports the totals
+	// (Commit.Stats).
 	Additions int `json:"additions"`
 	Deletions int `json:"deletions"`
 }

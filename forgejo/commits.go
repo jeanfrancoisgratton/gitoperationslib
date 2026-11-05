@@ -81,6 +81,9 @@ func (j *commitJSON) toCommit(withDetails bool) gitoperationslib.Commit {
 }
 
 func (m commits) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListCommitsOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+	if opts.Author != "" {
+		return gitoperationslib.Page[gitoperationslib.Commit]{}, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "commits.list", "Forgejo cannot filter commits by author")
+	}
 	if !opts.Since.IsZero() || !opts.Until.IsZero() {
 		return gitoperationslib.Page[gitoperationslib.Commit]{}, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "commits.list", "Forgejo cannot filter commits by date")
 	}
@@ -94,6 +97,9 @@ func (m commits) List(ctx context.Context, owner, repo string, opts gitoperation
 	}
 	if opts.Path != "" {
 		q.Set("path", opts.Path)
+	}
+	if opts.Exclude != "" {
+		q.Set("not", opts.Exclude)
 	}
 	var out []commitJSON
 	resp, err := m.c.api.Do(ctx, http.MethodGet, forgejoapi.Path("repos", owner, repo, "commits"), q, nil, &out)

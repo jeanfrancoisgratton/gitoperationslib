@@ -14,10 +14,12 @@ import (
 	"context"
 	"encoding/base64"
 	"net/http"
+	"net/url"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/contracttest"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
 )
@@ -40,7 +42,33 @@ func integrationEnv(t *testing.T) contracttest.Env {
 		t.Fatal(err)
 	}
 	t.Logf("Forgejo %s, user %s, org %s", c.Version(), login, org)
-	return contracttest.Env{Client: c, Org: org, Login: login, UserRepos: true, CreateBranch: c.createBranch}
+	return contracttest.Env{Client: c, Org: org, Login: login, UserRepos: true, CreateBranch: c.createBranch, WriteFile: c.writeFile}
+}
+
+func TestIntegrationDiffs(t *testing.T) {
+	contracttest.Diffs(t, integrationEnv(t))
+}
+
+// writeFile commits file to branch, creating or replacing it.
+func (c *Client) writeFile(ctx context.Context, owner, repo, branch, file, content string) error {
+	path := forgejoapi.Path("repos", owner, repo, "contents", file)
+	body := map[string]string{
+		"content": base64.StdEncoding.EncodeToString([]byte(content)),
+		"message": "Write " + file,
+		"branch":  branch,
+	}
+	var cur struct {
+		SHA string `json:"sha"`
+	}
+	_, err := c.api.Do(ctx, http.MethodGet, path, url.Values{"ref": {branch}}, nil, &cur)
+	switch {
+	case gitoperationslib.IsNotFound(err):
+		_, err = c.api.Do(ctx, http.MethodPost, path, nil, body, nil)
+	case err == nil:
+		body["sha"] = cur.SHA
+		_, err = c.api.Do(ctx, http.MethodPut, path, nil, body, nil)
+	}
+	return err
 }
 
 func TestIntegrationRepos(t *testing.T) {

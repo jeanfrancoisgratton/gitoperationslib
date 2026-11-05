@@ -30,7 +30,10 @@ const (
 	// Added in 1.2.0.
 	CapOrgAvatars // organisation avatars (OrgAvatars)
 	// Added in 1.3.0.
-	CapUserWebhooks // the authenticated user's webhooks (UserHooks)
+	CapUserWebhooks   // the authenticated user's webhooks (UserHooks)
+	CapCommitDiffs    // a commit's raw diff (CommitDiffs)
+	CapPRContents     // a pull request's diff, files and commits (PRContents)
+	CapReviewComments // comments on a pull request's lines (ReviewComments)
 )
 
 var capabilityNames = []struct {
@@ -58,6 +61,9 @@ var capabilityNames = []struct {
 	{CapCommits, "commits"},
 	{CapOrgAvatars, "org-avatars"},
 	{CapUserWebhooks, "user-webhooks"},
+	{CapCommitDiffs, "commit-diffs"},
+	{CapPRContents, "pr-contents"},
+	{CapReviewComments, "review-comments"},
 }
 
 // Has reports whether c includes every capability in want.

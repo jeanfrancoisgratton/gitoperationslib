@@ -42,13 +42,45 @@ func toChangedFile(f *gh.CommitFile) gitoperationslib.ChangedFile {
 }
 
 func (m commits) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListCommitsOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+	if opts.Exclude != "" {
+		return m.listExcluding(ctx, owner, repo, opts)
+	}
 	list, resp, err := m.c.gh.Repositories.ListCommits(ctx, owner, repo, &gh.CommitsListOptions{
-		SHA: opts.Ref, Path: opts.Path, Since: opts.Since, Until: opts.Until, ListOptions: ghList(opts.ListOptions),
+		SHA: opts.Ref, Path: opts.Path, Author: opts.Author, Since: opts.Since, Until: opts.Until, ListOptions: ghList(opts.ListOptions),
 	})
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Commit]{}, convertError(err)
 	}
 	return toPage(list, resp, toCommit), nil
+}
+
+// listExcluding is git log Exclude..Ref: GitHub's commit list has no such
+// filter, so it goes through a comparison, which lists the commits oldest
+// first. One request asks for the total, to read them from the end.
+func (m commits) listExcluding(ctx context.Context, owner, repo string, opts gitoperationslib.ListCommitsOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+	if opts.Path != "" || opts.Author != "" || !opts.Since.IsZero() || !opts.Until.IsZero() {
+		return gitoperationslib.Page[gitoperationslib.Commit]{}, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "commits.list",
+			"Exclude cannot be combined with Path, Author, Since or Until")
+	}
+	ref := opts.Ref
+	if ref == "" {
+		r, _, err := m.c.gh.Repositories.Get(ctx, owner, repo)
+		if err != nil {
+			return gitoperationslib.Page[gitoperationslib.Commit]{}, convertError(err)
+		}
+		ref = r.GetDefaultBranch()
+	}
+	cmp, _, err := m.c.gh.Repositories.CompareCommits(ctx, owner, repo, opts.Exclude, ref, &gh.ListOptions{PerPage: 1})
+	if err != nil {
+		return gitoperationslib.Page[gitoperationslib.Commit]{}, convertError(err)
+	}
+	return newestFirst(cmp.GetTotalCommits(), opts.ListOptions, func(lo gh.ListOptions) ([]*gh.RepositoryCommit, error) {
+		cmp, _, err := m.c.gh.Repositories.CompareCommits(ctx, owner, repo, opts.Exclude, ref, &lo)
+		if err != nil {
+			return nil, convertError(err)
+		}
+		return cmp.Commits, nil
+	})
 }
 
 func (m commits) Get(ctx context.Context, owner, repo, ref string) (*gitoperationslib.Commit, error) {
@@ -60,7 +92,7 @@ func (m commits) Get(ctx context.Context, owner, repo, ref string) (*gitoperatio
 	for {
 		rc, resp, err := m.c.gh.Repositories.GetCommit(ctx, owner, repo, ref, opts)
 		if err != nil {
-			return nil, convertError(err)
+			return nil, commitError(err)
 		}
 		if opts.Page == 0 {
 			c = toCommit(rc)
