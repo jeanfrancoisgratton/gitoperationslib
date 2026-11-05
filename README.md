@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/gitoperationslib_banner.png" alt="gitoperationslib banner" width="100%">
+  <img src="__images/gitoperationslib_banner.png" alt="gitoperationslib banner" width="100%">
 </p>
 ___
 
@@ -15,10 +15,10 @@ A Go library for managing git forges through one set of interfaces. Write your c
 
 | Document | Contents |
 |---|---|
-| **[docs/USAGE.md](docs/USAGE.md)** | The full guide: every package, interface, type and option, with examples and per-backend notes |
-| [docs/support_grid.md](docs/support_grid.md) | Support level of every feature, per backend |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history |
-| [docs/TODO.md](docs/TODO.md) | Open items, planned work, and the reasons behind each limitation |
+| **[__docs/USAGE.md](__docs/USAGE.md)** | The full guide: every package, interface, type and option, with examples and per-backend notes |
+| [__docs/support_grid.md](__docs/support_grid.md) | Support level of every feature, per backend |
+| [__docs/CHANGELOG.md](__docs/CHANGELOG.md) | Release history |
+| [__docs/TODO.md](__docs/TODO.md) | Open items, planned work, and the reasons behind each limitation |
 | [pkg.go.dev](https://pkg.go.dev/github.com/jeanfrancoisgratton/gitoperationslib) | API reference generated from the source |
 
 ## Installation
@@ -96,7 +96,7 @@ client, err := github.New(os.Getenv("GITHUB_TOKEN"))
 client, err := bitbucket.New(bitbucket.APIToken(os.Getenv("BITBUCKET_EMAIL"), os.Getenv("BITBUCKET_TOKEN")))
 ```
 
-[docs/USAGE.md](docs/USAGE.md) covers every area in detail.
+[__docs/USAGE.md](__docs/USAGE.md) covers every area in detail.
 
 ## Architecture
 
@@ -135,14 +135,14 @@ The `webhook` package depends only on the root package, so a service that only r
 - **One interface, several forges.** The domain types model what the forges share. Features only some forges have, or added after 1.0.0, are separate, optional interfaces (`Admin`, `ExternalAssets`, `Account`, `CI`, `History`), so the shared model is not bent around one vendor. Check for them with `Capabilities()` or a type assertion.
 - **Explicit refusals.** When a forge cannot do something (a merge method, an option, a whole area), the call returns `ErrNotSupported` with a `*NotSupportedError` naming the backend, the operation and the reason. A few calls also return the result along with that error: this happens when the server applied the request but silently ignored part of it, so you can see what actually happened.
 - **No third-party types in the public API.** Every exported type belongs to this library, and conversion happens inside each backend. A `go-github` major version bump therefore never breaks callers.
-- **Few dependencies.** The Forgejo and Bitbucket backends are small hand-written HTTP clients on `net/http`, not SDKs. The Forgejo SDK was rejected because of its churn, and because its minimum Go version would have become ours (see [DESIGN-NOTES.md](docs/DESIGN-NOTES.md)). Only GitHub uses an SDK (`go-github`, pinned), plus a minimal GraphQL client for what REST cannot do: draft toggling, auto-merge and issue deletion, and `golang.org/x/crypto` to encrypt Actions secrets (the standard library has no XSalsa20-Poly1305).
+- **Few dependencies.** The Forgejo and Bitbucket backends are small hand-written HTTP clients on `net/http`, not SDKs. The Forgejo SDK was rejected because of its churn, and because its minimum Go version would have become ours (see [DESIGN-NOTES.md](__docs/DESIGN-NOTES.md)). Only GitHub uses an SDK (`go-github`, pinned), plus a minimal GraphQL client for what REST cannot do: draft toggling, auto-merge and issue deletion, and `golang.org/x/crypto` to encrypt Actions secrets (the standard library has no XSalsa20-Poly1305).
 - **Consistent conventions:**
   - Every call takes a `context.Context`.
   - Lists are paginated the same way everywhere (`ListOptions`, `Page[T]`, `All`).
   - In `Edit…Options`, `nil` means "leave unchanged".
   - Enums are typed (`Visibility`, `MergeMethod`, `PRState`, …), never bare strings or booleans.
   - Webhook event names follow GitHub's and are translated for the other forges.
-  - Every public struct has camelCase JSON tags. Fields only some forges report, and zero times, are omitted, and secrets are never serialised. See [USAGE §3.7](docs/USAGE.md#37-json).
+  - Every public struct has camelCase JSON tags. Fields only some forges report, and zero times, are omitted, and secrets are never serialised. See [USAGE §3.7](__docs/USAGE.md#37-json).
 - **Safe defaults.** A zero-value `BranchProtection` blocks deletion and force pushes. Deleting, renaming or changing the permissions of an organisation's owner team is refused (`ErrOwnerTeam`), because Forgejo would otherwise let an organisation lose all its owners. Webhook signatures are compared in constant time.
 - **Forgejo first.** Forgejo is the reference backend, and its full feature set is exposed, including features GitHub lacks: extra merge methods, file-pattern protection, external release assets, and user, organisation and team administration. The minimum supported version is checked when connecting.
 - **Verified against real servers.** One contract suite (`internal/contracttest`) runs against every backend, and it also checks that each backend fails the way its documentation says it should.
@@ -173,7 +173,7 @@ Differences worth knowing before you start:
 - **Merge methods:** Forgejo has six, GitHub three (merge, squash, rebase) and Bitbucket five.
 - **Webhooks:** Forgejo silently drops event names it does not know, and the library reports them as an error. Only Forgejo has branch filters and authorization headers.
 
-The full feature-by-feature comparison is in **[docs/support_grid.md](docs/support_grid.md)**. Per-call notes are in [docs/USAGE.md](docs/USAGE.md).
+The full feature-by-feature comparison is in **[__docs/support_grid.md](__docs/support_grid.md)**. Per-call notes are in [__docs/USAGE.md](__docs/USAGE.md).
 
 ## Testing
 
@@ -192,10 +192,10 @@ Integration tests skip themselves unless their environment variables are set. Th
 | Forgejo admin | a disposable local instance (below); non-loopback URLs are refused |
 
 ```sh
-scripts/forgejo-testenv.sh start   # Forgejo 15 in Docker on 127.0.0.1:3999, writes .env.testenv
+__scripts/forgejo-testenv.sh start   # Forgejo 15 in Docker on 127.0.0.1:3999, writes .env.testenv
 set -a; source .env; source .env.testenv; set +a
 go test -tags integration ./...
-scripts/forgejo-testenv.sh stop    # removes the container and .env.testenv
+__scripts/forgejo-testenv.sh stop    # removes the container and .env.testenv
 ```
 
 The GitHub protection checks briefly create a **public** repository, because free plans only allow rulesets on public repositories. Running the GitHub suites many times in a row can trigger GitHub's secondary rate limit on repository creation, which blocks new repositories for up to an hour.

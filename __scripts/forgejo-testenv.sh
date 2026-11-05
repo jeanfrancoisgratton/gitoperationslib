@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Disposable Forgejo instance for admin integration tests.
 #
-#   scripts/forgejo-testenv.sh start   # start container, create admin, write .env.testenv
-#   scripts/forgejo-testenv.sh stop    # remove container (all data is lost)
+#   __scripts/forgejo-testenv.sh start   # start container, create admin, write .env.testenv
+#   __scripts/forgejo-testenv.sh stop    # remove container (all data is lost)
 #
 # Then: set -a; source .env.testenv; set +a; go test -tags integration ./...
 #

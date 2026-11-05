@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -140,6 +141,50 @@ func TestIsMemberNotFound(t *testing.T) {
 	c := fakeForgejo(t, http.NotFound)
 	if ok, err := c.Orgs().IsMember(context.Background(), "acme", "nobody"); ok || err != nil {
 		t.Errorf("IsMember = %v, %v; want false, nil", ok, err)
+	}
+}
+
+func TestOrgAvatars(t *testing.T) {
+	var requests []string
+	var avatar map[string]string
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		switch r.Method + " " + r.URL.Path {
+		case "POST /api/v1/orgs/acme/avatar":
+			json.NewDecoder(r.Body).Decode(&avatar)
+			w.WriteHeader(http.StatusNoContent)
+		case "DELETE /api/v1/orgs/acme/avatar":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	ctx := context.Background()
+	if !c.Capabilities().Has(gitoperationslib.CapOrgAvatars) {
+		t.Error("CapOrgAvatars not announced")
+	}
+	if err := c.SetOrgAvatar(ctx, "acme", strings.NewReader("PNGDATA")); err != nil || avatar["image"] != "UE5HREFUQQ==" {
+		t.Errorf("SetOrgAvatar: %v, body %v", err, avatar)
+	}
+	if err := c.DeleteOrgAvatar(ctx, "acme"); err != nil {
+		t.Error(err)
+	}
+
+	n := len(requests)
+	if err := c.SetOrgAvatar(ctx, "acme", strings.NewReader("")); err == nil {
+		t.Error("empty avatar accepted")
+	}
+	if err := c.SetOrgAvatar(ctx, "acme", io.LimitReader(zeros{}, gitoperationslib.MaxAvatarSize+1)); err == nil {
+		t.Error("oversized avatar accepted")
+	}
+	if err := c.SetOrgAvatar(ctx, "", strings.NewReader("PNGDATA")); err == nil {
+		t.Error("SetOrgAvatar: empty organisation accepted")
+	}
+	if err := c.DeleteOrgAvatar(ctx, ""); err == nil {
+		t.Error("DeleteOrgAvatar: empty organisation accepted")
+	}
+	if len(requests) != n {
+		t.Errorf("refused calls sent %v", requests[n:])
 	}
 }
 

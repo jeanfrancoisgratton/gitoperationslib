@@ -27,6 +27,8 @@ const (
 	CapTokens  // access token management (Account.Tokens)
 	CapSecrets // CI secrets and variables (CI)
 	CapCommits // commit history (History)
+	// Added in 1.2.0.
+	CapOrgAvatars // organisation avatars (OrgAvatars)
 )
 
 var capabilityNames = []struct {
@@ -52,6 +54,7 @@ var capabilityNames = []struct {
 	{CapTokens, "tokens"},
 	{CapSecrets, "secrets"},
 	{CapCommits, "commits"},
+	{CapOrgAvatars, "org-avatars"},
 }
 
 // Has reports whether c includes every capability in want.

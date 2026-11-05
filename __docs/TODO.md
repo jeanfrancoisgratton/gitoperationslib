@@ -4,16 +4,16 @@ Deferred items and open questions. Remove entries when done; note the increment 
 
 ## After 1.0.0
 
-1.0.0 (2026-10-29) was meant to be feature-complete. 1.1.0 (2026-10-30) reopened it for the gaps found in gitclt: `Account`, `CI`, `History` (commit log), Forgejo 2FA and Sudo, transport hardening (see docs/DESIGN-1.1.0.md). The points weighed before 1.0.0:
+1.0.0 (2026-10-29) was meant to be feature-complete. 1.1.0 (2026-10-30) reopened it for the gaps found in gitclt: `Account`, `CI`, `History` (commit log), Forgejo 2FA and Sudo, transport hardening (see __docs/DESIGN-1.1.0.md). The points weighed before 1.0.0:
 
-- [x] API stability: new areas land as optional interfaces found by type assertion, never as methods on existing interfaces (README, "Installation"). Decided for 1.1.0, see docs/DESIGN-1.1.0.md.
+- [x] API stability: new areas land as optional interfaces found by type assertion, never as methods on existing interfaces (README, "Installation"). Decided for 1.1.0, see __docs/DESIGN-1.1.0.md.
 - [ ] Areas no consumer exercises yet (gitclt uses repositories, branches, tags, releases, pull requests, `Directory` and `Admin`): webhooks, issues/labels/milestones, branch and tag protection, and since 1.1.0 `Account`, `CI` and `History` (covered by the live contract tests on all three forges, but not by a real tool). Mark them experimental in the documentation, or exercise them first.
 - [x] Transport hardening: retries/backoff on transient errors, GitHub rate-limit handling (see the Transport sections), and typed errors for the HTTP 500 refusals (Forgejo "org still owns repositories" and "last member of owner team", Bitbucket protected-branch deletion). 1.1.0 increment 1.
 - [ ] Unit-test coverage: GitHub backend ~75%, Bitbucket ~65% (was ~53% before 1.1.0), Forgejo ~85%.
 
-## Candidates for 1.2.0
+## Candidates for later minor releases
 
-From the 1.1.0 review of gitclt; nothing decided.
+From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and `OrgAvatars` from the gitclt 1.4.0 work.
 - [ ] Repository settings: collaborators (`/collaborators`, permissions), deploy keys (`/repos/.../keys`), push mirrors and mirror sync (`CapMirrors`, `CapMigrate` are reserved for them).
 - [ ] CI: GitHub environment secrets, Bitbucket deployment variables, GitHub organisation secrets limited to selected repositories.
 - [ ] Commit statuses (`POST /statuses/{sha}`): would let the live tests exercise auto-merge's success path.
@@ -33,7 +33,7 @@ From the 1.1.0 review of gitclt; nothing decided.
 - [x] Multipart upload for release assets (streamed, exact Content-Length). Increment 6.
 - [x] `Sudo` header option: admin acting as another user (`forgejo.WithSudo`). 1.1.0 increment 2.
 - [x] Basic auth with TOTP (`X-FORGEJO-OTP`) for accounts with 2FA: `BasicAuthOTP` (fixed code) and `BasicAuthOTPFunc` (code per request); `ErrInvalidOTP` when the code is missing or invalid. A code is valid from its 30-second period through the next one (Forgejo accepts ±1 period). 1.1.0 increment 2.
-- [ ] `scripts/forgejo-testenv.sh` could enrol a 2FA user for `TestIntegrationOTP` (web-only flow: log in, read the secret on `/user/settings/security/two_factor/enroll`, post a code). Done by hand with a Python script on 2026-10-30.
+- [ ] `__scripts/forgejo-testenv.sh` could enrol a 2FA user for `TestIntegrationOTP` (web-only flow: log in, read the secret on `/user/settings/security/two_factor/enroll`, post a code). Done by hand with a Python script on 2026-10-30.
 - [x] Retries / backoff on transient errors (5xx, connection reset). Forgejo sends no rate-limit headers. 1.1.0 increment 1 (`internal/retry`, shared by all backends).
 - [ ] `/api/forgejo/v1` namespace client, for Forgejo-only endpoints. Its swagger was not found at `/api/forgejo/v1/swagger.json` on 15.0.2; locate it.
 
@@ -108,6 +108,7 @@ From the 1.1.0 review of gitclt; nothing decided.
 - [ ] Forgejo lets an admin delete an org's owner team (204) and rename it; the library refuses both. Consider reporting upstream.
 - [ ] Forgejo 15.0.11 bug: `POST /user/gpg_key_verify` fails with HTTP 500 "public gpg key does not exist [id: 0]" for every key whose ID starts with 0 (about 1 in 16; the signer's key ID seems to lose its leading zero). Adding the key with `armored_signature` works. The library maps it to `ErrNotSupported` with a hint (1.1.0 increment 4). Report upstream at codeberg.org/forgejo/forgejo.
 - [ ] Forgejo answers HTTP 500 for invalid avatar images (unknown format, side over 4096 px) and stores any theme name in `/user/settings`. Consider reporting upstream.
+- [ ] Forgejo accepts `read_only` on `POST /user/keys` (it is in the swagger) but stores `mode=2`, read-write, and reports no such field (11.0.16, 15.0.11). The library refuses `ReadOnly` (1.2.0); `TestIntegrationAdminSSHKeyReadOnlyIgnored` fails if the response starts reporting it. Worth reporting upstream, as it is security-relevant.
 - [ ] Forgejo 15.0.x bug: `PATCH /admin/users/{u}` ignores `"visibility":"public"` (zero value of its enum). `Users.Edit` returns `ErrNotSupported` with the updated user when the server keeps the old value. Consider reporting upstream at codeberg.org/forgejo/forgejo.
 - [x] Interfaces are frozen since 1.0.0: adding a method to an existing interface (as `Admin` gained `Orgs()`/`Teams()`, or `Branches` gained `Compare` in 0.4.0) breaks external implementations such as mocks, so it needs a new major version. New behaviour goes through new optional interfaces, found by type assertion like `Admin` (decided for 1.1.0). At 2.0.0 they may be folded into `Client`.
 
@@ -128,7 +129,7 @@ From the 1.1.0 review of gitclt; nothing decided.
 - [x] Integration tests: `-tags integration` + `GITOPSLIB_FORGEJO_{URL,TOKEN,ORG}` (token scopes: repository, organization, user, issue — read and write); repos prefixed `gitopslib-it-`, cleanup deletes only those. Added in increment 3.
 - [x] Shared contract checks in `internal/contracttest`, run by both backends' integration tests. Added in increment 4.
 - [x] GitHub user-namespace: covered by setting `GITOPSLIB_GITHUB_ORG` to the account's own login. Increment 4.
-- [x] Disposable Forgejo for admin tests: `scripts/forgejo-testenv.sh start|stop` (Docker, loopback only, writes `.env.testenv`). Admin tests refuse non-loopback URLs. Increment 5a.
+- [x] Disposable Forgejo for admin tests: `__scripts/forgejo-testenv.sh start|stop` (Docker, loopback only, writes `.env.testenv`). Admin tests refuse non-loopback URLs. Increment 5a.
 - [ ] CI — **on hold until really needed** (no Forgejo/GitHub Actions for now). When picked up: (1) checks: gofmt, go vet (with and without the integration tag), go test -race; (2) Forgejo integration against the disposable container only, never production (testenv script would also create a CI org and write `GITOPSLIB_FORGEJO_*`); (3) GitHub integration on manual trigger only (token as a CI secret; rate limits; public repo for protection checks). Platform undecided (Jenkins, Forgejo Actions, GitHub Actions).
 
 ## Bitbucket Cloud

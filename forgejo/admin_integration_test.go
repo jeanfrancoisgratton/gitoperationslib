@@ -1,7 +1,7 @@
 //go:build integration
 
 // Admin integration tests. They need a site-admin token, so they run only
-// against the disposable instance from scripts/forgejo-testenv.sh:
+// against the disposable instance from __scripts/forgejo-testenv.sh:
 //
 //	GITOPSLIB_TESTENV_URL          must point at localhost
 //	GITOPSLIB_TESTENV_ADMIN_TOKEN  admin token created by the script
@@ -10,10 +10,12 @@ package forgejo
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base32"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -45,7 +47,7 @@ func adminEnv(t *testing.T) (context.Context, *Client) {
 	t.Helper()
 	rawURL, token := os.Getenv("GITOPSLIB_TESTENV_URL"), os.Getenv("GITOPSLIB_TESTENV_ADMIN_TOKEN")
 	if rawURL == "" || token == "" {
-		t.Skip("GITOPSLIB_TESTENV_URL and GITOPSLIB_TESTENV_ADMIN_TOKEN must be set (scripts/forgejo-testenv.sh start)")
+		t.Skip("GITOPSLIB_TESTENV_URL and GITOPSLIB_TESTENV_ADMIN_TOKEN must be set (__scripts/forgejo-testenv.sh start)")
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -608,7 +610,7 @@ func newHookReceiver(t *testing.T, secrets map[string][]byte) *hookReceiver {
 	t.Helper()
 	host := os.Getenv("GITOPSLIB_TESTENV_HOOK_HOST")
 	if host == "" {
-		t.Skip("GITOPSLIB_TESTENV_HOOK_HOST must be set (scripts/forgejo-testenv.sh start)")
+		t.Skip("GITOPSLIB_TESTENV_HOOK_HOST must be set (__scripts/forgejo-testenv.sh start)")
 	}
 	l, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
 	if err != nil {
@@ -857,6 +859,99 @@ func TestIntegrationAdminAvatar(t *testing.T) {
 	}
 	if got := avatarURL(); got != original {
 		t.Errorf("avatar URL after DeleteAvatar = %s, want the default %s", got, original)
+	}
+}
+
+// TestIntegrationAdminOrgAvatar sets and deletes an organisation's avatar, and
+// checks who may do it.
+func TestIntegrationAdminOrgAvatar(t *testing.T) {
+	ctx, c := adminEnv(t)
+	org := testLogin(t)
+	cleanupOrg(t, c, &org)
+	if _, err := c.Orgs().Create(ctx, gitoperationslib.CreateOrgOptions{Name: org}); err != nil {
+		t.Fatal(err)
+	}
+	avatarURL := func() string {
+		o, err := c.Orgs().Get(ctx, org)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return o.AvatarURL
+	}
+	original := avatarURL()
+
+	var img bytes.Buffer
+	if err := png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 32, 32))); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetOrgAvatar(ctx, org, bytes.NewReader(img.Bytes())); err != nil {
+		t.Fatal(err)
+	}
+	if avatarURL() == original {
+		t.Error("avatar URL unchanged after SetOrgAvatar")
+	}
+	if err := c.SetOrgAvatar(ctx, org, strings.NewReader("not an image")); gitoperationslib.StatusCode(err) != http.StatusInternalServerError {
+		t.Errorf("not an image: err = %v, want Forgejo's HTTP 500", err)
+	}
+
+	stranger := testLogin(t)
+	cleanupUser(t, c, &stranger)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: stranger, Email: stranger + "@example.com", Password: "Avatar-Passw0rd!", MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sudo, err := New(ctx, os.Getenv("GITOPSLIB_TESTENV_URL"), Token(os.Getenv("GITOPSLIB_TESTENV_ADMIN_TOKEN")), WithSudo(stranger))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sudo.SetOrgAvatar(ctx, org, bytes.NewReader(img.Bytes())); !gitoperationslib.IsForbidden(err) {
+		t.Errorf("non-owner SetOrgAvatar: err = %v, want 403", err)
+	}
+	if err := sudo.DeleteOrgAvatar(ctx, org); !gitoperationslib.IsForbidden(err) {
+		t.Errorf("non-owner DeleteOrgAvatar: err = %v, want 403", err)
+	}
+
+	if err := c.DeleteOrgAvatar(ctx, org); err != nil {
+		t.Fatal(err)
+	}
+	if got := avatarURL(); got != original {
+		t.Errorf("avatar URL after DeleteOrgAvatar = %s, want the default %s", got, original)
+	}
+	if err := c.DeleteOrgAvatar(ctx, org); err != nil {
+		t.Errorf("second DeleteOrgAvatar: %v", err)
+	}
+	if err := c.DeleteOrgAvatar(ctx, org+"-none"); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("unknown organisation: err = %v, want 404", err)
+	}
+}
+
+// TestIntegrationAdminSSHKeyReadOnlyIgnored watches the Forgejo behaviour that
+// makes SSHKeys.Add refuse ReadOnly. If this fails, Forgejo may have started
+// honouring read_only: check the stored mode (public_key table, 1 = read), then
+// reconsider the refusal.
+func TestIntegrationAdminSSHKeyReadOnlyIgnored(t *testing.T) {
+	ctx, c := adminEnv(t)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blob bytes.Buffer
+	for _, part := range [][]byte{[]byte("ssh-ed25519"), pub} {
+		_ = binary.Write(&blob, binary.BigEndian, uint32(len(part)))
+		blob.Write(part)
+	}
+	body := map[string]any{
+		"title": testLogin(t), "key": "ssh-ed25519 " + base64.StdEncoding.EncodeToString(blob.Bytes()), "read_only": true,
+	}
+	var out map[string]any
+	if _, err := c.api.Do(ctx, http.MethodPost, "user/keys", nil, body, &out); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := out["id"].(float64)
+	t.Cleanup(func() { _ = c.SSHKeys().Delete(context.Background(), int64(id)) })
+	if v, ok := out["read_only"]; ok {
+		t.Errorf("Forgejo now reports read_only = %v", v)
 	}
 }
 

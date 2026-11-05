@@ -239,6 +239,23 @@ type Orgs interface {
 	RemoveMember(ctx context.Context, org, user string) error
 }
 
+// OrgAvatars sets and deletes organisation avatars. Only the Forgejo backend
+// implements it (CapOrgAvatars); find it with a type assertion:
+//
+//	avatars, ok := client.(gitoperationslib.OrgAvatars)
+//
+// The caller must own the organisation or be a site admin (HTTP 403 otherwise),
+// and a token needs the write:organization scope.
+type OrgAvatars interface {
+	// SetOrgAvatar uploads image (PNG, JPEG, GIF…; at most MaxAvatarSize bytes)
+	// as org's avatar. The server checks the image: Forgejo answers HTTP 500
+	// for an unknown format or an image wider or taller than 4096 pixels.
+	SetOrgAvatar(ctx context.Context, org string, image io.Reader) error
+	// DeleteOrgAvatar restores org's default avatar. It succeeds when org has
+	// none.
+	DeleteOrgAvatar(ctx context.Context, org string) error
+}
+
 // Teams manages an organisation's teams, their members and repositories.
 // Teams are addressed by ID; use GetByName to look one up.
 type Teams interface {

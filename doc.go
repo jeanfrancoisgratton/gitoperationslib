@@ -4,6 +4,6 @@
 // return an error matching ErrNotSupported.
 //
 // Create a client with forgejo.New, github.New or bitbucket.New; the webhook
-// sub-package receives and verifies deliveries. See docs/USAGE.md in the
+// sub-package receives and verifies deliveries. See __docs/USAGE.md in the
 // repository for the full guide.
 package gitoperationslib

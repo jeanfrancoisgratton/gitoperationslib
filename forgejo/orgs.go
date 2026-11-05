@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -175,6 +176,23 @@ func (o orgs) Rename(ctx context.Context, name, newName string) error {
 func (o orgs) Delete(ctx context.Context, name string) error {
 	_, err := o.c.api.Do(ctx, http.MethodDelete, forgejoapi.Path("orgs", name), nil, nil, nil)
 	return refusal.Mark(err, refusal.Rule{Status: http.StatusInternalServerError, Fragment: "still has ownership of repositories", Sentinel: gitoperationslib.ErrOwnsRepos})
+}
+
+var _ gitoperationslib.OrgAvatars = (*Client)(nil)
+
+func (c *Client) SetOrgAvatar(ctx context.Context, org string, image io.Reader) error {
+	if org == "" {
+		return errors.New("forgejo: orgavatars.set: organisation is required")
+	}
+	return c.uploadAvatar(ctx, "orgavatars.set", forgejoapi.Path("orgs", org, "avatar"), image)
+}
+
+func (c *Client) DeleteOrgAvatar(ctx context.Context, org string) error {
+	if org == "" {
+		return errors.New("forgejo: orgavatars.delete: organisation is required")
+	}
+	_, err := c.api.Do(ctx, http.MethodDelete, forgejoapi.Path("orgs", org, "avatar"), nil, nil, nil)
+	return err
 }
 
 func (o orgs) Members(ctx context.Context, org string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {

@@ -253,6 +253,7 @@ Works with any token; the server filters what the caller may see. Forgejo checks
 | Users: list, get, create, edit, rename, delete (purge) | ✅ site admins | — | — (not implemented by choice) |
 | Switch a user back to public visibility | ⚠️ Forgejo 15 ignores it; reported as `ErrNotSupported` | — | — |
 | Organisations: list, get, create (also for another user), edit, rename, delete | ✅ | — | — |
+| Organisation avatar: set, delete (`OrgAvatars`) | ✅ | — | — |
 | Organisation members: list, check, remove | ✅ | — | — |
 | Teams: list, get, get by name, create, edit, delete | ✅ | — | — |
 | Team members and repositories | ✅ | — | — |
@@ -268,7 +269,7 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | List e-mail addresses | ✅ | ✅ | ✅ |
 | Add, delete e-mail addresses | ✅ | ✅ (verification e-mail sent) | ❌ refused with token authentication |
 | List, get, add, delete SSH keys | ✅ | ✅ | ✅ `ID` derived from the UUID |
-| Read-only SSH keys | ✅ | ❌ | ❌ |
+| Read-only SSH keys | ❌ the API has the option but stores a read-write key, so the library refuses it | ❌ | ❌ |
 | List, get, add, delete GPG keys | ✅ | ✅ | ✅ `ID` derived from the fingerprint; key must bear an account address |
 | GPG verification by signed token | ⚠️ not for key IDs starting with 0 (Forgejo bug): add the key with the signature instead | ❌ | ❌ |
 | Edit profile (name, description, website, location) | ✅ | ✅ | ❌ |

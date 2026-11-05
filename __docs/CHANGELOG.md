@@ -6,6 +6,28 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [1.2.0] — unreleased
+
+Organisation avatars, and two fixes where `Account` promised what Forgejo does not do. Both were found by gitclt
+on a real server: the library's fake servers answered the way it expected.
+
+### Added
+- **`OrgAvatars`** (`CapOrgAvatars`, Forgejo only): `SetOrgAvatar` and `DeleteOrgAvatar`, an optional interface
+  found with `client.(gol.OrgAvatars)`. Images follow the same rules as `Profile().SetAvatar`.
+
+### Changed
+- `SSHKeys().Add` on Forgejo refuses `AddSSHKeyOptions.ReadOnly` with `ErrNotSupported`, before any request. Code
+  that sets it now gets an error instead of a key with more access than it asked for. All three backends now refuse
+  the option.
+
+### Fixed
+- **Security-relevant:** `AddSSHKeyOptions.ReadOnly` had no effect on Forgejo. Its API accepts `read_only` on user
+  keys, but stores a read-write key and reports no such field (checked on 11.0.16 and 15.0.11). Keys added with it
+  through 1.1.0 are read-write: check them, and delete any that should not have write access.
+- `SSHKey.ReadOnly` is documented as GitHub only, and is never set on Forgejo.
+- `Emails().Add` on Forgejo and GitHub returned every address on the account: it now returns only the ones added.
+  Its documentation no longer says they are unverified: without required confirmation, Forgejo reports them verified.
+
 ## [1.1.0] — 2026-10-30
 
 Three new optional interfaces (`Account`, `CI`, `History`), transport hardening and Forgejo two-factor
@@ -108,7 +130,7 @@ JSON support. The JSON key names are now part of the public API.
   `CurrentUser`: the refused parts as data (part, HTTP status, message), since `Incomplete` (an
   `error`) is not serialised.
 - A test that fails when an exported field lacks a camelCase JSON tag.
-- `docs/USAGE.md` §3.7 (JSON).
+- `__docs/USAGE.md` §3.7 (JSON).
 
 ### Changed
 - `webhook.Event.Payload` is now `json.RawMessage` instead of `[]byte`, so it marshals as JSON
@@ -151,7 +173,7 @@ JSON support. The JSON key names are now part of the public API.
   message now names Bitbucket.
 
 ### Documentation
-- README rewritten (architecture, design choices, backend differences); `docs/USAGE.md` added,
+- README rewritten (architecture, design choices, backend differences); `__docs/USAGE.md` added,
   covering every package, interface and option.
 
 ## [0.1.7] — 2026-10-21
@@ -200,11 +222,11 @@ A LICENSE file, so documentation gets properly shown on https://pkg.go.dev/
   `pullrequest:…` → `pull_request` / `pull_request_review` with an action); the new
   `Event.Key` field keeps the raw key. Built from Bitbucket's documentation and tested with
   synthetic fixtures.
-- `docs/support_grid.md`: support level of every feature, per backend.
-- `docs/CHANGELOG.md` (this file).
-- `docs/forgejo-swagger-15.0.2.json`: Forgejo 15.0.2's API definition, for reference.
+- `__docs/support_grid.md`: support level of every feature, per backend.
+- `__docs/CHANGELOG.md` (this file).
+- `__docs/forgejo-swagger-15.0.2.json`: Forgejo 15.0.2's API definition, for reference.
 - `_dontexec` marker: the module is a library, not an executable.
-- `docs/TODO.md`: next priorities (Forgejo access tokens, then GitHub App authentication),
+- `__docs/TODO.md`: next priorities (Forgejo access tokens, then GitHub App authentication),
   CI kept on hold, and an assessment of GitLab and Bitbucket as further backends.
 
 ### Changed
@@ -214,7 +236,7 @@ A LICENSE file, so documentation gets properly shown on https://pkg.go.dev/
   area a backend lacks must return `ErrNotSupported` instead of being skipped. Verified
   against Forgejo, github.com and Bitbucket Cloud.
 - README: Bitbucket client setup, receiving Bitbucket webhooks, Bitbucket test variables;
-  the feature and backend-difference grids moved to `docs/support_grid.md`.
+  the feature and backend-difference grids moved to `__docs/support_grid.md`.
 - Repository history rewritten (commit messages only): every commit after the initial one
   has a new hash, and `v0.1.0` was re-tagged on the rewritten commit with identical file
   contents (Go module checksums are unchanged).
@@ -250,6 +272,6 @@ A LICENSE file, so documentation gets properly shown on https://pkg.go.dev/
   payloads; fixtures captured from real Forgejo and GitHub deliveries.
 - Shared contract checks (`internal/contracttest`) run against each backend by its
   integration tests (`-tags integration`).
-- `scripts/forgejo-testenv.sh`: disposable local Forgejo in Docker for the admin and webhook
+- `__scripts/forgejo-testenv.sh`: disposable local Forgejo in Docker for the admin and webhook
   delivery tests (admin tests refuse non-loopback URLs).
-- README with worked examples for every area; `docs/TODO.md`.
+- README with worked examples for every area; `__docs/TODO.md`.

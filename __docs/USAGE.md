@@ -294,6 +294,7 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapTokens` | `tokens` (`Account().Tokens()`) | ✅ | | |
 | `CapSecrets` | `secrets` (CI secrets and variables: `gol.CI`) | ✅ | ✅ | ✅ |
 | `CapCommits` | `commits` (commit history: `gol.History`) | ✅ | ✅ | ✅ |
+| `CapOrgAvatars` | `org-avatars` (organisation avatars: `gol.OrgAvatars`) | ✅ | | |
 | `CapMirrors`, `CapMigrate`, `CapSystemWebhooks` | reserved for future features | | | |
 
 ```go
@@ -316,6 +317,11 @@ if admin, ok := client.(gol.Admin); ok {
 // Release assets that link to external files: Forgejo only.
 if ext, ok := client.Releases().(gol.ExternalAssets); ok {
 	_ = ext
+}
+
+// Organisation avatars (§17.2): Forgejo only.
+if avatars, ok := client.(gol.OrgAvatars); ok {
+	_ = avatars
 }
 
 // Your own account (§16.5) and CI secrets and variables (§20): all three backends.
@@ -2164,7 +2170,7 @@ type Account interface {
 | E-mail addresses: list | ✅ | ✅ | ✅ |
 | E-mail addresses: add, delete | ✅ | ✅ (sends a verification e-mail) | ❌ refused with token authentication |
 | SSH keys: list, get, add, delete | ✅ | ✅ | ✅ (`ID` derived from the key's UUID) |
-| Read-only SSH keys (`AddSSHKeyOptions.ReadOnly`) | ✅ | ❌ | ❌ |
+| Read-only SSH keys (`AddSSHKeyOptions.ReadOnly`) | ❌ (refused: Forgejo ignores the option and stores a read-write key) | ❌ | ❌ |
 | GPG keys: list, get, add, delete | ✅ | ✅ | ✅ (`ID` derived from the fingerprint) |
 | GPG key verification by signature | ✅ (not for key IDs starting with 0, see below) | ❌ (GitHub checks e-mail addresses) | ❌ (same) |
 | Profile: edit | ✅ | ✅ | ❌ no API (the profile is the Atlassian account's) |
@@ -2372,6 +2378,21 @@ err = orgs.Delete(ctx, "acme-corp")         // fails while it still owns reposit
 ```
 
 There is no direct "add member": users join an organisation through one of its teams (`Teams().AddMember`).
+
+**Avatars** are a separate optional interface, `gol.OrgAvatars` (`CapOrgAvatars`), implemented by the Forgejo client itself:
+
+```go
+avatars, ok := client.(gol.OrgAvatars)
+if !ok {
+	log.Fatalf("%s cannot set organisation avatars", client.Backend())
+}
+err := avatars.SetOrgAvatar(ctx, "acme", image) // image is an io.Reader
+err = avatars.DeleteOrgAvatar(ctx, "acme")      // back to the default avatar; the old image is gone
+```
+
+- **Rights:** you must own the organisation or be a site admin; anyone else gets HTTP 403. A token also needs the `write:organization` scope.
+- **Image:** the same rules as `SetAvatar` ([§16.5](#165-managing-your-own-account-account)): up to `gol.MaxAvatarSize`, and HTTP 500 from Forgejo for an unknown format or a side over 4096 pixels.
+- **Deleting** succeeds when the organisation has no avatar of its own. An unknown organisation gives HTTP 404.
 
 ### 17.3 Teams
 
