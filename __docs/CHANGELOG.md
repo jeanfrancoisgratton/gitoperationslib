@@ -43,7 +43,7 @@ typed webhook payloads, and fixes found by auditing pagination. Forgejo 15 is no
     the kinds apart, so the library checks by listing the system webhooks first.
 - Unit tests for what only the live tests reached: Bitbucket refs, pull requests, repositories and protection; GitHub
   and Forgejo labels and milestones, GitHub issue edits; `internal/refusal`. Coverage is now about 88% for Bitbucket,
-  86% for GitHub and 90% for Forgejo.
+  87% for GitHub and 90% for Forgejo.
 - Issue calls that take label names on Forgejo (`Create`, `Edit`, `AddLabels`, `RemoveLabel`) now also find the
   organisation's labels. A repository label wins over an organisation label of the same name.
 
@@ -53,11 +53,11 @@ typed webhook payloads, and fixes found by auditing pagination. Forgejo 15 is no
 - Bitbucket's `pullrequest:comment_created`, `_updated` and `_deleted` deliveries are now reported with the `Event.Name`
   `issue_comment`, or `pull_request_review_comment` on a line. The key stays in `Event.Key`.
 - Forgejo 15.0.0 or later is now required: `forgejo.New` refuses older servers (`MinimumVersion` was 11.0.10).
-- `Webhooks().Edit` on Bitbucket keeps a webhook's "skip certificate verification" setting, which it used to reset.
 - `CapSystemWebhooks` and `CapMirrors` are no longer reserved: the Forgejo client now announces them. `CapMigrate` still
   is.
 
 ### Fixed
+- `Webhooks().Edit` on Bitbucket keeps a webhook's "skip certificate verification" setting, which it used to reset.
 - `gol.All` and `Page.NextPage` stopped after the first page on most Forgejo lists, silently dropping the rest: labels,
   milestones, webhooks, organisation members, teams, team members and repositories, secrets, variables, SSH
   keys, tokens and reviews. These send `X-Total-Count` but no `Link` header, so `NextPage` now falls back on the
