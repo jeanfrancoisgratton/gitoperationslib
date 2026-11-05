@@ -301,7 +301,9 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 |---|---|---|---|
 | Repository secrets: list, set, delete | ✅ | ✅ sealed-box encryption | ✅ secured Pipelines variables |
 | Repository variables: list, get, set, delete | ✅ | ✅ | ✅ |
-| Organisation / workspace secrets and variables | ✅ | ✅† visible to all repositories | ✅ workspace variables |
+| Organisation / workspace secrets and variables | ✅ | ✅† visible to all repositories when created; `Set` keeps later changes | ✅ workspace variables |
+| Environment secrets and variables (`EnvCI`) | ❌ no environments | ✅† | ✅ deployment variables |
+| Organisation secrets limited to some repositories (`OrgSecrets`) | ❌ | ✅† | ❌ |
 | User secrets and variables | ⚠️ secrets cannot be listed | ❌ | ❌ refused with API tokens |
 
 ## Commit history (`History`)

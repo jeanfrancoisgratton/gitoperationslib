@@ -306,6 +306,8 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapMirrors` | `mirrors` (push mirrors and syncing mirrors: `gol.Mirrors`) | ✅ | | |
 | `CapGitHooks` | `git-hooks` (server-side git hooks: `gol.GitHooks`) | ✅ | | |
 | `CapHookDeliveries` | `hook-deliveries` (a webhook's delivery history: `gol.HookDeliveries`) | | ✅ | |
+| `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
+| `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
 | `CapMigrate` | reserved for a future feature | | | |
 
 ```go
@@ -2897,7 +2899,7 @@ Named values for CI workflows: Forgejo Actions, GitHub Actions, Bitbucket Pipeli
 ```go
 ci, ok := client.(gol.CI)
 
-scope := gol.RepoCI("acme", "widget") // or gol.OrgCI("acme"), gol.UserCI()
+scope := gol.RepoCI("acme", "widget") // or gol.EnvCI("acme", "widget", "prod"), gol.OrgCI("acme"), gol.UserCI()
 err := ci.Secrets().Set(ctx, scope, "DEPLOY_TOKEN", token) // creates or replaces
 err = ci.Variables().Set(ctx, scope, "ENVIRONMENT", "prod")
 v, err := ci.Variables().Get(ctx, scope, "ENVIRONMENT")
@@ -2906,7 +2908,8 @@ v, err := ci.Variables().Get(ctx, scope, "ENVIRONMENT")
 | | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|
 | Repository (`RepoCI`) | ✅ | ✅ | ✅ |
-| Organisation / workspace (`OrgCI`) | ✅ | ✅ visible to all the organisation's repositories | ✅ workspace variables |
+| Environment (`EnvCI`) | ❌ no environments | ✅ | ✅ deployment variables |
+| Organisation / workspace (`OrgCI`) | ✅ | ✅ visible to all the organisation's repositories, or limited (`OrgSecrets`) | ✅ workspace variables |
 | User (`UserCI`) | ✅ (secrets cannot be listed) | ❌ (user secrets are Codespaces') | ❌ refused with API tokens |
 | Names | upper-cased | upper-cased | kept as given |
 | Dates | secrets: created | created, updated | — |
@@ -2933,13 +2936,51 @@ Rules every forge enforces, answering 4xx otherwise:
 
 Notes per forge:
 - **GitHub:**
-  - An organisation secret or variable is created visible to all the organisation's repositories. A `Set` on an existing one keeps its visibility.
+  - An organisation secret or variable is created visible to all the organisation's repositories. A `Set` on an existing one keeps its visibility and selected repositories. For a secret, that takes one or two more requests.
   - Repository-level calls need the `repo` scope; organisation-level ones need `admin:org`.
 - **Bitbucket, one list for both kinds:** secrets and variables share a single list of Pipelines variables. `Secrets` shows its secured entries and `Variables` the others.
   - A name already used by one kind cannot be `Set` as the other: the call fails and asks you to delete the entry first, so a value never silently turns secret or public.
   - Lists return everything as one page.
 - **Bitbucket, delay after writes:** the workspace list lags about half a second behind writes. `Get` and `Delete` look a name up again for up to two seconds before reporting it missing (404).
-- **Not included:** GitHub environment secrets, Bitbucket deployment variables, and GitHub's selection of repositories for an organisation secret.
+
+### 20.1 Environments
+
+`gol.EnvCI` reaches the secrets and variables of a repository's environment, through the same `Secrets()` and `Variables()` calls (`CapCIEnvironments`): GitHub's environment secrets and variables, and Bitbucket's deployment variables. Forgejo has no environments and returns `ErrNotSupported`, rather than falling back on the repository's own secrets.
+
+```go
+scope := gol.EnvCI("acme", "widget", "Production")
+err := ci.Secrets().Set(ctx, scope, "DEPLOY_TOKEN", token)
+err = ci.Variables().Set(ctx, scope, "REGION", "eu")
+```
+
+- **The environment must exist:** anything else is HTTP 404. The library does not create environments.
+- **Naming it on Bitbucket:** by name or slug, ignoring case, or by its `{UUID}`. A name or slug takes one more request to look up, and an unknown one takes about two seconds to report, because the list lags behind a new environment.
+- **Bitbucket's rule still applies:** within an environment, secrets and variables share one list, as described above.
+- **GitHub plans:** environments in a private repository may need a paid plan.
+
+### 20.2 Limiting an organisation secret to some repositories (GitHub)
+
+`gol.OrgSecrets` (`CapOrgSecrets`) is GitHub only. The secrets of a Forgejo organisation or a Bitbucket workspace are available to all its repositories.
+
+```go
+s, ok := client.(gol.OrgSecrets)
+
+err := s.SetOrgSecret(ctx, "acme", "DEPLOY_TOKEN", token, gol.SecretAccess{
+	Visibility: gol.SecretVisibleSelected, // or gol.SecretVisibleAll, gol.SecretVisiblePrivate
+	Repos:      []string{"widget", "gadget"}, // names, without the owner
+})
+
+access, err := s.GetOrgSecretAccess(ctx, "acme", "DEPLOY_TOKEN")
+fmt.Println(access.Visibility, access.Repos)
+
+// Replace the list. HTTP 409 unless the visibility is "selected"; an empty list means nobody.
+err = s.SetOrgSecretRepos(ctx, "acme", "DEPLOY_TOKEN", []string{"widget"})
+```
+
+- Each repository named takes one more request, to find its ID.
+- A secret's value cannot be read back, so changing its visibility takes `SetOrgSecret`, with the value.
+- These need the `admin:org` scope.
+- Organisation variables can be limited too on GitHub, but the library does not expose that.
 
 ---
 

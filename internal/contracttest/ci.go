@@ -29,6 +29,47 @@ func CI(t *testing.T, env Env) {
 		}
 		ciScope(t, env, ci, gitoperationslib.OrgCI(env.Org))
 	})
+	t.Run("environment", func(t *testing.T) {
+		ctx := testContext(t)
+		repo, _ := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org, AutoInit: true})
+		const name = "Prod EU"
+		scope := gitoperationslib.EnvCI(repo.Owner, repo.Name, name)
+		if env.CreateEnvironment == nil {
+			if env.Client.Capabilities().Has(gitoperationslib.CapCIEnvironments) {
+				t.Fatal("no way to create an environment")
+			}
+			if err := ci.Secrets().Set(ctx, scope, "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+				t.Errorf("Secrets.Set: err = %v, want ErrNotSupported", err)
+			}
+			if _, err := ci.Variables().List(ctx, scope, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+				t.Errorf("Variables.List: err = %v, want ErrNotSupported", err)
+			}
+			return
+		}
+		missing := gitoperationslib.EnvCI(repo.Owner, repo.Name, "gitopslib-no-such-env")
+		if err := ci.Secrets().Set(ctx, missing, "X", "x"); !gitoperationslib.IsNotFound(err) {
+			t.Errorf("Secrets.Set in an unknown environment: err = %v, want 404", err)
+		}
+		if err := ci.Variables().Set(ctx, missing, "X", "x"); !gitoperationslib.IsNotFound(err) {
+			t.Errorf("Variables.Set in an unknown environment: err = %v, want 404", err)
+		}
+		if err := env.CreateEnvironment(ctx, repo.Owner, repo.Name, name); err != nil {
+			t.Fatal(err)
+		}
+		ciScope(t, env, ci, scope)
+		// The repository's own entries are a different list.
+		secret := ciName(t)
+		if err := ci.Secrets().Set(ctx, scope, secret, "x"); err != nil {
+			t.Fatal(err)
+		}
+		page, err := ci.Secrets().List(ctx, gitoperationslib.RepoCI(repo.Owner, repo.Name), gitoperationslib.ListOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slices.ContainsFunc(page.Items, func(s gitoperationslib.Secret) bool { return s.Name == secret }) {
+			t.Errorf("environment secret %s listed for the repository", secret)
+		}
+	})
 	t.Run("user", func(t *testing.T) {
 		ctx := testContext(t)
 		if env.Client.Backend() != gitoperationslib.BackendForgejo {

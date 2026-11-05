@@ -50,7 +50,7 @@ func integrationEnv(t *testing.T) contracttest.Env {
 		t.Fatal(err)
 	}
 	t.Logf("GitHub user %s, org %s", login, org)
-	return contracttest.Env{Client: c, Org: org, Login: login, CreateBranch: c.createBranch, WriteFile: c.writeFile, CheckPing: c.checkPingDelivery, PublicProtectionRepo: true, Collaborator: os.Getenv("GITOPSLIB_GITHUB_COLLABORATOR")}
+	return contracttest.Env{Client: c, Org: org, Login: login, CreateBranch: c.createBranch, WriteFile: c.writeFile, CheckPing: c.checkPingDelivery, PublicProtectionRepo: true, Collaborator: os.Getenv("GITOPSLIB_GITHUB_COLLABORATOR"), CreateEnvironment: c.createEnvironment}
 }
 
 func TestIntegrationCollaborators(t *testing.T) { contracttest.Collaborators(t, integrationEnv(t)) }
@@ -65,6 +65,11 @@ func TestIntegrationReleases(t *testing.T) {
 
 func TestIntegrationPullRequests(t *testing.T) {
 	contracttest.PullRequests(t, integrationEnv(t))
+}
+
+func (c *Client) createEnvironment(ctx context.Context, owner, repo, name string) error {
+	_, _, err := c.gh.Repositories.CreateUpdateEnvironment(ctx, owner, repo, name, &gh.CreateUpdateEnvironment{})
+	return convertError(err)
 }
 
 // createBranch creates branch from the default branch with one commit adding

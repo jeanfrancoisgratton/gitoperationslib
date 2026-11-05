@@ -21,6 +21,8 @@ func (c *Client) Variables() gitoperationslib.Variables { return variables{c} }
 func ciPath(scope gitoperationslib.CIScope, kind, name string) (string, error) {
 	var segs []string
 	switch {
+	case scope.Environment != "":
+		return "", gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, kind, "Forgejo Actions has no environments")
 	case scope.Repo != "" && scope.Owner == "":
 		return "", errors.New("forgejo: a repository scope needs an owner")
 	case scope.Repo != "":

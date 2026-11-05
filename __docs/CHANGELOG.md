@@ -10,9 +10,15 @@ change the public API.
 
 Forgejo's user, system and default webhooks, what a pull request changes, comments on its lines, commit ranges and raw
 diffs, a repository's collaborators, Forgejo's push mirrors, mirror sync and git hooks, GitHub's delivery history, more
-typed webhook payloads, and fixes found by auditing pagination. Forgejo 15 is now the minimum.
+typed webhook payloads, CI secrets and variables of an environment, GitHub organisation secrets limited to some
+repositories, and fixes found by auditing pagination. Forgejo 15 is now the minimum.
 
 ### Added
+- `EnvCI` (`CapCIEnvironments`) reaches the secrets and variables of a repository's environment through `Secrets()` and
+  `Variables()`: GitHub's environments and Bitbucket's deployment variables. Forgejo has no environments and returns
+  `ErrNotSupported`. `CIScope` gains an `Environment` field.
+- **`OrgSecrets`** (`CapOrgSecrets`, GitHub only): `GetOrgSecretAccess`, `SetOrgSecret` and `SetOrgSecretRepos` limit an
+  organisation secret to the private or selected repositories.
 - **`GitHooks`** (`CapGitHooks`, Forgejo only): `ListGitHooks`, `GetGitHook`, `SetGitHook` and `DeleteGitHook`. Forgejo
   refuses them unless the instance sets `DISABLE_GIT_HOOKS=false`.
 - **`HookDeliveries`** (`CapHookDeliveries`, GitHub only): `ListHookDeliveries`, `GetHookDelivery` and `RedeliverHook`.
@@ -57,6 +63,8 @@ typed webhook payloads, and fixes found by auditing pagination. Forgejo 15 is no
   is.
 
 ### Fixed
+- `Secrets().Set` on a GitHub organisation made the secret available to all repositories every time, whatever its
+  visibility was: changing a limited secret's value widened its access. It now keeps the visibility and repositories.
 - `Webhooks().Edit` on Bitbucket keeps a webhook's "skip certificate verification" setting, which it used to reset.
 - `gol.All` and `Page.NextPage` stopped after the first page on most Forgejo lists, silently dropping the rest: labels,
   milestones, webhooks, organisation members, teams, team members and repositories, secrets, variables, SSH

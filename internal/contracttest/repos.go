@@ -48,6 +48,9 @@ type Env struct {
 	// repository and remove again. On GitHub that sends them an invitation.
 	// Without it, these checks are skipped.
 	Collaborator string
+	// CreateEnvironment creates a repository environment; the library has no
+	// call for it. It is nil on a forge without environments.
+	CreateEnvironment func(ctx context.Context, owner, repo, name string) error
 }
 
 // isBitbucket reports whether env tests the Bitbucket backend, whose model

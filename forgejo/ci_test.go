@@ -83,3 +83,26 @@ func TestCIForgejo(t *testing.T) {
 		t.Errorf("refused calls sent %v", requests[n:])
 	}
 }
+
+// Forgejo Actions has no environments, and a call must not fall back on the
+// repository's own secrets.
+func TestEnvironmentsNotSupported(t *testing.T) {
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("request sent: %s", r.URL) })
+	ctx := context.Background()
+	scope := gitoperationslib.EnvCI("acme", "widget", "prod")
+	if _, err := c.Secrets().List(ctx, scope, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("Secrets.List = %v", err)
+	}
+	if err := c.Secrets().Set(ctx, scope, "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("Secrets.Set = %v", err)
+	}
+	if err := c.Secrets().Delete(ctx, scope, "X"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("Secrets.Delete = %v", err)
+	}
+	if _, err := c.Variables().Get(ctx, scope, "X"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("Variables.Get = %v", err)
+	}
+	if err := c.Variables().Set(ctx, scope, "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("Variables.Set = %v", err)
+	}
+}

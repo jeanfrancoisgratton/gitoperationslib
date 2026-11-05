@@ -37,6 +37,8 @@ const (
 	CapCollaborators  // a repository's collaborators (Collaborators)
 	CapGitHooks       // a repository's server-side git hooks (GitHooks)
 	CapHookDeliveries // a webhook's delivery history (HookDeliveries)
+	CapCIEnvironments // secrets and variables of an environment (EnvCI)
+	CapOrgSecrets     // organisation secrets limited to some repositories (OrgSecrets)
 )
 
 var capabilityNames = []struct {
@@ -70,6 +72,8 @@ var capabilityNames = []struct {
 	{CapCollaborators, "collaborators"},
 	{CapGitHooks, "git-hooks"},
 	{CapHookDeliveries, "hook-deliveries"},
+	{CapCIEnvironments, "ci-environments"},
+	{CapOrgSecrets, "org-secrets"},
 }
 
 // Has reports whether c includes every capability in want.

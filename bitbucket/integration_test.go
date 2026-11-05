@@ -20,6 +20,7 @@ package bitbucket
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -60,6 +61,14 @@ func integrationEnv(t *testing.T) contracttest.Env {
 		Client: c, Org: workspace, Login: me.login(), CreateBranch: c.createBranch, WriteFile: c.writeFile,
 		HookURL:      "https://example.com/gitopslib-hook", // must resolve in DNS
 		Collaborator: os.Getenv("GITOPSLIB_BITBUCKET_COLLABORATOR"),
+		CreateEnvironment: func(ctx context.Context, owner, repo, name string) error {
+			body := map[string]any{
+				"type": "deployment_environment", "name": name,
+				"environment_type": map[string]string{"type": "deployment_environment_type", "name": "Production"},
+			}
+			_, err := c.api.Do(ctx, http.MethodPost, repoPath(owner, repo, "environments"), nil, body, nil)
+			return err
+		},
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -17,7 +18,8 @@ var _ gitoperationslib.CI = (*Client)(nil)
 // list: Secrets are its secured entries, Variables the others. A name used by
 // one kind cannot be set as the other. Keys keep their case. Lists return
 // everything as one page. User-level variables are not available with API
-// tokens: UserCI returns ErrNotSupported.
+// tokens: UserCI returns ErrNotSupported. EnvCI reaches the deployment variables
+// of an environment, which work the same way.
 func (c *Client) Secrets() gitoperationslib.Secrets     { return secrets{ci{c}} }
 func (c *Client) Variables() gitoperationslib.Variables { return variables{ci{c}} }
 
@@ -37,37 +39,71 @@ const (
 
 type ci struct{ c *Client }
 
-func (v ci) path(op string, scope gitoperationslib.CIScope, uuid string) (string, error) {
-	var segs []string
+type environmentJSON struct {
+	UUID string `json:"uuid"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// environment returns the UUID of a repository's environment, waiting briefly
+// for a list that lags behind its creation (seen on 2026-11-05).
+func (v ci) environment(ctx context.Context, scope gitoperationslib.CIScope) (string, error) {
+	if strings.HasPrefix(scope.Environment, "{") {
+		return scope.Environment, nil
+	}
+	for attempt := 1; ; attempt++ {
+		all, err := bitbucketapi.All[environmentJSON](ctx, v.c.api, repoPath(scope.Owner, scope.Repo, "environments"), nil)
+		if err != nil {
+			return "", err
+		}
+		for _, e := range all {
+			if strings.EqualFold(e.Name, scope.Environment) || strings.EqualFold(e.Slug, scope.Environment) {
+				return e.UUID, nil
+			}
+		}
+		if attempt == findAttempts {
+			return "", &gitoperationslib.APIError{
+				Backend: gitoperationslib.BackendBitbucket, StatusCode: http.StatusNotFound,
+				Message: fmt.Sprintf("no environment %q in %s/%s", scope.Environment, scope.Owner, scope.Repo),
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(findDelay):
+		}
+	}
+}
+
+// base is the path of scope's list. For an environment, it looks up its UUID.
+func (v ci) base(ctx context.Context, op string, scope gitoperationslib.CIScope) (string, error) {
 	switch {
-	case scope.Owner == "" && scope.Repo == "":
+	case scope.Owner == "" && scope.Repo == "" && scope.Environment == "":
 		return "", notSupported(op, "user-level Pipelines variables are not available with API tokens")
 	case scope.Owner == "":
 		return "", fmt.Errorf("bitbucket: %s: a repository scope needs a workspace", op)
+	case scope.Environment != "" && scope.Repo == "":
+		return "", fmt.Errorf("bitbucket: %s: an environment scope needs a repository", op)
+	case scope.Environment != "":
+		uuid, err := v.environment(ctx, scope)
+		if err != nil {
+			return "", err
+		}
+		return repoPath(scope.Owner, scope.Repo, "deployments_config", "environments", uuid, "variables"), nil
 	case scope.Repo != "":
-		segs = []string{"repositories", scope.Owner, scope.Repo, "pipelines_config", "variables"}
-	default:
-		segs = []string{"workspaces", scope.Owner, "pipelines-config", "variables"}
+		return repoPath(scope.Owner, scope.Repo, "pipelines_config", "variables"), nil
 	}
-	if uuid != "" {
-		segs = append(segs, uuid)
-	}
-	return bitbucketapi.Path(segs...), nil
+	return bitbucketapi.Path("workspaces", scope.Owner, "pipelines-config", "variables"), nil
 }
 
-func (v ci) all(ctx context.Context, op string, scope gitoperationslib.CIScope) ([]pipelineVarJSON, error) {
-	path, err := v.path(op, scope, "")
-	if err != nil {
-		return nil, err
-	}
-	return bitbucketapi.All[pipelineVarJSON](ctx, v.c.api, path, nil)
-}
+// entry is the path of one variable of the list at base.
+func entry(base, uuid string) string { return base + "/" + bitbucketapi.Path(uuid) }
 
 // find returns the entry called name, waiting briefly for a list that lags
 // behind a write; nil if there is none.
-func (v ci) find(ctx context.Context, op string, scope gitoperationslib.CIScope, name string) (*pipelineVarJSON, error) {
+func (v ci) find(ctx context.Context, base, name string) (*pipelineVarJSON, error) {
 	for attempt := 1; ; attempt++ {
-		all, err := v.all(ctx, op, scope)
+		all, err := bitbucketapi.All[pipelineVarJSON](ctx, v.c.api, base, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -104,16 +140,16 @@ func (v ci) set(ctx context.Context, op string, scope gitoperationslib.CIScope, 
 	if name == "" {
 		return errors.New("bitbucket: " + op + ": name is required")
 	}
-	path, err := v.path(op, scope, "")
+	base, err := v.base(ctx, op, scope)
 	if err != nil {
 		return err
 	}
 	body := pipelineVarJSON{Key: name, Value: value, Secured: secured}
-	_, err = v.c.api.Do(ctx, http.MethodPost, path, nil, body, nil)
+	_, err = v.c.api.Do(ctx, http.MethodPost, base, nil, body, nil)
 	if gitoperationslib.StatusCode(err) != http.StatusConflict {
 		return err
 	}
-	existing, err := v.find(ctx, op, scope, name)
+	existing, err := v.find(ctx, base, name)
 	if err != nil {
 		return err
 	}
@@ -123,17 +159,13 @@ func (v ci) set(ctx context.Context, op string, scope gitoperationslib.CIScope, 
 	if existing.Secured != secured {
 		return fmt.Errorf("bitbucket: %s: %q is a %s, not a %s: delete it first", op, name, kindOf(existing.Secured), kindOf(secured))
 	}
-	path, err = v.path(op, scope, existing.UUID)
-	if err != nil {
-		return err
-	}
-	_, err = v.c.api.Do(ctx, http.MethodPut, path, nil, body, nil)
+	_, err = v.c.api.Do(ctx, http.MethodPut, entry(base, existing.UUID), nil, body, nil)
 	return err
 }
 
 // lookup finds the entry called name of the given kind.
-func (v ci) lookup(ctx context.Context, op string, scope gitoperationslib.CIScope, name string, secured bool) (*pipelineVarJSON, error) {
-	existing, err := v.find(ctx, op, scope, name)
+func (v ci) lookup(ctx context.Context, base, name string, secured bool) (*pipelineVarJSON, error) {
+	existing, err := v.find(ctx, base, name)
 	if err != nil {
 		return nil, err
 	}
@@ -144,16 +176,25 @@ func (v ci) lookup(ctx context.Context, op string, scope gitoperationslib.CIScop
 }
 
 func (v ci) delete(ctx context.Context, op string, scope gitoperationslib.CIScope, name string, secured bool) error {
-	existing, err := v.lookup(ctx, op, scope, name, secured)
+	base, err := v.base(ctx, op, scope)
 	if err != nil {
 		return err
 	}
-	path, err := v.path(op, scope, existing.UUID)
+	existing, err := v.lookup(ctx, base, name, secured)
 	if err != nil {
 		return err
 	}
-	_, err = v.c.api.Do(ctx, http.MethodDelete, path, nil, nil, nil)
+	_, err = v.c.api.Do(ctx, http.MethodDelete, entry(base, existing.UUID), nil, nil, nil)
 	return err
+}
+
+// all lists scope's entries.
+func (v ci) all(ctx context.Context, op string, scope gitoperationslib.CIScope) ([]pipelineVarJSON, error) {
+	base, err := v.base(ctx, op, scope)
+	if err != nil {
+		return nil, err
+	}
+	return bitbucketapi.All[pipelineVarJSON](ctx, v.c.api, base, nil)
 }
 
 type secrets struct{ ci }
@@ -197,7 +238,11 @@ func (v variables) List(ctx context.Context, scope gitoperationslib.CIScope, _ g
 }
 
 func (v variables) Get(ctx context.Context, scope gitoperationslib.CIScope, name string) (*gitoperationslib.Variable, error) {
-	e, err := v.lookup(ctx, "variables.get", scope, name, false)
+	base, err := v.base(ctx, "variables.get", scope)
+	if err != nil {
+		return nil, err
+	}
+	e, err := v.lookup(ctx, base, name, false)
 	if err != nil {
 		return nil, err
 	}

@@ -34,6 +34,9 @@ func TestSecretsGitHub(t *testing.T) {
 			}
 			stored[r.URL.Path] = body
 			w.WriteHeader(http.StatusCreated)
+		case "GET /api/v3/orgs/acme/actions/secrets/TOKEN": // a new secret
+			w.WriteHeader(http.StatusNotFound)
+			io.WriteString(w, `{"message": "Not Found"}`)
 		case "GET /api/v3/repos/acme/widget/actions/secrets":
 			io.WriteString(w, `{"total_count": 1, "secrets": [{"name": "TOKEN", "created_at": "2026-10-30T12:00:00Z", "updated_at": "2026-10-30T13:00:00Z"}]}`)
 		case "DELETE /api/v3/orgs/acme/actions/secrets/TOKEN":
