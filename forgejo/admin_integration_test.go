@@ -24,14 +24,12 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	"io"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -886,18 +884,13 @@ func webSystemHook(t *testing.T, ctx context.Context, c *Client, target, secret 
 		t.Fatal(err)
 	}
 	web := &http.Client{Jar: jar}
-	// Forgejo 11 wants a CSRF token from the form; 15 has none.
 	submit := func(page, action string, fields url.Values) {
 		t.Helper()
 		resp, err := web.Get(base + page)
 		if err != nil {
 			t.Fatal(err)
 		}
-		html, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if m := regexp.MustCompile(`name="_csrf"\s+value="([^"]+)"`).FindSubmatch(html); m != nil {
-			fields.Set("_csrf", string(m[1]))
-		}
 		resp, err = web.PostForm(base+action, fields)
 		if err != nil {
 			t.Fatal(err)

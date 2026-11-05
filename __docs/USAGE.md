@@ -82,6 +82,7 @@ Clients are safe for concurrent use. The few values they cache (such as the auth
 |---|---|
 | HTTP 429, or a rate limit (`Retry-After`, GitHub's `X-RateLimit-Remaining: 0`) | every method: the server did not process the request |
 | GitHub 409 "conflicting repository operation is still in progress" (shortly after creating a repository with `AutoInit`) | every method, same reason |
+| Forgejo 405 "Please try again later" (a merge while the server is still checking the pull request) | every method, same reason |
 | HTTP 502, 503, 504 | idempotent methods only (`GET`, `HEAD`, `PUT`, `DELETE`) |
 | Connection reset or closed mid-request | idempotent methods only |
 
@@ -101,7 +102,7 @@ client, err := github.New(token, github.WithRetry(gol.RetryPolicy{MaxAttempts: 5
 func forgejo.New(ctx context.Context, baseURL string, creds forgejo.Credentials, opts ...forgejo.Option) (*forgejo.Client, error)
 ```
 
-`New` **makes a request**: it reads the server version and refuses servers older than `forgejo.MinimumVersion` (11.0.10).
+`New` **makes a request**: it reads the server version and refuses servers older than `forgejo.MinimumVersion` (15.0.0).
 
 `baseURL` may be any of:
 - the instance root: `https://git.example.com`
@@ -156,7 +157,7 @@ Version helpers (package `forgejo`):
 | Symbol | Purpose |
 |---|---|
 | `type Version struct{ Major, Minor, Patch int }` | A Forgejo semantic version |
-| `MinimumVersion` | The oldest supported release (`11.0.10`) |
+| `MinimumVersion` | The oldest supported release (`15.0.0`) |
 | `ParseVersion(s string) (Version, error)` | Parses strings such as `"15.0.2+gitea-1.22.0"`: only the part before `+` is used, and a leading `v` or a `-dev…` suffix is ignored |
 | `(Version).Compare(o Version) int` | -1, 0 or +1 |
 | `(Version).String()` | `"15.0.2"` |
@@ -418,7 +419,6 @@ default:
 | `Webhooks().Create` / `Edit` (Forgejo) | Forgejo dropped event names it does not know. The error names them. |
 | `PullRequests().Create` / `Edit` (Forgejo) | The instance does not treat the `WIP:` prefix as a draft marker (custom prefixes are configured). Matches `ErrNotSupported`. |
 | `Users().Edit` (Forgejo) | Forgejo 15 ignored a switch of visibility back to `public`. Matches `ErrNotSupported`. |
-
 So always check the result before discarding it on error:
 
 ```go
@@ -1398,7 +1398,7 @@ type ListIssuesOptions struct {
 type CreateIssueOptions struct {
 	Title     string   // required
 	Body      string
-	Labels    []string // names; they must exist
+	Labels    []string // names; they must exist (Forgejo: in the repository or its organisation)
 	Assignees []string
 	Milestone int64    // Milestone.ID; 0 for none
 }
@@ -1756,8 +1756,6 @@ Notes:
 - **Default webhooks are copied once.** A new repository gets its own independent repository webhook. Existing repositories get nothing, and editing or deleting the default webhook leaves the copies as they are. Change those with `Webhooks()`.
 - **Each interface only reaches its own kind.** Forgejo's API addresses system and default webhooks at the same path, and its answers do not tell them apart. So get, edit and delete first list the system webhooks to check the kind, which costs one extra request per page of them. An ID of the other kind gives HTTP 404 and changes nothing.
 - **`Ping` has no equivalent here:** Forgejo offers no test delivery for these kinds.
-- **Paging:** Forgejo 11's `GET /admin/hooks` ignores `Page` and `PerPage` and returns every system webhook, so use `gol.All` rather than counting pages.
-
 ---
 
 ## 15. Receiving webhooks (`webhook` package)
@@ -2309,8 +2307,7 @@ fmt.Println(tok.Secret) // shown once: List never returns it, and JSON never con
 ```
 
 Notes:
-- **Scopes** are passed to the server unchecked. Forgejo refuses an unknown scope, an empty list, a duplicate name, or an unknown repository, with HTTP 400.
-- **The token is limited by its scopes.** A token created with only `read:user` cannot do more than read the user, whatever its owner may do.
+- **Scopes** are passed to the server unchecked. Forgejo refuses an unknown scope, an empty list, a duplicate name, or an unknown repository, with HTTP 400.- **The token is limited by its scopes.** A token created with only `read:user` cannot do more than read the user, whatever its owner may do.
 - **`DeleteByName` finds the token's ID first.** Forgejo itself takes a name made of digits ("123") for an ID.
 - **Other users' tokens are out of reach:** tokens are always the authenticated user's. A site administrator can read anyone's tokens with the API but cannot create or delete them, so `WithSudo` does not help.
 

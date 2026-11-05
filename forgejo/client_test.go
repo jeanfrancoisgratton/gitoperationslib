@@ -86,7 +86,7 @@ func TestNewToken(t *testing.T) {
 
 func TestNewBasicAuth(t *testing.T) {
 	var auth string
-	srv := versionServer(t, "11.0.10", &auth)
+	srv := versionServer(t, "15.0.0", &auth)
 	if _, err := New(context.Background(), srv.URL, BasicAuth("jf", "pw"), WithHTTPClient(srv.Client())); err != nil {
 		t.Fatal(err)
 	}
@@ -194,13 +194,13 @@ func TestNewAnonymous(t *testing.T) {
 }
 
 func TestNewTooOld(t *testing.T) {
-	srv := versionServer(t, "11.0.9+gitea-1.22.0", nil)
+	srv := versionServer(t, "14.0.3+gitea-1.22.0", nil)
 	_, err := New(context.Background(), srv.URL, nil, WithHTTPClient(srv.Client()))
 	var uv *gitoperationslib.UnsupportedVersionError
 	if !errors.As(err, &uv) {
 		t.Fatalf("err = %v, want *UnsupportedVersionError", err)
 	}
-	if uv.Version != "11.0.9+gitea-1.22.0" || uv.Minimum != "11.0.10" {
+	if uv.Version != "14.0.3+gitea-1.22.0" || uv.Minimum != "15.0.0" {
 		t.Errorf("got %+v", uv)
 	}
 }

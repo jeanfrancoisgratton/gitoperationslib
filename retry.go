@@ -8,8 +8,9 @@ import "time"
 //
 // A request is retried when the server refused it without processing it
 // (HTTP 429, a rate limit, GitHub's 409 "repository operation still in
-// progress"). Requests that may have been processed are retried only if
-// they are idempotent (GET, HEAD, PUT, DELETE): after HTTP 502, 503 or 504,
+// progress", Forgejo's 405 "Please try again later" on a merge). Requests
+// that may have been processed are retried only if they are idempotent
+// (GET, HEAD, PUT, DELETE): after HTTP 502, 503 or 504,
 // or a connection reset mid-request. Refused connections and timeouts are
 // not retried, so a server that is down still fails fast. Streamed uploads
 // are never retried.

@@ -106,14 +106,7 @@ func (s hookService) list(ctx context.Context, opts gitoperationslib.ListOptions
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Webhook]{}, err
 	}
-	page := toPage(resp, out, (*hookJSON).toWebhook)
-	// /user/hooks and /admin/hooks send X-Total-Count but no Link header
-	// (checked on 11.0.16 and 15.0.11). When the page size is unknown, a short
-	// last page can cost one more request, which comes back empty.
-	if size := max(opts.PerPage, len(out)); page.NextPage == 0 && len(out) > 0 && max(opts.Page, 1)*size < resp.TotalCount {
-		page.NextPage = max(opts.Page, 1) + 1
-	}
-	return page, nil
+	return toPage(resp, out, (*hookJSON).toWebhook), nil
 }
 
 func (s hookService) get(ctx context.Context, id int64) (*gitoperationslib.Webhook, error) {
@@ -301,7 +294,7 @@ func (c *Client) DefaultWebhooks() gitoperationslib.DefaultWebhooks {
 
 // isSystemHook tells the two kinds apart: GET /admin/hooks lists system hooks
 // only, while /admin/hooks/{id} takes both and its answers look the same
-// (checked on 11.0.16 and 15.0.11).
+// (checked on 15.0.11).
 func isSystemHook(ctx context.Context, s hookService, id int64) (bool, error) {
 	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, s.list) {
 		if err != nil {

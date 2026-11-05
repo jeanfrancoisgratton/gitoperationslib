@@ -151,7 +151,7 @@ func (t teams) GetByName(ctx context.Context, org, name string) (*gitoperationsl
 				return &team, nil
 			}
 		}
-		if resp.NextPage == 0 || len(out.Data) == 0 {
+		if resp.Next(len(out.Data)) == 0 {
 			break
 		}
 	}

@@ -20,16 +20,17 @@ import (
 // baseDelay is the first backoff delay; it doubles on every retry.
 const baseDelay = time.Second
 
-// maxSniff caps how much of a 409 response is read to match Conflicts.
+// maxSniff caps how much of a 405 or 409 response is read to match Conflicts.
 const maxSniff = 64 << 10
 
 // Transport retries requests according to Policy.
 type Transport struct {
 	Base   http.RoundTripper // nil means http.DefaultTransport
 	Policy gitoperationslib.RetryPolicy
-	// Conflicts are fragments of 409 responses that mean "not processed, try
-	// again" (GitHub: an operation on the repository is still in progress).
-	// They are matched case-insensitively against the response body.
+	// Conflicts are fragments of 405 and 409 responses that mean "not
+	// processed, try again" (GitHub: an operation on the repository is still
+	// in progress; Forgejo: a pull request is still being checked). They are
+	// matched case-insensitively against the response body.
 	Conflicts []string
 
 	sleep func(context.Context, time.Duration) error // nil means sleepCtx; replaced by tests
@@ -103,7 +104,7 @@ func (t *Transport) decide(req *http.Request, resp *http.Response, err error, at
 			return 0, false
 		}
 		return t.serverWait(resp, attempt)
-	case code == http.StatusConflict:
+	case code == http.StatusConflict, code == http.StatusMethodNotAllowed:
 		return t.backoff(attempt), t.isConflict(resp)
 	case code == http.StatusBadGateway, code == http.StatusServiceUnavailable, code == http.StatusGatewayTimeout:
 		if !idempotent {
@@ -125,7 +126,7 @@ func (t *Transport) serverWait(resp *http.Response, attempt int) (time.Duration,
 	return d, d <= t.Policy.MaxWait
 }
 
-// isConflict reports whether a 409 matches Conflicts. The body is read and
+// isConflict reports whether a 405 or 409 matches Conflicts. The body is read and
 // put back, so a response that is not retried reaches the caller intact.
 func (t *Transport) isConflict(resp *http.Response) bool {
 	if len(t.Conflicts) == 0 {

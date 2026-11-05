@@ -138,7 +138,9 @@ func New(ctx context.Context, baseURL string, creds Credentials, opts ...Option)
 			r.Header.Set("Sudo", cfg.sudo)
 		}
 	}
-	api, err := forgejoapi.NewClient(baseURL, retry.Wrap(cfg.httpClient, cfg.retry), authorize, cfg.userAgent)
+	// HTTP 405 "Please try again later": a merge arrived while the server was
+	// still checking the pull request, and nothing was merged.
+	api, err := forgejoapi.NewClient(baseURL, retry.Wrap(cfg.httpClient, cfg.retry, "please try again later"), authorize, cfg.userAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +206,7 @@ func (c *Client) isOrg(ctx context.Context, name string) (bool, error) {
 
 // toPage converts one page of API items.
 func toPage[J, T any](resp *forgejoapi.Response, items []J, convert func(*J) T) gitoperationslib.Page[T] {
-	page := gitoperationslib.Page[T]{Items: make([]T, len(items)), NextPage: resp.NextPage}
+	page := gitoperationslib.Page[T]{Items: make([]T, len(items)), NextPage: resp.Next(len(items))}
 	for i := range items {
 		page.Items[i] = convert(&items[i])
 	}

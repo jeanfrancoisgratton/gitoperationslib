@@ -10,7 +10,7 @@ Support level of every feature, per backend, as of 2026-10-30. Backed by the int
 | — | Does not apply |
 | † | Covered by unit tests only (not exercised against the live service) |
 
-Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Enterprise Server via `WithEnterpriseURL`), **Bitbucket** (Bitbucket Cloud, REST 2.0).
+Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Enterprise Server via `WithEnterpriseURL`), **Bitbucket** (Bitbucket Cloud, REST 2.0).
 
 ## Summary
 
@@ -41,9 +41,9 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Acting as another user (`WithSudo`, site admins) | ✅ | ❌ | ❌ |
 | Anonymous access | ✅ | ✅ | ✅ |
 | Self-hosted instances | ✅ any base URL | ✅ GitHub Enterprise Server | ❌ Cloud only (Data Center is a different API) |
-| Server version check | ✅ refuses < 11.0.10 | — | — |
+| Server version check | ✅ refuses < 15.0.0 | — | — |
 | Custom HTTP client, user agent | ✅ | ✅ | ✅ |
-| Retries on transient errors (`WithRetry`) | ✅ | ✅† also the 409 after `AutoInit` | ✅† |
+| Retries on transient errors (`WithRetry`) | ✅ also the 405 on a merge during checks | ✅† also the 409 after `AutoInit` | ✅† |
 | Rate-limit reset as data (`APIError.RetryAt`) | ✅ `Retry-After` (Forgejo sends no rate-limit headers) | ✅† | ✅† `Retry-After` |
 
 ## Repositories
@@ -178,7 +178,7 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | List (pull requests excluded), get, create, edit | ✅ | ✅ | ❌ |
 | Close, reopen | ✅ | ✅ | ❌ |
 | Delete an issue | ✅ | ✅ GraphQL | ❌ |
-| Labels and assignees on issues | ✅ | ✅ | ❌ |
+| Labels and assignees on issues | ✅ also the organisation's labels, by name | ✅ | ❌ |
 | Labels on pull requests (shared numbering) | ✅ | ✅ | ❌ |
 | Comments: list, create, edit, delete | ⚠️ `ListComments` returns all at once | ✅ | ❌ |
 | Repository labels: list, get, create, edit, delete | ✅ | ✅ | ❌ |
@@ -253,8 +253,7 @@ Works with any token; the server filters what the caller may see. Forgejo checks
 | Feature | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|
 | Users: list, get, create, edit, rename, delete (purge) | ✅ site admins | — | — (not implemented by choice) |
-| Switch a user back to public visibility | ⚠️ Forgejo 15 ignores it; reported as `ErrNotSupported` | — | — |
-| Organisations: list, get, create (also for another user), edit, rename, delete | ✅ | — | — |
+| Switch a user back to public visibility | ⚠️ Forgejo 15 ignores it; reported as `ErrNotSupported` | — | — || Organisations: list, get, create (also for another user), edit, rename, delete | ✅ | — | — |
 | Organisation avatar: set, delete (`OrgAvatars`) | ✅ | — | — |
 | Organisation members: list, check, remove | ✅ | — | — |
 | Teams: list, get, get by name, create, edit, delete | ✅ | — | — |

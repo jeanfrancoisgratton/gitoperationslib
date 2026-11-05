@@ -134,6 +134,13 @@ func TestDoErrors(t *testing.T) {
 			wantMessage: "invalid",
 			wantDetails: []string{`{"field":"name"}`},
 		},
+		{
+			name:        "json followed by html",
+			status:      500,
+			body:        "{\"message\":\"public gpg key does not exist [id: 0]\",\"url\":\"https://h/api/swagger\"}\n\n<!DOCTYPE html>\n<html></html>",
+			wantMessage: "public gpg key does not exist [id: 0]",
+			wantDocURL:  "https://h/api/swagger",
+		},
 		{name: "html", status: 502, body: "<html>Bad Gateway</html>", wantString: "forgejo: HTTP 502: Bad Gateway"},
 		{name: "empty", status: 401, body: "", wantString: "forgejo: HTTP 401: Unauthorized"},
 	}

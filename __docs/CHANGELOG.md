@@ -8,7 +8,7 @@ change the public API.
 
 ## [1.3.0] — 2026-11-05
 
-Forgejo's user, system and default webhooks.
+Forgejo's user, system and default webhooks, and fixes found by auditing pagination. Forgejo 15 is now the minimum.
 
 ### Added
 - **`UserHooks`** (`CapUserWebhooks`, Forgejo only): `UserWebhooks()` lists, gets, creates, edits and deletes the
@@ -23,13 +23,22 @@ Forgejo's user, system and default webhooks.
 - Unit tests for what only the live tests reached: Bitbucket refs, pull requests, repositories and protection; GitHub
   and Forgejo labels and milestones, GitHub issue edits; `internal/refusal`. Coverage is now about 88% for Bitbucket,
   86% for GitHub and 90% for Forgejo.
+- Issue calls that take label names on Forgejo (`Create`, `Edit`, `AddLabels`, `RemoveLabel`) now also find the
+  organisation's labels. A repository label wins over an organisation label of the same name.
 
 ### Changed
+- Forgejo 15.0.0 or later is now required: `forgejo.New` refuses older servers (`MinimumVersion` was 11.0.10).
 - `CapSystemWebhooks` is no longer reserved: the Forgejo client now announces it.
 
 ### Fixed
-- `gol.All` on Forgejo's `Webhooks().List` stopped after the first page: Forgejo sends no `Link` header on webhook
-  lists. `NextPage` now comes from `X-Total-Count` there.
+- `gol.All` and `Page.NextPage` stopped after the first page on most Forgejo lists, silently dropping the rest: labels,
+  milestones, webhooks, organisation members, teams, team members and repositories, secrets, variables, SSH
+  keys, tokens and reviews. These send `X-Total-Count` but no `Link` header, so `NextPage` now falls back on the
+  count, for every Forgejo list.
+- Label names beyond the first page of a repository's labels were reported as not found by the calls that take names.
+- `Merge` on Forgejo failed with HTTP 405 "Please try again later" while the server was still checking the pull
+  request. It is now retried, under `RetryPolicy`.
+- Forgejo errors whose JSON is followed by other content, such as an HTML page, lost their message.
 
 ## [1.2.0] — 2026-11-05
 
@@ -168,7 +177,7 @@ JSON support. The JSON key names are now part of the public API.
 
 ### Added
 - `Directory.Me`: the authenticated user, from the credentials, with everything the token may
-  read: private profile fields, e-mail addresses, organisations, teams, repositories, SSH and GPG
+  read: private profile fields, e-mail addresses, organisations, teams, repositories, SSH
   keys (Forgejo also settings; GitHub also plan and private counts). Refused or unsupported parts
   are reported in `Incomplete`. Implemented on Forgejo, GitHub and Bitbucket (workspaces as
   organisations; no teams or GPG keys).

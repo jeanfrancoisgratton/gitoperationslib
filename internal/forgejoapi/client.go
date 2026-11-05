@@ -62,9 +62,12 @@ type Response struct {
 	StatusCode int
 	Header     http.Header
 	// NextPage is taken from the Link header; 0 if there is no next page.
+	// Many list endpoints send no Link header: use Next instead.
 	NextPage int
 	// TotalCount is taken from X-Total-Count; -1 if the header is absent.
 	TotalCount int
+	// Page is the page that was requested, 1-based.
+	Page int
 }
 
 // Do sends a request to path (relative to /api/v1, already escaped; see Path).
@@ -141,6 +144,7 @@ func (c *Client) doJSON(req *http.Request, out any) (*Response, error) {
 		Header:     resp.Header,
 		NextPage:   nextPage(resp.Header),
 		TotalCount: totalCount(resp.Header),
+		Page:       requestedPage(req.URL.Query()),
 	}, nil
 }
 

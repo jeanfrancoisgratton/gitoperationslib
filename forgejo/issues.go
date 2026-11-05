@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -99,19 +100,33 @@ func repoPath(owner, repo string, rest ...string) string {
 
 // allLabels lists every repository label.
 func (c *Client) allLabels(ctx context.Context, owner, repo string) ([]labelJSON, error) {
+	return c.labelsAt(ctx, repoPath(owner, repo, "labels"))
+}
+
+// orgLabels lists every label of an organisation; a user has none.
+func (c *Client) orgLabels(ctx context.Context, owner string) ([]labelJSON, error) {
+	all, err := c.labelsAt(ctx, forgejoapi.Path("orgs", owner, "labels"))
+	if gitoperationslib.IsNotFound(err) {
+		return nil, nil
+	}
+	return all, err
+}
+
+func (c *Client) labelsAt(ctx context.Context, path string) ([]labelJSON, error) {
 	var all []labelJSON
 	opts := gitoperationslib.ListOptions{Page: 1, PerPage: 50}
 	for {
 		var page []labelJSON
-		resp, err := c.api.Do(ctx, http.MethodGet, repoPath(owner, repo, "labels"), forgejoapi.ListQuery(opts), nil, &page)
+		resp, err := c.api.Do(ctx, http.MethodGet, path, forgejoapi.ListQuery(opts), nil, &page)
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, page...)
-		if resp.NextPage == 0 {
+		next := resp.Next(len(page))
+		if next == 0 {
 			return all, nil
 		}
-		opts.Page = resp.NextPage
+		opts.Page = next
 	}
 }
 
@@ -122,7 +137,9 @@ func labelNotFound(owner, repo, name string) error {
 	}
 }
 
-// labelIDs resolves label names; Forgejo's issue endpoints take IDs.
+// labelIDs resolves label names; Forgejo's issue endpoints take IDs. Names not
+// found in the repository are looked up in its organisation, so that the usual
+// case costs a single listing; a repository label wins over an organisation's.
 func (c *Client) labelIDs(ctx context.Context, owner, repo string, names []string) ([]int64, error) {
 	ids := make([]int64, 0, len(names))
 	if len(names) == 0 {
@@ -135,6 +152,17 @@ func (c *Client) labelIDs(ctx context.Context, owner, repo string, names []strin
 	byName := map[string]int64{}
 	for _, l := range all {
 		byName[l.Name] = l.ID
+	}
+	if slices.ContainsFunc(names, func(n string) bool { _, ok := byName[n]; return !ok }) {
+		org, err := c.orgLabels(ctx, owner)
+		if err != nil {
+			return nil, err
+		}
+		for _, l := range org {
+			if _, ok := byName[l.Name]; !ok {
+				byName[l.Name] = l.ID
+			}
+		}
 	}
 	for _, n := range names {
 		id, ok := byName[n]
@@ -259,6 +287,15 @@ func (s issues) RemoveLabel(ctx context.Context, owner, repo string, number int,
 		return err
 	}
 	_, err = s.c.api.Do(ctx, http.MethodDelete, repoPath(owner, repo, "issues", strconv.Itoa(number), "labels", strconv.FormatInt(ids[0], 10)), nil, nil, nil)
+	if gitoperationslib.StatusCode(err) != http.StatusUnprocessableEntity {
+		return err
+	}
+	// Forgejo refuses an organisation label's ID here but takes its name
+	// (checked on 15.0.11). A numeric name could be taken for another label's ID.
+	if _, numeric := strconv.Atoi(label); numeric == nil {
+		return err
+	}
+	_, err = s.c.api.Do(ctx, http.MethodDelete, repoPath(owner, repo, "issues", strconv.Itoa(number), "labels", label), nil, nil, nil)
 	return err
 }
 

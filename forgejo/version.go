@@ -15,7 +15,7 @@ type Version struct {
 }
 
 // MinimumVersion is the oldest Forgejo release this library supports.
-var MinimumVersion = Version{11, 0, 10}
+var MinimumVersion = Version{15, 0, 0}
 
 // ParseVersion parses a Forgejo version string such as "15.0.2+gitea-1.22.0".
 // Only the part before "+" is used; a pre-release suffix ("-dev...") and a

@@ -1,6 +1,7 @@
 package forgejoapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -16,7 +17,8 @@ const maxErrorBody = 64 << 10
 
 // decodeError turns a non-2xx response into an *APIError. Bodies that are not
 // Forgejo's JSON error format (e.g. a reverse proxy's HTML page) leave Message
-// empty, so the error falls back to the HTTP status text.
+// empty, so the error falls back to the HTTP status text. Only the first JSON
+// value is read, in case other content follows it.
 func decodeError(resp *http.Response) error {
 	apiErr := &gitoperationslib.APIError{
 		Backend:    gitoperationslib.BackendForgejo,
@@ -30,7 +32,7 @@ func decodeError(resp *http.Response) error {
 		URL     string            `json:"url"`
 		Errors  []json.RawMessage `json:"errors"`
 	}
-	if json.Unmarshal(data, &body) != nil {
+	if json.NewDecoder(bytes.NewReader(data)).Decode(&body) != nil {
 		return apiErr
 	}
 	apiErr.Message = body.Message

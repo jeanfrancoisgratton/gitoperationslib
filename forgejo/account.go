@@ -48,8 +48,8 @@ func (e emails) Add(ctx context.Context, addresses ...string) ([]gitoperationsli
 	if _, err := e.c.api.Do(ctx, http.MethodPost, "user/emails", nil, map[string][]string{"emails": addresses}, &out); err != nil {
 		return nil, err
 	}
-	// Forgejo answers with every address of the account (checked on 11.0.16
-	// and 15.0.11): keep the ones just added.
+	// Forgejo answers with every address of the account (checked on 15.0.11):
+	// keep the ones just added.
 	out = slices.DeleteFunc(out, func(j emailJSON) bool {
 		return !slices.ContainsFunc(addresses, func(a string) bool { return strings.EqualFold(a, j.Email) })
 	})
@@ -86,7 +86,7 @@ func (k sshKeys) Add(ctx context.Context, opts gitoperationslib.AddSSHKeyOptions
 		return nil, errors.New("forgejo: sshkeys.add: title and key are required")
 	}
 	// Forgejo accepts read_only but stores a read-write key, and reports no
-	// such field (checked on 11.0.16 and 15.0.11).
+	// such field (checked on 15.0.11).
 	if opts.ReadOnly {
 		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "sshkeys.add", "Forgejo ignores read_only on user keys and would store a read-write key")
 	}

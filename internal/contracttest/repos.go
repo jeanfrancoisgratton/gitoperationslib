@@ -159,7 +159,33 @@ func create(t *testing.T, ctx context.Context, env Env, opts gitoperationslib.Cr
 	if err != nil {
 		t.Fatalf("create in %q: %v", opts.Owner, err)
 	}
+	removeDefaultHooks(t, ctx, env, owner, name)
 	return repo, &name
+}
+
+// removeDefaultHooks deletes the webhooks Forgejo copied into a new repository
+// from the instance's default webhooks, so that tests running on a real server
+// deliver nothing to its integrations.
+func removeDefaultHooks(t *testing.T, ctx context.Context, env Env, owner, repo string) {
+	t.Helper()
+	if env.Client.Backend() != gitoperationslib.BackendForgejo {
+		return
+	}
+	scope := gitoperationslib.RepoHooks(owner, repo)
+	var ids []int64
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Webhook], error) {
+		return env.Client.Webhooks().List(ctx, scope, o)
+	}) {
+		if err != nil {
+			t.Fatalf("list the hooks of %s/%s: %v", owner, repo, err)
+		}
+		ids = append(ids, hook.ID)
+	}
+	for _, id := range ids {
+		if err := env.Client.Webhooks().Delete(ctx, scope, id); err != nil {
+			t.Fatalf("delete hook %d of %s/%s: %v", id, owner, repo, err)
+		}
+	}
 }
 
 func orgRepoLifecycle(t *testing.T, env Env) {

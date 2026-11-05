@@ -36,7 +36,7 @@ How 1.x grows without breaking anyone:
 
 **Requirements:**
 - Go 1.27.3 or later.
-- Forgejo 11.0.10 or later. `forgejo.New` checks the server version and refuses older servers.
+- Forgejo 15.0.0 or later. `forgejo.New` checks the server version and refuses older servers.
 - GitHub: github.com, or GitHub Enterprise Server.
 - Bitbucket: Bitbucket Cloud only. Data Center has a different API.
 
