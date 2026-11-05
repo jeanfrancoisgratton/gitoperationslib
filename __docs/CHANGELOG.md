@@ -20,6 +20,9 @@ Forgejo's user, system and default webhooks.
     because Forgejo's API has none.
   - Each only reaches its own kind: an ID of the other gives HTTP 404, changing nothing. Forgejo's API does not tell
     the kinds apart, so the library checks by listing the system webhooks first.
+- Unit tests for what only the live tests reached: Bitbucket refs, pull requests, repositories and protection; GitHub
+  and Forgejo labels and milestones, GitHub issue edits; `internal/refusal`. Coverage is now about 88% for Bitbucket,
+  86% for GitHub and 90% for Forgejo.
 
 ### Changed
 - `CapSystemWebhooks` is no longer reserved: the Forgejo client now announces it.
