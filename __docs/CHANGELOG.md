@@ -9,9 +9,15 @@ change the public API.
 ## [1.3.0] — 2026-11-05
 
 Forgejo's user, system and default webhooks, what a pull request changes, comments on its lines, commit ranges and raw
-diffs, and fixes found by auditing pagination. Forgejo 15 is now the minimum.
+diffs, a repository's collaborators, Forgejo's push mirrors and mirror sync, and fixes found by auditing pagination.
+Forgejo 15 is now the minimum.
 
 ### Added
+- **`Collaborators`** (`CapCollaborators`, all backends): `ListCollaborators`, `GetCollaborator`, `AddCollaborator` and
+  `RemoveCollaborator`. On GitHub, `AddCollaborator` reports when it sent an invitation, and `RemoveCollaborator` also
+  withdraws one. Permissions a forge would misread are refused: Forgejo stores write for any value it does not know.
+- **`Mirrors`** (`CapMirrors`, Forgejo only): `ListPushMirrors`, `GetPushMirror`, `CreatePushMirror`, `DeletePushMirror`,
+  `SyncPushMirrors` and `SyncMirror`. Creating a pull mirror takes a migration, and is not included.
 - **`PRContents`** (`CapPRContents`, all backends): `PullRequestDiff` (diff or patch, streamed), `PullRequestFiles` and
   `PullRequestCommits`, newest first.
 - **`ReviewComments`** (`CapReviewComments`, all backends): `ListReviewComments`, `CreateReviewComment` and
@@ -36,7 +42,8 @@ diffs, and fixes found by auditing pagination. Forgejo 15 is now the minimum.
 
 ### Changed
 - Forgejo 15.0.0 or later is now required: `forgejo.New` refuses older servers (`MinimumVersion` was 11.0.10).
-- `CapSystemWebhooks` is no longer reserved: the Forgejo client now announces it.
+- `CapSystemWebhooks` and `CapMirrors` are no longer reserved: the Forgejo client now announces them. `CapMigrate` still
+  is.
 
 ### Fixed
 - `gol.All` and `Page.NextPage` stopped after the first page on most Forgejo lists, silently dropping the rest: labels,

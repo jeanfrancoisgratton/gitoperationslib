@@ -1,6 +1,6 @@
 # Support grid
 
-Support level of every feature, per backend, as of 2026-10-30. Backed by the integration checks run against Forgejo 15.0.2 (and the disposable 15.0.11 container for the admin, account, token and CI checks), github.com and Bitbucket Cloud unless marked †.
+Support level of every feature, per backend, as of 2026-11-05. Backed by the integration checks run against Forgejo 15.0.2 (and the disposable 15.0.11 container for the admin, account, token and CI checks), github.com and Bitbucket Cloud unless marked †.
 
 | Mark | Meaning |
 |---|---|
@@ -30,6 +30,8 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | CI secrets and variables (`CI`) | ✅ | ✅ | ✅ |
 | Commit history and changed files (`History`) | ⚠️ no per-file line counts, no renames, no date filter | ✅ | ⚠️ no date filter |
 | Own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`) | ✅ | ✅ no avatar, no tokens | ⚠️ e-mail addresses read-only, no profile, no tokens |
+| Collaborators (`Collaborators`) | ✅ | ⚠️ new collaborators are usually invited | ✅ |
+| Push mirrors and mirror sync (`Mirrors`) | ✅ | ❌ | ❌ |
 
 ## Connecting
 
@@ -308,3 +310,28 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | Rename detection (`PreviousPath`) | ❌ removed + added | ✅† | ✅† |
 | Committer distinct from author | ✅ | ✅ | ❌ |
 
+## Collaborators (`Collaborators`)
+
+| Feature | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| List | ⚠️ not the owner; one more request per collaborator; permissions empty unless you are an admin | ⚠️ direct collaborators and the owner of a user's repository | ⚠️ usually includes the workspace owner |
+| Get, refused for others with HTTP 404 | ✅ two requests | ✅ two requests; also finds access through the organisation | ✅ |
+| Add, change the permission | ✅ | ✅† invitation reported as `invited`; permission ignored on a user's repository | ✅ nickname of a member, account ID or `{UUID}` |
+| Remove | ✅ | ✅† also withdraws an invitation | ✅ |
+| Permissions read, write, admin | ✅ | ✅† | ✅ |
+| Permissions triage, maintain | ❌ | ✅† | ❌ |
+| List pending invitations | — | ❌ not in the library | — |
+
+The GitHub checks marked † need a second account, which would receive a real invitation: set `GITOPSLIB_GITHUB_COLLABORATOR` to run them. Reading and refusals are checked live.
+
+## Mirrors (`Mirrors`)
+
+| Feature | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| Push mirrors: list, get, delete | ✅ | ❌ | ❌ |
+| Create with HTTP credentials, or SSH (`PublicKey`) | ✅ | ❌ | ❌ |
+| Branch filter, interval, sync on commit | ✅ | ❌ | ❌ |
+| Edit a push mirror | ❌ no such API | ❌ | ❌ |
+| Sync push mirrors | ⚠️ all at once; stops at the first failure | ❌ | ❌ |
+| Sync a pull mirror | ✅ queued | ❌ | ❌ |
+| Create a pull mirror (migration) | ❌ not in the library | ❌ | ❌ |

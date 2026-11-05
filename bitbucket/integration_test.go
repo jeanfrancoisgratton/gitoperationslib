@@ -11,6 +11,10 @@
 //	GITOPSLIB_BITBUCKET_WORKSPACE  workspace to test in (optional when the
 //	                               token can only see one)
 //
+// GITOPSLIB_BITBUCKET_COLLABORATOR, optional, is a user the collaborator checks
+// may add to a test repository. The account's own {UUID} works: a workspace owner
+// keeps access to the repository.
+//
 // Only repositories named with contracttest.RepoPrefix are created or deleted.
 package bitbucket
 
@@ -54,7 +58,8 @@ func integrationEnv(t *testing.T) contracttest.Env {
 	t.Logf("Bitbucket user %s, workspace %s", me.login(), workspace)
 	return contracttest.Env{
 		Client: c, Org: workspace, Login: me.login(), CreateBranch: c.createBranch, WriteFile: c.writeFile,
-		HookURL: "https://example.com/gitopslib-hook", // must resolve in DNS
+		HookURL:      "https://example.com/gitopslib-hook", // must resolve in DNS
+		Collaborator: os.Getenv("GITOPSLIB_BITBUCKET_COLLABORATOR"),
 	}
 }
 
@@ -76,6 +81,8 @@ func (c *Client) writeFile(ctx context.Context, owner, repo, branch, file, conte
 	_, err := c.api.PostForm(ctx, repoPath(owner, repo, "src"), form, nil)
 	return err
 }
+
+func TestIntegrationCollaborators(t *testing.T) { contracttest.Collaborators(t, integrationEnv(t)) }
 
 func TestIntegrationDiffs(t *testing.T) { contracttest.Diffs(t, integrationEnv(t)) }
 

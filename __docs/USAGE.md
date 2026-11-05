@@ -28,6 +28,7 @@ This guide covers every package, interface, type and option of the library, with
 19. [Reference: errors returned without an HTTP call](#19-reference-errors-returned-without-an-http-call)
 20. [CI secrets and variables (`CI`)](#20-ci-secrets-and-variables-ci)
 21. [Commit history (`History`)](#21-commit-history-history)
+22. [Collaborators and mirrors](#22-collaborators-and-mirrors)
 
 ---
 
@@ -301,7 +302,9 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapPRContents` | `pr-contents` (a pull request's diff, files and commits: `gol.PRContents`) | ✅ | ✅ | ✅ |
 | `CapReviewComments` | `review-comments` (comments on a pull request's lines: `gol.ReviewComments`) | ✅ | ✅ | ✅ |
 | `CapSystemWebhooks` | `system-webhooks` (system and default webhooks: `gol.SiteHooks`) | ✅ | | |
-| `CapMirrors`, `CapMigrate` | reserved for future features | | | |
+| `CapCollaborators` | `collaborators` (a repository's collaborators: `gol.Collaborators`) | ✅ | ✅ | ✅ |
+| `CapMirrors` | `mirrors` (push mirrors and syncing mirrors: `gol.Mirrors`) | ✅ | | |
+| `CapMigrate` | reserved for a future feature | | | |
 
 ```go
 caps := client.Capabilities()
@@ -349,6 +352,14 @@ if ci, ok := client.(gol.CI); ok {
 // Commit history (§21): all three backends.
 if h, ok := client.(gol.History); ok {
 	_ = h.Commits()
+}
+
+// Collaborators: all three backends. Mirrors: Forgejo only (§22).
+if c, ok := client.(gol.Collaborators); ok {
+	_ = c
+}
+if m, ok := client.(gol.Mirrors); ok {
+	_ = m
 }
 ```
 
@@ -2868,3 +2879,80 @@ type Commit struct {
 
 A `git log --name-status` over many commits costs one `Get` per commit on top of the `List`, which counts against GitHub's rate limits on long histories.
 
+## 22. Collaborators and mirrors
+
+### 22.1 Collaborators (`Collaborators`)
+
+The users with their own access to a repository, as opposed to access through a team. All three clients implement `gol.Collaborators` (`CapCollaborators`). Managing them takes admin access to the repository.
+
+```go
+c, ok := client.(gol.Collaborators)
+
+// Add someone, or change the permission of an existing collaborator.
+invited, err := c.AddCollaborator(ctx, "acme", "widget", "bob", gol.CollaboratorWrite)
+if invited {
+	// GitHub only: bob has no access until they accept the invitation.
+}
+
+who, err := c.GetCollaborator(ctx, "acme", "widget", "bob") // gol.IsNotFound(err): not a collaborator
+fmt.Println(who.Login, who.Permission)
+
+page, err := c.ListCollaborators(ctx, "acme", "widget", gol.ListOptions{})
+
+err = c.RemoveCollaborator(ctx, "acme", "widget", "bob") // also withdraws a GitHub invitation
+```
+
+`AddCollaborator` always needs a permission: `gol.CollaboratorRead`, `CollaboratorWrite` or `CollaboratorAdmin`, plus `CollaboratorTriage` and `CollaboratorMaintain` on GitHub (`ErrNotSupported` elsewhere). Other values are refused before any request. An unknown user is HTTP 404 on all three, and removing an existing user without access is not an error.
+
+| | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| Who is listed | Direct collaborators, not the owner | Direct collaborators and the owner of a user's repository | Those with their own permission, usually including the workspace owner |
+| Reading a permission | Admins only, or your own: `Permission` is empty otherwise | ✅ | ✅ |
+| `GetCollaborator` | 2 requests | 2 requests; also finds access through the organisation | 1 request, plus the member lookup for a nickname |
+| `ListCollaborators` | 1 more request per collaborator | ✅ can report a custom role's name | ✅ |
+| New collaborator | Access at once | ⚠️ usually an invitation, and listed only once accepted | Access at once |
+| `AddCollaborator` on a repository owned by a user | ✅ | ⚠️ the permission is ignored | — |
+| How to name a user | Login | Login | Nickname of a workspace member, account ID or `{UUID}` (the last two for an outsider) |
+
+The library cannot list GitHub's pending invitations yet.
+
+### 22.2 Mirrors (`Mirrors`)
+
+Forgejo only (`CapMirrors`), and it takes admin access to the repository. A **push mirror** sends a repository to another address. A **pull mirror** is a repository that copies another one; `Repo.Mirror` tells them apart. The library can sync a pull mirror, but cannot create one: that takes a migration (`CapMigrate`, still reserved).
+
+```go
+m, ok := client.(gol.Mirrors)
+
+pm, err := m.CreatePushMirror(ctx, "acme", "widget", gol.CreatePushMirrorOptions{
+	RemoteAddress: "https://github.com/acme/widget.git", // no credentials in the address
+	Username:      "acme-bot",
+	Password:      token,
+	Interval:      8 * time.Hour, // 0 = no periodic push; the server has a minimum, by default 10 minutes
+	SyncOnCommit:  true,
+	BranchFilter:  "main,release/*", // empty = all branches
+})
+
+// With SSH the server generates a key, which the remote must accept for writing.
+pm, err = m.CreatePushMirror(ctx, "acme", "widget", gol.CreatePushMirrorOptions{
+	RemoteAddress: "git@github.com:acme/widget.git", UseSSH: true, Interval: 8 * time.Hour,
+})
+fmt.Println(pm.Name, pm.PublicKey)
+
+err = m.SyncPushMirrors(ctx, "acme", "widget") // pushes to all of them
+got, err := m.GetPushMirror(ctx, "acme", "widget", pm.Name)
+fmt.Println(got.LastSync, got.LastError)
+
+err = m.DeletePushMirror(ctx, "acme", "widget", pm.Name)
+
+err = m.SyncMirror(ctx, "acme", "copy") // a pull mirror fetches
+```
+
+Things to know, all checked on Forgejo 15.0.11:
+
+- Creating a mirror does not contact the remote: a wrong address or password shows at the first sync.
+- `SyncPushMirrors` pushes during the call, and cannot be limited to one mirror. The first that fails gives HTTP 500 naming it, and **those after it are not pushed**.
+- `LastSync` is when a push was last tried, even a failed one: check `LastError`.
+- A branch can take a moment to show on a remote that is itself a forge, after `SyncPushMirrors` has returned.
+- `SyncMirror` only queues the fetch, and is HTTP 400 for a repository that is not a mirror.
+- A push mirror cannot be edited: delete it and create another. The server chooses `Name`, and rewrites an SSH address as `ssh://host/path`, without the user.
+- A remote address the server refuses, such as a host that does not resolve, is HTTP 400 here. Forgejo answers 401 "Permission denied", which would look like a problem with your token.

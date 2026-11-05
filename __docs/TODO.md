@@ -15,7 +15,7 @@ ___
 ## Candidates for later minor releases
 
 From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and `OrgAvatars` from the gitclt 1.4.0 work.
-- [ ] **5 →** Repository settings: collaborators (`/collaborators`, permissions), ~~deploy keys (`/repos/.../keys`),~~ push mirrors and mirror sync (`CapMirrors`, `CapMigrate` are reserved for them).
+- [x] **5 →** Repository settings: `Collaborators` (all backends) and `Mirrors` (push mirrors and mirror sync, Forgejo), 1.3.0. Deploy keys were dropped from this item, and `CapMigrate` stays reserved.
 - [ ] **6 →** CI: GitHub environment secrets, Bitbucket deployment variables, GitHub organisation secrets limited to selected repositories. Forgejo secrets already exist (repository, organisation, user; a user's cannot be listed).
 - [ ] **7 →** Commit statuses (`POST /statuses/{sha}`): would let the live tests exercise auto-merge's success path.
 - [x] **8 →** Pull request extras: `PRContents` (diff/patch, changed files, commits) and `ReviewComments` (line comments: list, create, delete; not edit), 1.3.0.
@@ -99,7 +99,7 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 
 ## API surface
 
-- [ ] **58 →** Optional interfaces for Forgejo extras: mirrors, push mirrors, migrate (`CapMirrors`, `CapMigrate` already declared).
+- [ ] **58 →** Optional interface for Forgejo's migration, which also creates pull mirrors (`CapMigrate` already declared). Mirrors and push mirrors: `Mirrors`, 1.3.0.
 - [ ] **59 →** Forgejo-only create options (`trust_model`, `object_format`, `readme`) on `CreateRepoOptions`.
 - [x] **60 →** Forgejo repo create/edit options only have `private`; `VisibilityInternal` returns `ErrNotSupported`. Responses carry a read-only `internal` flag, mapped to `VisibilityInternal`. Resolved in increment 3.
 - [ ] **61 →** Cache user-vs-org lookups (`GET /orgs/{name}`), currently one extra request per `Create`/`List` with an owner.
@@ -128,7 +128,7 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [ ] **78 →** Changes to Forgejo user/org/team endpoints in recent majors (quota APIs etc.).
 - [x] **79 →** `go-github`: pinned at v93.0.0 (declares go 1.26.0). New majors change the import path; review periodically. Resolved in increment 4.
 - [x] **80 →** Minimum Go version: 1.27.3. Minimum Forgejo version: 15.0.0.
-- [ ] **81 →** Exact set of "Other" areas beyond the five priorities.
+- [x] ~~**81 →** Exact set of "Other" areas beyond the five priorities.~~
 
 ## Testing
 
@@ -150,42 +150,6 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [ ] **94 →** `Repos().List("")` lists each workspace (Bitbucket retired `/repositories?role=member`); with several workspaces everything is returned as one page.
 - [ ] **95 →** Unit-test coverage of `bitbucket/` is ~53% (read paths and the ErrNotSupported stubs are covered by the integration checks only).
 - [ ] **96 →** Bitbucket answers a pull request's commits with page tokens (`page=67Fg`), which `Page.NextPage` cannot carry: `PullRequestCommits` returns them all at once, and the internal `All` now follows next links. Other public list calls still read `NextPage` as a number and were not audited: a token there would silently stop `All` after the first page.
+- [ ] **97 →** Forgejo 15.0.11 bug: a list requested without `page` ignores `limit` on `/push_mirrors`, labels, milestones, webhooks and deploy keys. `/push_mirrors` also links a next page, which made `All` return duplicates, so `ListPushMirrors` always sends a page. The others link none: `All` is correct, but a first `List` with `PerPage` can return more items than asked. Sending `page=1` from `ListQuery` would cover them all. Report upstream, along with `/push_mirrors` errors whose message is `%!s(<nil>)`.
+- [ ] **98 →** GitHub's pending invitations cannot be listed: `AddCollaborator` reports one and `RemoveCollaborator` withdraws it, but nothing shows who is pending. The add, change and remove path has only unit tests on GitHub until a second account is available (`GITOPSLIB_GITHUB_COLLABORATOR`), since it sends a real invitation.
 
-## Very long term: more forges
-
-Not planned; no accounts or test environments yet. Assessment from API knowledge, not verified against current docs (points marked "verify" especially).
-
-### GitLab
-
-- [ ] GitLab backend. Maps well: projects, branches, tags, issues, labels, milestones, comments, merge requests (drafts = `Draft:` title prefix, approvals), releases tied to tags, admin users/groups (self-managed), and a token API (personal, project and group tokens: create, rotate, revoke) that fits the planned `Tokens` interface better than GitHub.
-- Needs adapting:
-  - nested groups (`acme/platform/backend`); projects addressed by encoded path or numeric ID; listing by owner and the user/organisation lookup differ.
-  - merge methods (merge commit, semi-linear, fast-forward) are a project setting, not a per-merge choice; squash is a per-merge flag. `MergeOptions.Method` would mostly be `ErrNotSupported` or need a project-level setting.
-  - release assets are links; files are uploaded separately (package registry or project uploads), so `UploadAsset` would be two steps.
-  - no teams: access via group/project membership with roles (Developer, Maintainer…). `Teams` would be `ErrNotSupported` or need a membership interface.
-  - protection: protected branches/tags with role-based access levels; approval rules are paid-tier.
-  - webhooks: traditionally a plain secret in `X-Gitlab-Token`, not an HMAC (newer versions may sign: verify); the `webhook` package needs a GitLab path.
-- Official Go SDK: `gitlab.com/gitlab-org/api/client-go` (could be used like go-github).
-- Testing: GitLab CE runs in Docker like the Forgejo test container (heavier: ~4 GB RAM, minutes to start); a free gitlab.com account covers the hosted side.
-
-### Bitbucket
-
-- [x] Bitbucket Cloud: implemented (see the Bitbucket Cloud section above); the assessment below proved accurate, plus the issue tracker turned out to be retired entirely.
-- [ ] Bitbucket Data Center: separate API (REST 1.0), separate backend; needs a licence to test.
-- Original assessment: Bitbucket Cloud and Bitbucket Data Center have different APIs (REST 2.0 vs REST 1.0): two backends.
-- Gaps (Cloud): no releases (only a "Downloads" area); no labels or milestones on pull requests; minimal issue tracker (Jira is pushed instead); merge strategies merge commit, squash, fast-forward; draft PRs only recently (verify); three-level structure workspace / project / repository (`owner` = workspace); branch permissions and merge checks map partially to the protection model; webhooks: different event header (`X-Event-Key`) and payloads, HMAC signing added fairly recently (verify).
-- Many shared interfaces would return `ErrNotSupported`: acceptable with capabilities, but limited value as a common backend.
-- Testing: Cloud with a free account; Data Center needs a licence (evaluation licences and a Docker image exist, heavy and time-limited).
-
-### Design impact
-
-- A GitLab backend would likely push shared types to become less GitHub/Forgejo-shaped: `MergeMethod`, `TeamAccess`, `HookEvent`.
-- Suggested order if ever done: GitLab first; Bitbucket Cloud maybe; Data Center only on real demand.
-
-### Decision grid
-
-| Backend | Fit | Effort | Testable locally |
-|---|---|---|---|
-| GitLab | good | ≈ one backend (like Forgejo or GitHub) | ✅ GitLab CE in Docker |
-| Bitbucket Cloud | partial (no releases, labels, milestones) | medium, many gaps | free account — **done** |
-| Bitbucket Data Center | partial, separate API | medium-large | evaluation licence |

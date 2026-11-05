@@ -7,6 +7,9 @@
 //	GITOPSLIB_FORGEJO_TOKEN  token of a dedicated test user
 //	GITOPSLIB_FORGEJO_ORG    throwaway organisation the test user owns
 //
+// GITOPSLIB_FORGEJO_COLLABORATOR, optional, is a user the collaborator checks
+// may add to a test repository.
+//
 // Only repositories named with contracttest.RepoPrefix are created or deleted.
 package forgejo
 
@@ -42,8 +45,10 @@ func integrationEnv(t *testing.T) contracttest.Env {
 		t.Fatal(err)
 	}
 	t.Logf("Forgejo %s, user %s, org %s", c.Version(), login, org)
-	return contracttest.Env{Client: c, Org: org, Login: login, UserRepos: true, CreateBranch: c.createBranch, WriteFile: c.writeFile}
+	return contracttest.Env{Client: c, Org: org, Login: login, UserRepos: true, CreateBranch: c.createBranch, WriteFile: c.writeFile, Collaborator: os.Getenv("GITOPSLIB_FORGEJO_COLLABORATOR")}
 }
+
+func TestIntegrationCollaborators(t *testing.T) { contracttest.Collaborators(t, integrationEnv(t)) }
 
 func TestIntegrationDiffs(t *testing.T) {
 	contracttest.Diffs(t, integrationEnv(t))

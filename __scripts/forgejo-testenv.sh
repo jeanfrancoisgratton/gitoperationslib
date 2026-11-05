@@ -8,7 +8,8 @@
 #
 # The instance listens on 127.0.0.1 only and keeps no volume: stopping it
 # discards everything. It may deliver webhooks to any address, so tests can
-# receive them on the Docker bridge gateway.
+# receive them on the Docker bridge gateway, and mirror local addresses, so
+# tests can mirror one of its repositories to another.
 set -euo pipefail
 
 IMAGE="${GITOPSLIB_TESTENV_IMAGE:-codeberg.org/forgejo/forgejo:15}"
@@ -33,6 +34,7 @@ start() {
 		-e FORGEJO__mailer__ENABLED=false \
 		-e FORGEJO__webhook__ALLOWED_HOST_LIST='*' \
 		-e FORGEJO__webhook__DELIVER_TIMEOUT=5 \
+		-e FORGEJO__migrations__ALLOW_LOCALNETWORKS=true \
 		"$IMAGE" >/dev/null
 
 	echo -n "waiting for Forgejo at $URL "

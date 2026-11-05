@@ -135,6 +135,10 @@ func TestJSONOptions(t *testing.T) {
 	if got := slices.Sorted(maps.Keys(m)); !slices.Equal(got, []string{"events", "url"}) {
 		t.Errorf("CreateWebhookOptions keys = %v", got)
 	}
+	m = marshalMap(t, CreatePushMirrorOptions{RemoteAddress: "https://h", Username: "u", Password: "pw"})
+	if got := slices.Sorted(maps.Keys(m)); !slices.Equal(got, []string{"remoteAddress", "username"}) {
+		t.Errorf("CreatePushMirrorOptions keys = %v", got)
+	}
 	if b, _ := json.Marshal(EditUserOptions{Password: Ptr("pw")}); string(b) != "{}" {
 		t.Errorf("EditUserOptions = %s", b)
 	}

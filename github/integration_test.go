@@ -7,6 +7,9 @@
 //	                        (Repository permissions: Administration read/write)
 //	GITOPSLIB_GITHUB_ORG    throwaway organisation
 //
+// GITOPSLIB_GITHUB_COLLABORATOR, optional, is a user the collaborator checks
+// may add to a test repository; GitHub sends them an invitation by e-mail.
+//
 // An org-scoped token cannot create repositories in the user's namespace, so
 // those checks are skipped. Only repositories named with
 // contracttest.RepoPrefix are created or deleted.
@@ -46,8 +49,10 @@ func integrationEnv(t *testing.T) contracttest.Env {
 		t.Fatal(err)
 	}
 	t.Logf("GitHub user %s, org %s", login, org)
-	return contracttest.Env{Client: c, Org: org, Login: login, CreateBranch: c.createBranch, WriteFile: c.writeFile, CheckPing: c.checkPingDelivery, PublicProtectionRepo: true}
+	return contracttest.Env{Client: c, Org: org, Login: login, CreateBranch: c.createBranch, WriteFile: c.writeFile, CheckPing: c.checkPingDelivery, PublicProtectionRepo: true, Collaborator: os.Getenv("GITOPSLIB_GITHUB_COLLABORATOR")}
 }
+
+func TestIntegrationCollaborators(t *testing.T) { contracttest.Collaborators(t, integrationEnv(t)) }
 
 func TestIntegrationRepos(t *testing.T) {
 	contracttest.Repos(t, integrationEnv(t))

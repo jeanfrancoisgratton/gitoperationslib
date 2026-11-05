@@ -6,9 +6,9 @@ import "strings"
 type Capability uint64
 
 const (
-	CapRepos Capability = 1 << iota
-	CapMirrors
-	CapMigrate
+	CapRepos   Capability = 1 << iota
+	CapMirrors            // push mirrors and syncing mirrors (Mirrors)
+	CapMigrate            // reserved
 	CapAdmin
 	CapWebhooks
 	CapSystemWebhooks // system and default webhooks (SiteHooks)
@@ -34,6 +34,7 @@ const (
 	CapCommitDiffs    // a commit's raw diff (CommitDiffs)
 	CapPRContents     // a pull request's diff, files and commits (PRContents)
 	CapReviewComments // comments on a pull request's lines (ReviewComments)
+	CapCollaborators  // a repository's collaborators (Collaborators)
 )
 
 var capabilityNames = []struct {
@@ -64,6 +65,7 @@ var capabilityNames = []struct {
 	{CapCommitDiffs, "commit-diffs"},
 	{CapPRContents, "pr-contents"},
 	{CapReviewComments, "review-comments"},
+	{CapCollaborators, "collaborators"},
 }
 
 // Has reports whether c includes every capability in want.

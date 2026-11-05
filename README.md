@@ -190,6 +190,7 @@ Integration tests skip themselves unless their environment variables are set. Th
 | GitHub | `GITOPSLIB_GITHUB_TOKEN`, `GITOPSLIB_GITHUB_ORG` (an organisation, or the account's own login) |
 | Bitbucket | `GITOPSLIB_BITBUCKET_TOKEN` (Atlassian API token or access token), `GITOPSLIB_BITBUCKET_EMAIL` (required with an API token), `GITOPSLIB_BITBUCKET_WORKSPACE` (optional when the token sees a single workspace) |
 | Forgejo admin | a disposable local instance (below); non-loopback URLs are refused |
+| Optional, each suite | `GITOPSLIB_FORGEJO_COLLABORATOR`, `GITOPSLIB_GITHUB_COLLABORATOR` (receives a real invitation), `GITOPSLIB_BITBUCKET_COLLABORATOR`: a user the collaborator checks may add and remove; without one, those checks are skipped |
 
 ```sh
 __scripts/forgejo-testenv.sh start   # Forgejo 15 in Docker on 127.0.0.1:3999, writes .env.testenv

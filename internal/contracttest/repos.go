@@ -44,6 +44,10 @@ type Env struct {
 	// HookURL overrides the webhook target (Bitbucket requires a URL that
 	// resolves in DNS); default HookURL.
 	HookURL string
+	// Collaborator is a user the collaborator checks may add to a test
+	// repository and remove again. On GitHub that sends them an invitation.
+	// Without it, these checks are skipped.
+	Collaborator string
 }
 
 // isBitbucket reports whether env tests the Bitbucket backend, whose model

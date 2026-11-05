@@ -100,7 +100,8 @@ func (c *Client) Capabilities() gitoperationslib.Capability {
 	return gitoperationslib.CapRepos | gitoperationslib.CapReleases | gitoperationslib.CapPullRequests | gitoperationslib.CapWebhooks |
 		gitoperationslib.CapBranches | gitoperationslib.CapTags | gitoperationslib.CapBranchProtection | gitoperationslib.CapTagProtection | gitoperationslib.CapIssues |
 		gitoperationslib.CapDirectory | gitoperationslib.CapAccount | gitoperationslib.CapSecrets | gitoperationslib.CapCommits |
-		gitoperationslib.CapCommitDiffs | gitoperationslib.CapPRContents | gitoperationslib.CapReviewComments
+		gitoperationslib.CapCommitDiffs | gitoperationslib.CapPRContents | gitoperationslib.CapReviewComments |
+		gitoperationslib.CapCollaborators
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }
