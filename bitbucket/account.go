@@ -109,7 +109,7 @@ func (k sshKeys) Add(ctx context.Context, opts gitoperationslib.AddSSHKeyOptions
 		return nil, errors.New("bitbucket: sshkeys.add: title and key are required")
 	}
 	if opts.ReadOnly {
-		return nil, notSupported("sshkeys.add", "read-only user keys are a Forgejo feature")
+		return nil, notSupported("sshkeys.add", "Bitbucket has no read-only user keys")
 	}
 	path, err := k.c.userKeysPath(ctx, "ssh-keys")
 	if err != nil {

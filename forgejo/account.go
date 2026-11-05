@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -47,6 +48,11 @@ func (e emails) Add(ctx context.Context, addresses ...string) ([]gitoperationsli
 	if _, err := e.c.api.Do(ctx, http.MethodPost, "user/emails", nil, map[string][]string{"emails": addresses}, &out); err != nil {
 		return nil, err
 	}
+	// Forgejo answers with every address of the account (checked on 11.0.16
+	// and 15.0.11): keep the ones just added.
+	out = slices.DeleteFunc(out, func(j emailJSON) bool {
+		return !slices.ContainsFunc(addresses, func(a string) bool { return strings.EqualFold(a, j.Email) })
+	})
 	return toEmails(out), nil
 }
 
@@ -79,7 +85,12 @@ func (k sshKeys) Add(ctx context.Context, opts gitoperationslib.AddSSHKeyOptions
 	if opts.Title == "" || opts.Key == "" {
 		return nil, errors.New("forgejo: sshkeys.add: title and key are required")
 	}
-	body := map[string]any{"title": opts.Title, "key": opts.Key, "read_only": opts.ReadOnly}
+	// Forgejo accepts read_only but stores a read-write key, and reports no
+	// such field (checked on 11.0.16 and 15.0.11).
+	if opts.ReadOnly {
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "sshkeys.add", "Forgejo ignores read_only on user keys and would store a read-write key")
+	}
+	body := map[string]string{"title": opts.Title, "key": opts.Key}
 	var out sshKeyJSON
 	if _, err := k.c.api.Do(ctx, http.MethodPost, "user/keys", nil, body, &out); err != nil {
 		return nil, err
@@ -214,18 +225,23 @@ func (p profile) Edit(ctx context.Context, opts gitoperationslib.EditProfileOpti
 }
 
 func (p profile) SetAvatar(ctx context.Context, image io.Reader) error {
+	return p.c.uploadAvatar(ctx, "profile.setavatar", "user/avatar", image)
+}
+
+// uploadAvatar sends image to path, refusing an empty or oversized one first.
+func (c *Client) uploadAvatar(ctx context.Context, op, path string, image io.Reader) error {
 	data, err := io.ReadAll(io.LimitReader(image, gitoperationslib.MaxAvatarSize+1))
 	if err != nil {
-		return fmt.Errorf("forgejo: profile.setavatar: read image: %w", err)
+		return fmt.Errorf("forgejo: %s: read image: %w", op, err)
 	}
 	switch {
 	case len(data) == 0:
-		return errors.New("forgejo: profile.setavatar: empty image")
+		return fmt.Errorf("forgejo: %s: empty image", op)
 	case len(data) > gitoperationslib.MaxAvatarSize:
-		return fmt.Errorf("forgejo: profile.setavatar: image larger than %d bytes", gitoperationslib.MaxAvatarSize)
+		return fmt.Errorf("forgejo: %s: image larger than %d bytes", op, gitoperationslib.MaxAvatarSize)
 	}
 	body := map[string]string{"image": base64.StdEncoding.EncodeToString(data)}
-	_, err = p.c.api.Do(ctx, http.MethodPost, "user/avatar", nil, body, nil)
+	_, err = c.api.Do(ctx, http.MethodPost, path, nil, body, nil)
 	return err
 }
 

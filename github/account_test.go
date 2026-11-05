@@ -21,8 +21,12 @@ func TestAccountGitHub(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(&body)
 		bodies = append(bodies, body)
 		switch r.Method + " " + r.URL.Path {
-		case "GET /api/v3/user/emails", "POST /api/v3/user/emails":
+		case "GET /api/v3/user/emails":
 			io.WriteString(w, `[{"email": "a@example.com", "primary": true, "verified": true, "visibility": "private"}]`)
+		case "POST /api/v3/user/emails":
+			// As GitHub does: every address of the account, not only the new one.
+			w.WriteHeader(http.StatusCreated)
+			io.WriteString(w, `[{"email": "a@example.com", "primary": true, "verified": true, "visibility": "private"}, {"email": "B@Example.com", "primary": false, "verified": false}]`)
 		case "DELETE /api/v3/user/emails", "DELETE /api/v3/user/keys/5", "DELETE /api/v3/user/gpg_keys/3":
 			w.WriteHeader(http.StatusNoContent)
 		case "POST /api/v3/user/keys", "GET /api/v3/user/keys/5":
@@ -43,8 +47,8 @@ func TestAccountGitHub(t *testing.T) {
 	if list, err := c.Emails().List(ctx); err != nil || len(list) != 1 || list[0].Visibility != "private" {
 		t.Errorf("Emails.List = %+v, %v", list, err)
 	}
-	if _, err := c.Emails().Add(ctx, "b@example.com"); err != nil {
-		t.Error(err)
+	if added, err := c.Emails().Add(ctx, "b@example.com"); err != nil || len(added) != 1 || added[0].Address != "B@Example.com" {
+		t.Errorf("Emails.Add = %+v, %v, want only the new address", added, err)
 	}
 	if err := c.Emails().Delete(ctx, "b@example.com"); err != nil {
 		t.Error(err)

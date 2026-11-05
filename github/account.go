@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
+	"strings"
 
 	gh "github.com/google/go-github/v93/github"
 
@@ -47,9 +49,13 @@ func (e emails) Add(ctx context.Context, addresses ...string) ([]gitoperationsli
 	if err != nil {
 		return nil, convertError(err)
 	}
-	out := make([]gitoperationslib.Email, len(list))
-	for i, m := range list {
-		out[i] = toEmail(m)
+	// GitHub answers with every address of the account (checked 2026-11-04):
+	// keep the ones just added.
+	var out []gitoperationslib.Email
+	for _, m := range list {
+		if slices.ContainsFunc(addresses, func(a string) bool { return strings.EqualFold(a, m.GetEmail()) }) {
+			out = append(out, toEmail(m))
+		}
 	}
 	return out, nil
 }
@@ -87,7 +93,7 @@ func (k sshKeys) Add(ctx context.Context, opts gitoperationslib.AddSSHKeyOptions
 		return nil, errors.New("github: sshkeys.add: title and key are required")
 	}
 	if opts.ReadOnly {
-		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "sshkeys.add", "read-only user keys are a Forgejo feature (GitHub has read-only deploy keys only)")
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "sshkeys.add", "GitHub has read-only deploy keys only")
 	}
 	key, _, err := k.c.gh.Users.CreateKey(ctx, gh.CreateUserKeyRequest{Title: &opts.Title, Key: opts.Key})
 	if err != nil {

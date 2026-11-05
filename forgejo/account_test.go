@@ -26,13 +26,16 @@ func TestAccountRequests(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(&body)
 		bodies = append(bodies, body)
 		switch r.Method + " " + r.URL.Path {
-		case "GET /api/v1/user/emails", "POST /api/v1/user/emails":
-			w.WriteHeader(map[string]int{"GET": 200, "POST": 201}[r.Method])
+		case "GET /api/v1/user/emails":
 			io.WriteString(w, `[{"email": "new@example.com", "primary": false, "verified": false}]`)
+		case "POST /api/v1/user/emails":
+			// As Forgejo does: every address of the account, not only the new one.
+			w.WriteHeader(http.StatusCreated)
+			io.WriteString(w, `[{"email": "me@example.com", "primary": true, "verified": true}, {"email": "New@Example.com", "primary": false, "verified": false}]`)
 		case "DELETE /api/v1/user/emails", "DELETE /api/v1/user/keys/5", "DELETE /api/v1/user/gpg_keys/3":
 			w.WriteHeader(http.StatusNoContent)
 		case "POST /api/v1/user/keys", "GET /api/v1/user/keys/5":
-			io.WriteString(w, `{"id": 5, "title": "laptop", "key": "ssh-ed25519 AAA", "read_only": true}`)
+			io.WriteString(w, `{"id": 5, "title": "laptop", "key": "ssh-ed25519 AAA"}`)
 		case "GET /api/v1/user/keys":
 			io.WriteString(w, `[{"id": 5, "title": "laptop", "key": "ssh-ed25519 AAA"}]`)
 		case "POST /api/v1/user/gpg_keys", "POST /api/v1/user/gpg_key_verify", "GET /api/v1/user/gpg_keys/3":
@@ -54,14 +57,14 @@ func TestAccountRequests(t *testing.T) {
 	if list, err := c.Emails().List(ctx); err != nil || len(list) != 1 || list[0].Address != "new@example.com" {
 		t.Errorf("Emails.List = %+v, %v", list, err)
 	}
-	if added, err := c.Emails().Add(ctx, "new@example.com"); err != nil || len(added) != 1 || added[0].Verified {
-		t.Errorf("Emails.Add = %+v, %v", added, err)
+	if added, err := c.Emails().Add(ctx, "new@example.com"); err != nil || len(added) != 1 || added[0].Address != "New@Example.com" || added[0].Primary {
+		t.Errorf("Emails.Add = %+v, %v, want only the new address", added, err)
 	}
 	if err := c.Emails().Delete(ctx, "new@example.com"); err != nil {
 		t.Error(err)
 	}
-	key, err := c.SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "laptop", Key: "ssh-ed25519 AAA", ReadOnly: true})
-	if err != nil || key.ID != 5 || !key.ReadOnly {
+	key, err := c.SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "laptop", Key: "ssh-ed25519 AAA"})
+	if err != nil || key.ID != 5 || key.ReadOnly {
 		t.Errorf("SSHKeys.Add = %+v, %v", key, err)
 	}
 	if page, err := c.SSHKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
@@ -96,7 +99,7 @@ func TestAccountRequests(t *testing.T) {
 	wantBodies := map[int]map[string]any{
 		1: {"emails": []any{"new@example.com"}},
 		2: {"emails": []any{"new@example.com"}},
-		3: {"title": "laptop", "key": "ssh-ed25519 AAA", "read_only": true},
+		3: {"title": "laptop", "key": "ssh-ed25519 AAA"},
 		7: {"armored_public_key": "-----BEGIN PGP PUBLIC KEY BLOCK-----", "armored_signature": "-----BEGIN PGP SIGNATURE-----"},
 		9: {"key_id": "F4578977FE08E756", "armored_signature": "sig"},
 	}
@@ -104,6 +107,15 @@ func TestAccountRequests(t *testing.T) {
 		if !reflect.DeepEqual(bodies[i], want) {
 			t.Errorf("%s: body %v, want %v", requests[i], bodies[i], want)
 		}
+	}
+
+	// Forgejo would store a read-write key: refused before any request.
+	n := len(requests)
+	if _, err := c.SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "laptop", Key: "ssh-ed25519 AAA", ReadOnly: true}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("read-only key: err = %v, want ErrNotSupported", err)
+	}
+	if len(requests) != n {
+		t.Errorf("read-only key sent %v", requests[n:])
 	}
 }
 

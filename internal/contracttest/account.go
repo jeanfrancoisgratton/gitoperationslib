@@ -77,8 +77,8 @@ func accountEmails(t *testing.T, env Env, emails gitoperationslib.Emails) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = emails.Delete(context.Background(), addr) })
-	if !hasEmail(added, addr) {
-		t.Errorf("Add returned %+v, want %s", added, addr)
+	if len(added) != 1 || !hasEmail(added, addr) {
+		t.Errorf("Add returned %+v, want only %s", added, addr)
 	}
 	if list, err = emails.List(ctx); err != nil || !hasEmail(list, addr) {
 		t.Errorf("after Add: List = %+v, %v", list, err)
@@ -115,6 +115,9 @@ func accountSSHKeys(t *testing.T, keys gitoperationslib.SSHKeys) {
 
 	title := RepoPrefix + randomHex(t)
 	pub := newSSHKey(t, title)
+	if _, err := keys.Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: title, Key: pub, ReadOnly: true}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("read-only key: err = %v, want ErrNotSupported", err)
+	}
 	key, err := keys.Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: title, Key: pub})
 	if err != nil {
 		t.Fatal(err)

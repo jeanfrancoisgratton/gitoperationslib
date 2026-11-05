@@ -54,7 +54,7 @@ type SSHKey struct {
 	Title       string    `json:"title"`
 	Key         string    `json:"key"`
 	Fingerprint string    `json:"fingerprint,omitzero"` // not reported by GitHub
-	ReadOnly    bool      `json:"readOnly,omitzero"`    // Forgejo and GitHub only
+	ReadOnly    bool      `json:"readOnly,omitzero"`    // GitHub only
 	CreatedAt   time.Time `json:"createdAt,omitzero"`
 	LastUsed    time.Time `json:"lastUsed,omitzero"` // GitHub and Bitbucket only; zero if never used
 }

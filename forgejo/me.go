@@ -37,13 +37,12 @@ type sshKeyJSON struct {
 	Title       string    `json:"title"`
 	Key         string    `json:"key"`
 	Fingerprint string    `json:"fingerprint"`
-	ReadOnly    bool      `json:"read_only"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
 func (k *sshKeyJSON) toSSHKey() gitoperationslib.SSHKey {
 	return gitoperationslib.SSHKey{
-		ID: k.ID, Title: k.Title, Key: k.Key, Fingerprint: k.Fingerprint, ReadOnly: k.ReadOnly, CreatedAt: k.CreatedAt,
+		ID: k.ID, Title: k.Title, Key: k.Key, Fingerprint: k.Fingerprint, CreatedAt: k.CreatedAt,
 	}
 }
 

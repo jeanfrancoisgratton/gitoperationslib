@@ -26,9 +26,9 @@ type Account interface {
 // lists them.
 type Emails interface {
 	List(ctx context.Context) ([]Email, error)
-	// Add adds addresses and returns them as the server reports them, not
-	// yet verified. GitHub sends each a verification e-mail; Forgejo too
-	// when the instance requires confirmation.
+	// Add adds addresses and returns them as the server reports them. GitHub
+	// sends each a verification e-mail; Forgejo too when the instance requires
+	// confirmation, and otherwise reports them verified at once.
 	Add(ctx context.Context, addresses ...string) ([]Email, error)
 	// Delete removes addresses. The primary address cannot be removed.
 	Delete(ctx context.Context, addresses ...string) error
@@ -50,8 +50,9 @@ type SSHKeys interface {
 type AddSSHKeyOptions struct {
 	Title string `json:"title"` // required
 	Key   string `json:"key"`   // required: "ssh-ed25519 AAAA… comment"
-	// ReadOnly limits the key to reading (Forgejo only; ErrNotSupported
-	// elsewhere).
+	// ReadOnly asks for a key limited to reading. No backend can store one, so
+	// all of them refuse it with ErrNotSupported. Forgejo's API has the option
+	// but ignores it, and the key would be read-write.
 	ReadOnly bool `json:"readOnly,omitzero"`
 }
 
@@ -97,8 +98,8 @@ type Profile interface {
 	DeleteAvatar(ctx context.Context) error
 }
 
-// MaxAvatarSize is the largest image SetAvatar sends; larger ones are
-// refused before any request.
+// MaxAvatarSize is the largest image SetAvatar and SetOrgAvatar send; larger
+// ones are refused before any request.
 const MaxAvatarSize = 10 << 20
 
 // EditProfileOptions changes the authenticated user's profile. Nil fields
