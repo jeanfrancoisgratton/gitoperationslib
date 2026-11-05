@@ -121,7 +121,7 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [ ] Forgejo asset upload limits and content-type handling.
 - [ ] Changes to Forgejo user/org/team endpoints in recent majors (quota APIs etc.).
 - [x] `go-github`: pinned at v93.0.0 (declares go 1.26.0). New majors change the import path; review periodically. Resolved in increment 4.
-- [x] Minimum Go version: 1.27.2. Minimum Forgejo version: 11.0.10.
+- [x] Minimum Go version: 1.27.3. Minimum Forgejo version: 11.0.10.
 - [ ] Exact set of "Other" areas beyond the five priorities.
 
 ## Testing

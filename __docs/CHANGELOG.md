@@ -16,6 +16,7 @@ on a real server: the library's fake servers answered the way it expected.
   found with `client.(gol.OrgAvatars)`. Images follow the same rules as `Profile().SetAvatar`.
 
 ### Changed
+- Go 1.27.3 or later is now required.
 - `SSHKeys().Add` on Forgejo refuses `AddSSHKeyOptions.ReadOnly` with `ErrNotSupported`, before any request. Code
   that sets it now gets an error instead of a key with more access than it asked for. All three backends now refuse
   the option.
