@@ -23,6 +23,15 @@ var hookEventKeys = map[gitoperationslib.HookEvent][]string{
 	gitoperationslib.HookEventRepository:        {"repo:updated"},
 	gitoperationslib.HookEventPullRequest:       {"pullrequest:created", "pullrequest:updated", "pullrequest:fulfilled", "pullrequest:rejected"},
 	gitoperationslib.HookEventPullRequestReview: {"pullrequest:approved", "pullrequest:unapproved", "pullrequest:changes_request_created", "pullrequest:changes_request_removed"},
+	// Bitbucket has no wildcard. These are what /hook_events/repository lists
+	// (checked 2026-11-05), but for the retired issue tracker's events.
+	gitoperationslib.HookEventAll: {
+		"repo:push", "repo:fork", "repo:updated", "repo:commit_comment_created", "repo:commit_status_created", "repo:commit_status_updated",
+		"pullrequest:created", "pullrequest:push", "pullrequest:updated", "pullrequest:approved", "pullrequest:unapproved",
+		"pullrequest:changes_request_created", "pullrequest:changes_request_removed", "pullrequest:fulfilled", "pullrequest:rejected",
+		"pullrequest:comment_created", "pullrequest:comment_updated", "pullrequest:comment_deleted", "pullrequest:comment_resolved", "pullrequest:comment_reopened",
+		"pipeline:span_created",
+	},
 }
 
 func toEventKeys(events []gitoperationslib.HookEvent, op string) ([]string, error) {
@@ -78,19 +87,22 @@ func hexID(uuid string) int64 {
 }
 
 type hookJSON struct {
-	UUID        string    `json:"uuid,omitempty"`
-	URL         string    `json:"url"`
-	Description string    `json:"description"`
-	Active      bool      `json:"active"`
-	Events      []string  `json:"events"`
-	Secret      *string   `json:"secret,omitempty"`
-	CreatedAt   time.Time `json:"created_at,omitzero"`
+	UUID        string   `json:"uuid,omitempty"`
+	URL         string   `json:"url"`
+	Description string   `json:"description"`
+	Active      bool     `json:"active"`
+	Events      []string `json:"events"`
+	Secret      *string  `json:"secret,omitempty"`
+	// SkipCertVerification goes back to false when a PUT omits it, so it is
+	// always sent (checked 2026-11-05).
+	SkipCertVerification bool      `json:"skip_cert_verification"`
+	CreatedAt            time.Time `json:"created_at,omitzero"`
 }
 
 func (h *hookJSON) toWebhook() gitoperationslib.Webhook {
 	return gitoperationslib.Webhook{
 		ID: hexID(h.UUID), URL: h.URL, ContentType: gitoperationslib.HookContentJSON,
-		Events: fromEventKeys(h.Events), Active: h.Active, CreatedAt: h.CreatedAt, UpdatedAt: h.CreatedAt,
+		Events: fromEventKeys(h.Events), Active: h.Active, InsecureSSL: h.SkipCertVerification, CreatedAt: h.CreatedAt, UpdatedAt: h.CreatedAt,
 	}
 }
 
@@ -175,7 +187,7 @@ func (w webhooks) Create(ctx context.Context, scope gitoperationslib.HookScope, 
 	if err != nil {
 		return nil, err
 	}
-	body := hookJSON{URL: opts.URL, Description: "gitoperationslib", Active: opts.Active == nil || *opts.Active, Events: keys}
+	body := hookJSON{URL: opts.URL, Description: "gitoperationslib", Active: opts.Active == nil || *opts.Active, Events: keys, SkipCertVerification: opts.InsecureSSL}
 	if opts.Secret != "" {
 		body.Secret = &opts.Secret
 	}
@@ -201,7 +213,10 @@ func (w webhooks) Edit(ctx context.Context, scope gitoperationslib.HookScope, id
 	if err != nil {
 		return nil, err
 	}
-	body := hookJSON{URL: cur.URL, Description: cur.Description, Active: cur.Active, Events: cur.Events, Secret: opts.Secret}
+	body := hookJSON{URL: cur.URL, Description: cur.Description, Active: cur.Active, Events: cur.Events, Secret: opts.Secret, SkipCertVerification: cur.SkipCertVerification}
+	if opts.InsecureSSL != nil {
+		body.SkipCertVerification = *opts.InsecureSSL
+	}
 	if opts.URL != nil {
 		body.URL = *opts.URL
 	}

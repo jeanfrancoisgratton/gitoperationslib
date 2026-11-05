@@ -112,6 +112,44 @@ func Webhooks(t *testing.T, env Env) {
 		check(hooks.Delete(ctx, scope, bogus.ID))
 	}
 
+	// Skipping the certificate check survives an edit that does not name it,
+	// where the forge has it at all.
+	insecure, err := hooks.Create(ctx, scope, gitoperationslib.CreateWebhookOptions{
+		URL: HookURL, Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}, InsecureSSL: true,
+	})
+	if env.Client.Backend() == gitoperationslib.BackendForgejo {
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("InsecureSSL on Forgejo: err = %v, want ErrNotSupported", err)
+		}
+	} else {
+		check(err)
+		if !insecure.InsecureSSL {
+			t.Errorf("created = %+v", insecure)
+		}
+		moved := HookURL + "/moved"
+		kept, err := hooks.Edit(ctx, scope, insecure.ID, gitoperationslib.EditWebhookOptions{URL: &moved})
+		check(err)
+		if !kept.InsecureSSL || kept.URL != moved {
+			t.Errorf("after changing the URL = %+v", kept)
+		}
+		reset, err := hooks.Edit(ctx, scope, insecure.ID, gitoperationslib.EditWebhookOptions{InsecureSSL: gitoperationslib.Ptr(false)})
+		check(err)
+		if reset.InsecureSSL || reset.URL != moved {
+			t.Errorf("after resetting = %+v", reset)
+		}
+		check(hooks.Delete(ctx, scope, insecure.ID))
+	}
+
+	// Everything: a server that dropped names would give an error here.
+	everything, err := hooks.Create(ctx, scope, gitoperationslib.CreateWebhookOptions{
+		URL: HookURL, Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventAll}, Active: gitoperationslib.Ptr(false),
+	})
+	check(err)
+	if len(everything.Events) == 0 || !slices.Contains(everything.Events, gitoperationslib.HookEventAll) && !slices.Contains(everything.Events, gitoperationslib.HookEventPush) {
+		t.Errorf("subscribed to everything = %v", everything.Events)
+	}
+	check(hooks.Delete(ctx, scope, everything.ID))
+
 	check(hooks.Delete(ctx, scope, hook.ID))
 	if _, err := hooks.Get(ctx, scope, hook.ID); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get after delete: err = %v, want 404", err)

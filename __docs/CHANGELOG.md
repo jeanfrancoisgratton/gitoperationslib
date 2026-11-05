@@ -9,10 +9,17 @@ change the public API.
 ## [1.3.0] — 2026-11-05
 
 Forgejo's user, system and default webhooks, what a pull request changes, comments on its lines, commit ranges and raw
-diffs, a repository's collaborators, Forgejo's push mirrors and mirror sync, and fixes found by auditing pagination.
-Forgejo 15 is now the minimum.
+diffs, a repository's collaborators, Forgejo's push mirrors, mirror sync and git hooks, GitHub's delivery history, more
+typed webhook payloads, and fixes found by auditing pagination. Forgejo 15 is now the minimum.
 
 ### Added
+- **`GitHooks`** (`CapGitHooks`, Forgejo only): `ListGitHooks`, `GetGitHook`, `SetGitHook` and `DeleteGitHook`. Forgejo
+  refuses them unless the instance sets `DISABLE_GIT_HOOKS=false`.
+- **`HookDeliveries`** (`CapHookDeliveries`, GitHub only): `ListHookDeliveries`, `GetHookDelivery` and `RedeliverHook`.
+  The APIs of Forgejo and Bitbucket have no delivery history.
+- `HookEventAll` subscribes a webhook to everything: GitHub's wildcard, or on Forgejo and Bitbucket the events the library
+  knows. `InsecureSSL` on webhooks skips the certificate check, on GitHub and Bitbucket.
+- Typed webhook payloads: `Event.Issues`, `IssueComment`, `Review`, `ReviewComment`, `Create` and `Delete`.
 - **`Collaborators`** (`CapCollaborators`, all backends): `ListCollaborators`, `GetCollaborator`, `AddCollaborator` and
   `RemoveCollaborator`. On GitHub, `AddCollaborator` reports when it sent an invitation, and `RemoveCollaborator` also
   withdraws one. Permissions a forge would misread are refused: Forgejo stores write for any value it does not know.
@@ -41,7 +48,12 @@ Forgejo 15 is now the minimum.
   organisation's labels. A repository label wins over an organisation label of the same name.
 
 ### Changed
+- Forgejo's review deliveries are now reported with the `Event.Name` `pull_request_review` and the `Action` `submitted`.
+  Forgejo's own name (`pull_request_approved`, `pull_request_rejected`, `pull_request_comment`) moved to `Event.Key`.
+- Bitbucket's `pullrequest:comment_created`, `_updated` and `_deleted` deliveries are now reported with the `Event.Name`
+  `issue_comment`, or `pull_request_review_comment` on a line. The key stays in `Event.Key`.
 - Forgejo 15.0.0 or later is now required: `forgejo.New` refuses older servers (`MinimumVersion` was 11.0.10).
+- `Webhooks().Edit` on Bitbucket keeps a webhook's "skip certificate verification" setting, which it used to reset.
 - `CapSystemWebhooks` and `CapMirrors` are no longer reserved: the Forgejo client now announces them. `CapMigrate` still
   is.
 

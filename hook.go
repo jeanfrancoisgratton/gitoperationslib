@@ -2,6 +2,7 @@ package gitoperationslib
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -100,6 +101,10 @@ const (
 	HookEventPullRequestReview HookEvent = "pull_request_review"
 	HookEventRepository        HookEvent = "repository"
 	HookEventWiki              HookEvent = "wiki" // GitHub: gollum
+	// HookEventAll subscribes to everything. Only GitHub has a wildcard, which
+	// also covers events added later, and reports it back as "*". For the
+	// others the library sends the events it knows, which come back one by one.
+	HookEventAll HookEvent = "*"
 )
 
 // HookContentType is the encoding of webhook payloads.
@@ -121,8 +126,11 @@ type Webhook struct {
 	Events       []HookEvent `json:"events"`
 	Active       bool        `json:"active"`
 	BranchFilter string      `json:"branchFilter,omitzero"` // Forgejo only
-	CreatedAt    time.Time   `json:"createdAt,omitzero"`
-	UpdatedAt    time.Time   `json:"updatedAt,omitzero"`
+	// InsecureSSL delivers without checking the target's TLS certificate
+	// (GitHub, Bitbucket).
+	InsecureSSL bool      `json:"insecureSsl,omitzero"`
+	CreatedAt   time.Time `json:"createdAt,omitzero"`
+	UpdatedAt   time.Time `json:"updatedAt,omitzero"`
 }
 
 // CreateWebhookOptions describes a webhook to create.
@@ -139,6 +147,10 @@ type CreateWebhookOptions struct {
 	BranchFilter string `json:"branchFilter,omitzero"`
 	// AuthorizationHeader is sent with every delivery (Forgejo only).
 	AuthorizationHeader string `json:"-"`
+	// InsecureSSL delivers without checking the target's TLS certificate, so a
+	// third party could read or alter deliveries (GitHub, Bitbucket; on Forgejo
+	// it is an instance setting, and true returns ErrNotSupported).
+	InsecureSSL bool `json:"insecureSsl,omitzero"`
 }
 
 // EditWebhookOptions changes a webhook. Nil fields are left unchanged; a
@@ -151,4 +163,56 @@ type EditWebhookOptions struct {
 	Active              *bool            `json:"active,omitzero"`
 	BranchFilter        *string          `json:"branchFilter,omitzero"` // Forgejo only
 	AuthorizationHeader *string          `json:"-"`                     // Forgejo only
+	InsecureSSL         *bool            `json:"insecureSsl,omitzero"`  // see CreateWebhookOptions
+}
+
+// HookDeliveries reads a webhook's delivery history and sends deliveries again.
+// Only the GitHub backend implements it (CapHookDeliveries): the APIs of Forgejo
+// and Bitbucket have no such history. Find it with a type assertion:
+//
+//	d, ok := client.(gitoperationslib.HookDeliveries)
+type HookDeliveries interface {
+	// ListHookDeliveries lists deliveries, newest first, without the request
+	// and response. GitHub keeps them for a few days.
+	ListHookDeliveries(ctx context.Context, scope HookScope, hookID int64, opts ListHookDeliveriesOptions) (HookDeliveryPage, error)
+	// GetHookDelivery returns a delivery with its request and response.
+	GetHookDelivery(ctx context.Context, scope HookScope, hookID, id int64) (*HookDelivery, error)
+	// RedeliverHook queues a delivery to be sent again, and returns at once.
+	// It shows up as a new delivery, with Redelivery set.
+	RedeliverHook(ctx context.Context, scope HookScope, hookID, id int64) error
+}
+
+// ListHookDeliveriesOptions selects a page of deliveries.
+type ListHookDeliveriesOptions struct {
+	// Cursor is HookDeliveryPage.NextCursor of the previous page: this list has
+	// no page numbers, so gitoperationslib.All does not apply.
+	Cursor  string `json:"cursor,omitzero"`
+	PerPage int    `json:"perPage,omitzero"`
+}
+
+// HookDeliveryPage is a page of deliveries.
+type HookDeliveryPage struct {
+	Items []HookDelivery `json:"items"`
+	// NextCursor is the cursor of the next page, or empty on the last one.
+	NextCursor string `json:"nextCursor"`
+}
+
+// HookDelivery is one attempt to deliver an event to a webhook.
+type HookDelivery struct {
+	ID int64 `json:"id"`
+	// GUID is the delivery's X-GitHub-Delivery, shared by its redeliveries.
+	GUID        string        `json:"guid"`
+	Event       string        `json:"event"`
+	Action      string        `json:"action,omitzero"`
+	Status      string        `json:"status"`     // "OK", or what went wrong
+	StatusCode  int           `json:"statusCode"` // the target's answer; 502 if GitHub cannot reach it
+	Redelivery  bool          `json:"redelivery"`
+	Duration    time.Duration `json:"duration,omitzero"`
+	DeliveredAt time.Time     `json:"deliveredAt,omitzero"`
+	// The rest is set by GetHookDelivery only. To decode RequestPayload with the
+	// webhook package, compact it first: that gives the bytes GitHub signed.
+	RequestHeaders  map[string]string `json:"requestHeaders,omitzero"`
+	RequestPayload  json.RawMessage   `json:"requestPayload,omitzero"`
+	ResponseHeaders map[string]string `json:"responseHeaders,omitzero"`
+	ResponseBody    string            `json:"responseBody,omitzero"`
 }

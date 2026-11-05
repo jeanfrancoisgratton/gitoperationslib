@@ -31,6 +31,14 @@ var bitbucketActions = map[string][2]string{
 	"pullrequest:changes_request_removed": {"pull_request_review", "dismissed"},
 }
 
+// bitbucketCommentActions maps comment event keys to Action. Their Name depends
+// on whether the comment is on a line.
+var bitbucketCommentActions = map[string]string{
+	"pullrequest:comment_created": "created",
+	"pullrequest:comment_updated": "edited",
+	"pullrequest:comment_deleted": "deleted",
+}
+
 type bbUser struct {
 	Nickname    string `json:"nickname"`
 	DisplayName string `json:"display_name"`
@@ -59,10 +67,19 @@ func decodeBitbucket(h http.Header, body []byte) (*Event, error) {
 		Repository *struct {
 			FullName string `json:"full_name"`
 		} `json:"repository"`
-		Actor *bbUser `json:"actor"`
+		Actor   *bbUser `json:"actor"`
+		Comment *struct {
+			Inline *json.RawMessage `json:"inline"`
+		} `json:"comment"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, fmt.Errorf("webhook: decode %s payload: %w", key, err)
+	}
+	if action, ok := bitbucketCommentActions[key]; ok && env.Comment != nil {
+		ev.Name, ev.Action = "issue_comment", action
+		if env.Comment.Inline != nil {
+			ev.Name = "pull_request_review_comment"
+		}
 	}
 	if env.Repository != nil {
 		ev.Repo = env.Repository.FullName
@@ -220,6 +237,129 @@ func (e *Event) bitbucketPullRequest() (*PullRequestEvent, error) {
 		}
 	}
 	return &PullRequestEvent{Action: e.Action, Number: src.ID, PullRequest: pr}, nil
+}
+
+// bitbucketReviewStates gives the verdict of the review events; removing one
+// dismisses it.
+var bitbucketReviewStates = map[string]gitoperationslib.ReviewState{
+	"pullrequest:approved":                gitoperationslib.ReviewApproved,
+	"pullrequest:unapproved":              gitoperationslib.ReviewDismissed,
+	"pullrequest:changes_request_created": gitoperationslib.ReviewChangesRequested,
+	"pullrequest:changes_request_removed": gitoperationslib.ReviewDismissed,
+}
+
+// bitbucketReview decodes an approval or change request. Their payloads hold the
+// pull request, and the verdict under "approval" or "changes_request".
+func (e *Event) bitbucketReview() (*ReviewEvent, error) {
+	state, ok := bitbucketReviewStates[e.Key]
+	if !ok {
+		return nil, fmt.Errorf("webhook: %s delivery is not a pull_request_review event", e.Key)
+	}
+	pr, err := e.bitbucketPullRequest()
+	if err != nil {
+		return nil, err
+	}
+	type verdict struct {
+		Date time.Time `json:"date"`
+		User *bbUser   `json:"user"`
+	}
+	var p struct {
+		Actor          *bbUser  `json:"actor"`
+		Approval       *verdict `json:"approval"`
+		ChangesRequest *verdict `json:"changes_request"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil {
+		return nil, fmt.Errorf("webhook: decode pull_request_review payload: %w", err)
+	}
+	out := &ReviewEvent{Action: "submitted", Number: pr.Number, PullRequest: pr.PullRequest, Review: gitoperationslib.Review{Reviewer: p.Actor.login(), State: state}}
+	if state == gitoperationslib.ReviewDismissed {
+		out.Action = "dismissed"
+	}
+	v := p.Approval
+	if v == nil {
+		v = p.ChangesRequest
+	}
+	if v != nil {
+		out.Review.SubmittedAt = v.Date
+		if v.User != nil {
+			out.Review.Reviewer = v.User.login()
+		}
+	}
+	return out, nil
+}
+
+type bbComment struct {
+	ID      int64 `json:"id"`
+	Content struct {
+		Raw string `json:"raw"`
+	} `json:"content"`
+	User   *bbUser `json:"user"`
+	Inline *struct {
+		Path string `json:"path"`
+		From *int   `json:"from"`
+		To   *int   `json:"to"`
+	} `json:"inline"`
+	CreatedOn time.Time `json:"created_on"`
+	UpdatedOn time.Time `json:"updated_on"`
+	Links     struct {
+		HTML struct {
+			Href string `json:"href"`
+		} `json:"html"`
+	} `json:"links"`
+}
+
+// bitbucketComment decodes a comment delivery of the given Name.
+func (e *Event) bitbucketComment(want string) (*bbComment, *PullRequestEvent, error) {
+	if e.Name != want {
+		return nil, nil, fmt.Errorf("webhook: %s delivery is not a %s event", e.Key, want)
+	}
+	pr, err := e.bitbucketPullRequest()
+	if err != nil {
+		return nil, nil, err
+	}
+	var p struct {
+		Comment bbComment `json:"comment"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil {
+		return nil, nil, fmt.Errorf("webhook: decode %s payload: %w", want, err)
+	}
+	return &p.Comment, pr, nil
+}
+
+func (e *Event) bitbucketIssueComment() (*IssueCommentEvent, error) {
+	c, pr, err := e.bitbucketComment("issue_comment")
+	if err != nil {
+		return nil, err
+	}
+	src := pr.PullRequest
+	return &IssueCommentEvent{
+		Action: e.Action, IsPullRequest: true,
+		Issue: gitoperationslib.Issue{
+			Number: src.Number, Title: src.Title, Body: src.Body, State: gitoperationslib.IssueState(src.State), Author: src.Author,
+			HTMLURL: src.HTMLURL, CreatedAt: src.CreatedAt, UpdatedAt: src.UpdatedAt, ClosedAt: src.ClosedAt,
+		},
+		Comment: gitoperationslib.Comment{
+			ID: c.ID, Author: c.User.login(), Body: c.Content.Raw, HTMLURL: c.Links.HTML.Href, CreatedAt: c.CreatedOn, UpdatedAt: c.UpdatedOn,
+		},
+	}, nil
+}
+
+func (e *Event) bitbucketReviewComment() (*ReviewCommentEvent, error) {
+	c, pr, err := e.bitbucketComment("pull_request_review_comment")
+	if err != nil {
+		return nil, err
+	}
+	comment := gitoperationslib.ReviewComment{
+		ID: c.ID, Author: c.User.login(), Body: c.Content.Raw, Path: c.Inline.Path, HTMLURL: c.Links.HTML.Href,
+		CreatedAt: c.CreatedOn, UpdatedAt: c.UpdatedOn,
+	}
+	if c.Inline.To != nil {
+		comment.Line = *c.Inline.To
+	}
+	if c.Inline.From != nil {
+		comment.OldLine = *c.Inline.From
+	}
+	return &ReviewCommentEvent{Action: e.Action, Number: pr.Number, PullRequest: pr.PullRequest, Comment: comment}, nil
 }
 
 // isBitbucketPR reports whether a Bitbucket key is a pull request event.

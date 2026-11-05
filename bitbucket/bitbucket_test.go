@@ -275,8 +275,8 @@ func TestWebhooksBitbucket(t *testing.T) {
 		t.Errorf("unknown ID: err = %v", err)
 	}
 	want := []string{
-		`POST /2.0/workspaces/acme/hooks {"url":"https://h","description":"gitoperationslib","active":true,"events":["repo:push"],"secret":"s"}`,
-		`PUT /2.0/workspaces/acme/hooks/%7B0b6a4b8e-1234-4000-8000-000000000000%7D {"url":"https://h2","description":"","active":true,"events":["repo:fork"]}`,
+		`POST /2.0/workspaces/acme/hooks {"url":"https://h","description":"gitoperationslib","active":true,"events":["repo:push"],"secret":"s","skip_cert_verification":false}`,
+		`PUT /2.0/workspaces/acme/hooks/%7B0b6a4b8e-1234-4000-8000-000000000000%7D {"url":"https://h2","description":"","active":true,"events":["repo:fork"],"skip_cert_verification":false}`,
 		`DELETE /2.0/workspaces/acme/hooks/%7B0b6a4b8e-1234-4000-8000-000000000000%7D `,
 	}
 	if strings.Join(writes, "\n") != strings.Join(want, "\n") {

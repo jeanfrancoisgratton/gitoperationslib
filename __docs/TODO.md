@@ -75,8 +75,8 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [x] **40 →** A merge sometimes got HTTP 405 "Please try again later" while the server checked the pull request. The library now retries it (1.3.0); `TestIntegrationPullRequests` passed five runs in a row on 15.0.11.
 - [x] **41 →** Closed: these failures were Forgejo 11 differences, and 15.0.0 is now the minimum (1.3.0). The suite passes on 15.0.11.
 - [x] **42 →** `contracttest.create` deletes the hooks Forgejo copies into a new repository (1.3.0). Checked with a default hook on a local listener: no delivery during the main contract tests. System and organisation webhooks would still fire.
-- [ ] **43 →** Not exposed yet: git hooks (`/hooks/git`), delivery history/redelivery, GitHub `insecure_ssl`, wildcard event subscriptions.
-- [ ] **44 →** Typed payloads beyond push/pull_request/release (issues, comments, reviews, create/delete). Forgejo review events arrive under Forgejo-specific names; check before typing them.
+- [x] **43 →** `GitHooks` (Forgejo), `HookDeliveries` (GitHub; the APIs of Forgejo and Bitbucket have no delivery history), `InsecureSSL` (GitHub, Bitbucket), `HookEventAll`, 1.3.0.
+- [x] **44 →** `Event.Issues`, `IssueComment`, `Review`, `ReviewComment`, `Create` and `Delete`, 1.3.0. Forgejo's review events are `pull_request_approved`, `pull_request_rejected` and `pull_request_comment` (a review, not a conversation comment), checked on 15.0.11.
 
 ## Branches and tags
 
@@ -151,5 +151,6 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [ ] **95 →** Unit-test coverage of `bitbucket/` is ~53% (read paths and the ErrNotSupported stubs are covered by the integration checks only).
 - [ ] **96 →** Bitbucket answers a pull request's commits with page tokens (`page=67Fg`), which `Page.NextPage` cannot carry: `PullRequestCommits` returns them all at once, and the internal `All` now follows next links. Other public list calls still read `NextPage` as a number and were not audited: a token there would silently stop `All` after the first page.
 - [ ] **97 →** Forgejo 15.0.11 bug: a list requested without `page` ignores `limit` on `/push_mirrors`, labels, milestones, webhooks and deploy keys. `/push_mirrors` also links a next page, which made `All` return duplicates, so `ListPushMirrors` always sends a page. The others link none: `All` is correct, but a first `List` with `PerPage` can return more items than asked. Sending `page=1` from `ListQuery` would cover them all. Report upstream, along with `/push_mirrors` errors whose message is `%!s(<nil>)`.
+- [ ] **99 →** Finish checking increment D on GitHub, which was unavailable for repository creation at the time (first an incident, then a secondary rate limit): run `TestIntegrationHookDeliveries` and `TestIntegrationWebhooks` on the `github` package, and replace the hand-written payloads of `Review`, `ReviewComment`, `Create` and `Delete` with fixtures captured from its delivery history. Hook options, the wildcard, delivery lists and redelivery were checked with direct requests; `Issues` and `IssueComment` have real fixtures. Create repositories only a few at a time: repeated attempts trigger the limit.
 - [ ] **98 →** GitHub's pending invitations cannot be listed: `AddCollaborator` reports one and `RemoveCollaborator` withdraws it, but nothing shows who is pending. The add, change and remove path has only unit tests on GitHub until a second account is available (`GITOPSLIB_GITHUB_COLLABORATOR`), since it sends a real invitation.
 

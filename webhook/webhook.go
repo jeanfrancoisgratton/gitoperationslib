@@ -77,11 +77,14 @@ type Event struct {
 	Forge gitoperationslib.Backend `json:"forge"`
 	// Name is the event, e.g. "push", "pull_request", "release", or
 	// GitHub's "ping". Bitbucket's event keys are mapped to these names where
-	// they match ("repo:push" is "push"; "pullrequest:…" is "pull_request" or
-	// "pull_request_review"); others keep their key.
+	// they match ("repo:push" is "push"; "pullrequest:…" is "pull_request",
+	// "pull_request_review", "issue_comment" or "pull_request_review_comment");
+	// others keep their key. So are Forgejo's review events, which it calls
+	// "pull_request_approved", "pull_request_rejected" and "pull_request_comment".
 	Name string `json:"name"`
-	// Key is Bitbucket's raw event key (X-Event-Key), e.g.
-	// "pullrequest:fulfilled"; empty for other forges.
+	// Key is what the forge calls a renamed event: Bitbucket's event key
+	// (X-Event-Key), e.g. "pullrequest:fulfilled", or Forgejo's name for a
+	// review. It is empty otherwise.
 	Key      string `json:"key,omitzero"`
 	Delivery string `json:"delivery"`        // unique delivery ID
 	Action   string `json:"action,omitzero"` // e.g. "opened", "published"; empty for push
@@ -139,6 +142,10 @@ func Decode(h http.Header, body []byte) (*Event, error) {
 		return nil, fmt.Errorf("webhook: decode %s payload: %w", ev.Name, err)
 	}
 	ev.Action = env.Action
+	if ev.Forge == gitoperationslib.BackendForgejo && forgejoReviews[ev.Name] != "" {
+		// Forgejo's action is "reviewed" whatever the verdict.
+		ev.Key, ev.Name, ev.Action = ev.Name, "pull_request_review", "submitted"
+	}
 	if env.Repository != nil {
 		ev.Repo = env.Repository.FullName
 	}

@@ -35,6 +35,7 @@ func toWebhook(h *gh.Hook) gitoperationslib.Webhook {
 		ContentType: gitoperationslib.HookContentType(h.GetConfig().GetContentType()),
 		Events:      events,
 		Active:      h.GetActive(),
+		InsecureSSL: h.GetConfig().GetInsecureSSL() == "1",
 		CreatedAt:   h.GetCreatedAt().Time,
 		UpdatedAt:   h.GetUpdatedAt().Time,
 	}
@@ -95,6 +96,13 @@ func (w webhooks) Get(ctx context.Context, scope gitoperationslib.HookScope, id 
 	return singleHook(w.c.gh.Repositories.GetHook(ctx, scope.Owner, scope.Repo, id))
 }
 
+func insecureSSLValue(insecure bool) string {
+	if insecure {
+		return "1"
+	}
+	return "0"
+}
+
 func (w webhooks) Create(ctx context.Context, scope gitoperationslib.HookScope, opts gitoperationslib.CreateWebhookOptions) (*gitoperationslib.Webhook, error) {
 	const op = "webhooks.create"
 	if err := checkScope(scope); err != nil {
@@ -123,6 +131,9 @@ func (w webhooks) Create(ctx context.Context, scope gitoperationslib.HookScope, 
 		Events: toGitHubEvents(opts.Events),
 		Active: &active,
 	}
+	if opts.InsecureSSL {
+		hook.Config.InsecureSSL = gh.Ptr(insecureSSLValue(true))
+	}
 	if scope.Repo == "" {
 		return singleHook(w.c.gh.Organizations.CreateHook(ctx, scope.Owner, hook))
 	}
@@ -147,14 +158,18 @@ func (w webhooks) Edit(ctx context.Context, scope gitoperationslib.HookScope, id
 		}
 		body.Events = toGitHubEvents(opts.Events)
 	}
-	if opts.URL != nil || opts.ContentType != nil || opts.Secret != nil {
+	if opts.URL != nil || opts.ContentType != nil || opts.Secret != nil || opts.InsecureSSL != nil {
 		// GitHub replaces the whole config: start from the current one. The
 		// secret cannot be read back, so it must be passed again if set.
 		cur, err := w.Get(ctx, scope, id)
 		if err != nil {
 			return nil, err
 		}
-		cfg := &gh.HookConfig{URL: gh.Ptr(cur.URL), ContentType: gh.Ptr(string(cur.ContentType)), Secret: opts.Secret}
+		insecure := cur.InsecureSSL
+		if opts.InsecureSSL != nil {
+			insecure = *opts.InsecureSSL
+		}
+		cfg := &gh.HookConfig{URL: gh.Ptr(cur.URL), ContentType: gh.Ptr(string(cur.ContentType)), Secret: opts.Secret, InsecureSSL: gh.Ptr(insecureSSLValue(insecure))}
 		if opts.URL != nil {
 			cfg.URL = opts.URL
 		}

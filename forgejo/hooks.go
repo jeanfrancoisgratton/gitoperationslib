@@ -40,12 +40,25 @@ func (h *hookJSON) toWebhook() gitoperationslib.Webhook {
 // Forgejo splits GitHub's pull_request_review into one event per verdict.
 var reviewHookEvents = []string{"pull_request_review_approved", "pull_request_review_rejected", "pull_request_review_comment"}
 
+// allHookEvents is what HookEventAll sends: Forgejo has no wildcard, and takes
+// "*" as an unknown event, leaving a webhook subscribed to nothing. These are the
+// names 15.0.11 accepts.
+var allHookEvents = append([]string{
+	"create", "delete", "fork", "push", "issues", "issue_assign", "issue_label", "issue_milestone", "issue_comment",
+	"pull_request", "pull_request_assign", "pull_request_label", "pull_request_milestone", "pull_request_comment",
+	"pull_request_review_request", "pull_request_sync", "wiki", "repository", "release", "package",
+	"action_run_failure", "action_run_recover", "action_run_success",
+}, reviewHookEvents...)
+
 func toForgejoEvents(events []gitoperationslib.HookEvent) []string {
 	out := make([]string, 0, len(events))
 	for _, e := range events {
-		if e == gitoperationslib.HookEventPullRequestReview {
+		switch e {
+		case gitoperationslib.HookEventPullRequestReview:
 			out = append(out, reviewHookEvents...)
-		} else {
+		case gitoperationslib.HookEventAll:
+			out = append(out, allHookEvents...)
+		default:
 			out = append(out, string(e))
 		}
 	}
@@ -123,6 +136,9 @@ func (s hookService) create(ctx context.Context, opts gitoperationslib.CreateWeb
 	if opts.URL == "" || len(opts.Events) == 0 {
 		return nil, errors.New("forgejo: webhooks.create: url and events are required")
 	}
+	if opts.InsecureSSL {
+		return nil, insecureSSLNotSupported(op)
+	}
 	ct := opts.ContentType
 	if ct == "" {
 		ct = gitoperationslib.HookContentJSON
@@ -150,7 +166,16 @@ func (s hookService) create(ctx context.Context, opts gitoperationslib.CreateWeb
 	return checkEvents(&hook, body.Events, out.Events, op)
 }
 
+// insecureSSLNotSupported refuses what Forgejo would drop silently: skipping the
+// certificate check is its SKIP_TLS_VERIFY setting, for the whole instance.
+func insecureSSLNotSupported(op string) error {
+	return gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op, "skipping the certificate check for one webhook")
+}
+
 func (s hookService) edit(ctx context.Context, id int64, opts gitoperationslib.EditWebhookOptions) (*gitoperationslib.Webhook, error) {
+	if opts.InsecureSSL != nil && *opts.InsecureSSL {
+		return nil, insecureSSLNotSupported("webhooks.edit")
+	}
 	body := hookBody{
 		Active:              opts.Active,
 		BranchFilter:        opts.BranchFilter,

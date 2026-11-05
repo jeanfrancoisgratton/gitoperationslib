@@ -88,7 +88,7 @@ func TestWebhooksRequests(t *testing.T) {
 		2: {"name": "web", "active": true, "events": []any{"push", "gollum"},
 			"config": map[string]any{"url": "https://h/x", "content_type": "json", "secret": "s"}},
 		3: {"name": "web", "active": false, "events": []any{"push"}, "config": map[string]any{"url": "https://h/x", "content_type": "json"}},
-		5: {"config": map[string]any{"url": "https://h/y", "content_type": "json", "secret": "s2"}},
+		5: {"config": map[string]any{"url": "https://h/y", "content_type": "json", "secret": "s2", "insecure_ssl": "0"}},
 		6: {"active": false},
 	}
 	for i, want := range wantBodies {

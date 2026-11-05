@@ -304,6 +304,8 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapSystemWebhooks` | `system-webhooks` (system and default webhooks: `gol.SiteHooks`) | ✅ | | |
 | `CapCollaborators` | `collaborators` (a repository's collaborators: `gol.Collaborators`) | ✅ | ✅ | ✅ |
 | `CapMirrors` | `mirrors` (push mirrors and syncing mirrors: `gol.Mirrors`) | ✅ | | |
+| `CapGitHooks` | `git-hooks` (server-side git hooks: `gol.GitHooks`) | ✅ | | |
+| `CapHookDeliveries` | `hook-deliveries` (a webhook's delivery history: `gol.HookDeliveries`) | | ✅ | |
 | `CapMigrate` | reserved for a future feature | | | |
 
 ```go
@@ -352,6 +354,14 @@ if ci, ok := client.(gol.CI); ok {
 // Commit history (§21): all three backends.
 if h, ok := client.(gol.History); ok {
 	_ = h.Commits()
+}
+
+// A webhook's delivery history (§14.6): GitHub only. Git hooks (§14.7): Forgejo only.
+if d, ok := client.(gol.HookDeliveries); ok {
+	_ = d
+}
+if h, ok := client.(gol.GitHooks); ok {
+	_ = h
 }
 
 // Collaborators: all three backends. Mirrors: Forgejo only (§22).
@@ -1660,6 +1670,7 @@ type Webhook struct {
 	Events       []HookEvent
 	Active       bool
 	BranchFilter string // Forgejo only
+	InsecureSSL  bool   // GitHub and Bitbucket: deliveries skip the certificate check
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -1672,6 +1683,7 @@ type CreateWebhookOptions struct {
 	Active              *bool           // nil: active
 	BranchFilter        string          // Forgejo only, e.g. "{main,release/*}"
 	AuthorizationHeader string          // Forgejo only, sent with every delivery
+	InsecureSSL         bool            // GitHub and Bitbucket; true returns ErrNotSupported on Forgejo
 }
 
 type EditWebhookOptions struct {
@@ -1682,12 +1694,15 @@ type EditWebhookOptions struct {
 	Active              *bool
 	BranchFilter        *string // Forgejo only
 	AuthorizationHeader *string // Forgejo only
+	InsecureSSL         *bool   // kept by edits that do not name it
 }
 ```
 
-The secret is never returned by the server. Hook URLs can embed credentials, so avoid logging `Webhook.URL`.
+The secret is never returned by the server. Hook URLs can embed credentials, so avoid logging `Webhook.URL`. `InsecureSSL` lets a third party read or alter deliveries, so keep it for targets you control. On Forgejo, it is the instance's `SKIP_TLS_VERIFY` setting.
 
 ### 14.3 Events
+
+`gol.HookEventAll` subscribes to everything. Only GitHub has a wildcard: it also covers events added later, and is reported back as `*`. On Forgejo and Bitbucket the library sends the events it knows, and they come back one by one, so an event a later server version adds is not included.
 
 The constants use GitHub's names. The library translates them for the other forges:
 
@@ -1817,6 +1832,58 @@ Notes:
 - **Default webhooks are copied once.** A new repository gets its own independent repository webhook. Existing repositories get nothing, and editing or deleting the default webhook leaves the copies as they are. Change those with `Webhooks()`.
 - **Each interface only reaches its own kind.** Forgejo's API addresses system and default webhooks at the same path, and its answers do not tell them apart. So get, edit and delete first list the system webhooks to check the kind, which costs one extra request per page of them. An ID of the other kind gives HTTP 404 and changes nothing.
 - **`Ping` has no equivalent here:** Forgejo offers no test delivery for these kinds.
+### 14.6 Delivery history (GitHub)
+
+GitHub records what it sent to a webhook and how the target answered; the APIs of Forgejo and Bitbucket have no such history. `gol.HookDeliveries` (`CapHookDeliveries`) reads it for repository and organisation webhooks:
+
+```go
+d, ok := client.(gol.HookDeliveries)
+scope := gol.RepoHooks("acme", "widget")
+
+// This list uses cursors rather than page numbers, so gol.All does not apply.
+opts := gol.ListHookDeliveriesOptions{PerPage: 50}
+for {
+	page, err := d.ListHookDeliveries(ctx, scope, hookID, opts)
+	if err != nil {
+		return err
+	}
+	for _, item := range page.Items {
+		if item.StatusCode >= 300 { // 502 means GitHub could not reach the target
+			// With the request and response:
+			full, err := d.GetHookDelivery(ctx, scope, hookID, item.ID)
+			_, _ = full, err
+
+			// Send it again. It shows up as a new delivery, with Redelivery set and the same GUID.
+			err = d.RedeliverHook(ctx, scope, hookID, item.ID)
+		}
+	}
+	if page.NextCursor == "" {
+		break
+	}
+	opts.Cursor = page.NextCursor
+}
+```
+
+To pass a recorded delivery to the `webhook` package, compact `RequestPayload` with `json.Compact` first: that gives the bytes GitHub signed.
+
+### 14.7 Git hooks (Forgejo)
+
+Git hooks are scripts the server runs when it receives a push, for instance to refuse it. **A hook runs on the server with the server's rights**, so editing one amounts to running code there. Forgejo therefore answers HTTP 403 to all of these, even for a site admin, unless the instance sets `DISABLE_GIT_HOOKS=false`, and then allows only site admins and users given that right. `gol.GitHooks` (`CapGitHooks`) is Forgejo only:
+
+```go
+h, ok := client.(gol.GitHooks)
+
+hooks, err := h.ListGitHooks(ctx, "acme", "widget") // pre-receive, update, post-receive, in use or not
+
+// In use at once. A script that exits with an error refuses every push.
+hook, err := h.SetGitHook(ctx, "acme", "widget", "pre-receive", "#!/bin/sh\nexit 0\n")
+
+one, err := h.GetGitHook(ctx, "acme", "widget", "pre-receive") // one.Active, one.Content
+err = h.DeleteGitHook(ctx, "acme", "widget", "pre-receive")    // takes it out of use
+```
+
+The server takes empty content for a request to delete the hook, so `SetGitHook` refuses it: use `DeleteGitHook`.
+
 ---
 
 ## 15. Receiving webhooks (`webhook` package)
@@ -1945,8 +2012,8 @@ Forge detection: `X-Forgejo-Event` means Forgejo (checked first, because Forgejo
 | Field | Notes |
 |---|---|
 | `Forge gol.Backend` | |
-| `Name string` | `push`, `pull_request`, `pull_request_review`, `release`, `issues`, `ping`, … Bitbucket keys are mapped to these names where they match; others keep their key. |
-| `Key string` | Bitbucket's raw `X-Event-Key` (e.g. `pullrequest:fulfilled`); empty for other forges |
+| `Name string` | `push`, `pull_request`, `pull_request_review`, `release`, `issues`, `ping`, … Forgejo's review events and Bitbucket's keys are mapped to these names where they match; other Bitbucket keys stay as they are. |
+| `Key string` | What the forge calls a renamed event: Bitbucket's `X-Event-Key` (e.g. `pullrequest:fulfilled`) or Forgejo's review event (`pull_request_approved`); otherwise empty |
 | `Delivery string` | Unique delivery ID, useful for deduplication |
 | `Action string` | `opened`, `closed`, `published`, …; empty for push |
 | `Repo string` | `"owner/name"`; empty for events without a repository |
@@ -1995,15 +2062,60 @@ type ReleaseEvent struct {
 }
 ```
 
+The accessors for the other common events:
+
+| Accessor | For `Name` | Returns | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|---|---|
+| `ev.Issues()` | `issues` | `*IssuesEvent` | ✅ | ✅ | ❌ no issues |
+| `ev.IssueComment()` | `issue_comment` | `*IssueCommentEvent` | ✅ | ✅ | ✅ pull request conversations |
+| `ev.Review()` | `pull_request_review` | `*ReviewEvent` | ✅ | ✅ | ✅ |
+| `ev.ReviewComment()` | `pull_request_review_comment` | `*ReviewCommentEvent` | ❌ no such event | ✅ | ✅ |
+| `ev.Create()`, `ev.Delete()` | `create`, `delete` | `*RefEvent` | ✅ | ✅ | ❌ reported as a push |
+
+```go
+type IssuesEvent struct {
+	Action string // "opened", "edited", "closed", "reopened", …
+	Issue  gol.Issue
+}
+
+type IssueCommentEvent struct {
+	Action        string // "created", "edited" or "deleted"
+	Issue         gol.Issue // the pull request when IsPullRequest is set
+	IsPullRequest bool
+	Comment       gol.Comment
+}
+
+type ReviewEvent struct {
+	Action      string // "submitted" or "dismissed"; GitHub also "edited"
+	Number      int
+	PullRequest gol.PullRequest
+	Review      gol.Review // Review.State is the verdict on every forge
+}
+
+type ReviewCommentEvent struct {
+	Action      string // "created", "edited" or "deleted"
+	Number      int
+	PullRequest gol.PullRequest
+	Comment     gol.ReviewComment
+}
+
+type RefEvent struct {
+	RefType string // "branch" or "tag"
+	Ref     string // the short name, on every forge
+	SHA     string // only Forgejo sends it, on create
+}
+```
+
+`ReviewEvent.Review` holds what the forge sends. GitHub sends all of it, Forgejo `Reviewer`, `State` and `Body`, and Bitbucket, whose approvals have no text, `Reviewer`, `State` and `SubmittedAt`.
+
 For any other event, decode `ev.Payload` with `encoding/json`:
 
 ```go
-case "issues":
+case "fork":
 	var p struct {
-		Issue struct {
-			Number int    `json:"number"`
-			Title  string `json:"title"`
-		} `json:"issue"`
+		Forkee struct {
+			FullName string `json:"full_name"`
+		} `json:"forkee"`
 	}
 	if err := json.Unmarshal(ev.Payload, &p); err != nil {
 		return err
@@ -2013,6 +2125,16 @@ case "issues":
 ### 15.5 Forge specifics
 
 - **Test deliveries.** Forgejo's (`Webhooks().Ping`) is a `push` event; GitHub's is a `ping` event.
+- **Forgejo reviews.** Forgejo names its review events after the verdict, with the action `reviewed` for all of them. The library reports them like GitHub's, and keeps Forgejo's name in `Key`:
+
+| Forgejo's `X-Forgejo-Event` | `Name` | `Action` | `Review.State` |
+|---|---|---|---|
+| `pull_request_approved` | `pull_request_review` | `submitted` | `approved` |
+| `pull_request_rejected` | `pull_request_review` | `submitted` | `changes_requested` |
+| `pull_request_comment` | `pull_request_review` | `submitted` | `commented` |
+
+  Despite its name, `pull_request_comment` is a review. A comment in a pull request's conversation arrives as `issue_comment`. A review's delivery does not list its line comments, and Forgejo has no separate event for them.
+- **Forgejo pull request changes.** Labels, assignees, milestones and new commits arrive as `pull_request`, with the actions `label_updated`, `assigned`, `milestoned` and `synchronized`.
 - **Bitbucket keys** are mapped as follows:
 
 | Bitbucket key | `Name` | `Action` |
@@ -2026,6 +2148,9 @@ case "issues":
 | `pullrequest:unapproved` | `pull_request_review` | `dismissed` |
 | `pullrequest:changes_request_created` | `pull_request_review` | `changes_requested` |
 | `pullrequest:changes_request_removed` | `pull_request_review` | `dismissed` |
+| `pullrequest:comment_created` | `issue_comment`, or `pull_request_review_comment` on a line | `created` |
+| `pullrequest:comment_updated` | the same | `edited` |
+| `pullrequest:comment_deleted` | the same | `deleted` |
 | anything else | the key itself | |
 
   A Bitbucket push can update several refs in one delivery. `Push()` decodes the first change; the others are in `Payload`. Bitbucket support follows Bitbucket's documentation and has been tested with synthetic fixtures only, not yet against live deliveries.

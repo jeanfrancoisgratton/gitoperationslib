@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -104,6 +105,78 @@ func (c *Client) writeFile(ctx context.Context, owner, repo, branch, file, conte
 
 func TestIntegrationWebhooks(t *testing.T) {
 	contracttest.Webhooks(t, integrationEnv(t))
+}
+
+// TestIntegrationHookDeliveries reads the delivery of a ping, with its request,
+// and sends it again. The target does not exist, so deliveries simply fail.
+func TestIntegrationHookDeliveries(t *testing.T) {
+	env := integrationEnv(t)
+	c := env.Client.(*Client)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	name := contracttest.RepoPrefix + "deliveries"
+	t.Cleanup(func() { c.Repos().Delete(context.Background(), env.Org, name) })
+	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Owner: env.Org, Name: name, AutoInit: true}); err != nil {
+		t.Fatal(err)
+	}
+	scope := gitoperationslib.RepoHooks(env.Org, name)
+	hook, err := c.Webhooks().Create(ctx, scope, gitoperationslib.CreateWebhookOptions{
+		URL: contracttest.HookURL, Secret: "s3cret", Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventAll},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(hook.Events, []gitoperationslib.HookEvent{gitoperationslib.HookEventAll}) {
+		t.Errorf("Events = %v", hook.Events)
+	}
+	if err := c.Webhooks().Ping(ctx, scope, hook.ID); err != nil {
+		t.Fatal(err)
+	}
+	find := func(redelivery bool) *gitoperationslib.HookDelivery {
+		t.Helper()
+		for deadline := time.Now().Add(45 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
+			page, err := c.ListHookDeliveries(ctx, scope, hook.ID, gitoperationslib.ListHookDeliveriesOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range page.Items {
+				if d := &page.Items[i]; d.Event == "ping" && d.Redelivery == redelivery {
+					return d
+				}
+			}
+		}
+		t.Fatalf("no ping delivery with Redelivery = %v", redelivery)
+		return nil
+	}
+	first := find(false)
+	if first.ID == 0 || first.GUID == "" || first.StatusCode == 0 || first.DeliveredAt.IsZero() || first.RequestPayload != nil {
+		t.Errorf("listed = %+v", first)
+	}
+	full, err := c.GetHookDelivery(ctx, scope, hook.ID, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// As the delivery documentation says: compacted, it decodes and verifies.
+	var body bytes.Buffer
+	if err := json.Compact(&body, full.RequestPayload); err != nil {
+		t.Fatal(err)
+	}
+	headers := http.Header{}
+	for k, v := range full.RequestHeaders {
+		headers.Set(k, v)
+	}
+	if err := webhook.Verify(body.Bytes(), headers, []byte("s3cret")); err != nil {
+		t.Errorf("Verify: %v", err)
+	}
+	if _, err := c.GetHookDelivery(ctx, scope, hook.ID, 1); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get(unknown) = %v", err)
+	}
+	if err := c.RedeliverHook(ctx, scope, hook.ID, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if again := find(true); again.GUID != first.GUID || again.ID == first.ID {
+		t.Errorf("redelivered = %+v, first %+v", again, first)
+	}
 }
 
 // checkPingDelivery reads GitHub's record of the ping delivery (headers and

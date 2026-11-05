@@ -209,6 +209,9 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | User webhooks: list, get, create, edit, delete (`UserHooks`) | ✅ | ❌ | ❌ |
 | System webhooks: list, get, edit, delete (`SiteHooks`) | ✅ site admins; create in the web interface | ❌ | ❌ |
 | Default webhooks: create, get, edit, delete (`SiteHooks`) | ✅ site admins; no listing in Forgejo's API | ❌ | ❌ |
+| Skipping the certificate check (`InsecureSSL`) | ❌ an instance setting | ✅ | ✅ |
+| Delivery history and redelivery (`HookDeliveries`) | ❌ not in Forgejo's API | ✅† | ❌ not in Bitbucket's API |
+| Git hooks (`GitHooks`) | ⚠️ only with `DISABLE_GIT_HOOKS=false`; site admins | ❌ | ❌ |
 
 Events (`HookEvent`):
 
@@ -223,6 +226,7 @@ Events (`HookEvent`):
 | `pull_request_review` | ✅ three review events | ✅ | ✅ approvals and change requests |
 | `repository` | ✅ | ✅ | ✅ `repo:updated` |
 | `wiki` | ✅ | ✅ `gollum` | ❌ |
+| Everything (`HookEventAll`) | ⚠️ the events the library knows | ✅ wildcard | ⚠️ the events the library knows |
 | Backend-specific names | ✅ passed through | ✅ passed through | ✅ keys containing `:` passed through |
 
 ## Receiving webhooks (`webhook` package)
@@ -234,6 +238,11 @@ Events (`HookEvent`):
 | `Push()` | ✅ | ✅ | ⚠️ first change of the push (from documentation) |
 | `PullRequest()` | ✅ | ✅ | ⚠️ from documentation |
 | `Release()` | ✅ | ✅ | ❌ |
+| `Issues()` | ✅ | ✅ | ❌ |
+| `IssueComment()` | ✅ | ✅ | ⚠️ pull requests only (from documentation) |
+| `Review()` | ✅ | ✅† from documentation | ⚠️ from documentation |
+| `ReviewComment()` | ❌ no such event | ✅† from documentation | ⚠️ from documentation |
+| `Create()`, `Delete()` | ✅ | ✅† from documentation | ❌ reported as a push |
 | Form-encoded deliveries | ✅ | ✅ | — |
 | Checked against live deliveries | ✅ | ✅ (real signatures) | ❌ synthetic fixtures |
 

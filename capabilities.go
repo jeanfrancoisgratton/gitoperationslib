@@ -35,6 +35,8 @@ const (
 	CapPRContents     // a pull request's diff, files and commits (PRContents)
 	CapReviewComments // comments on a pull request's lines (ReviewComments)
 	CapCollaborators  // a repository's collaborators (Collaborators)
+	CapGitHooks       // a repository's server-side git hooks (GitHooks)
+	CapHookDeliveries // a webhook's delivery history (HookDeliveries)
 )
 
 var capabilityNames = []struct {
@@ -66,6 +68,8 @@ var capabilityNames = []struct {
 	{CapPRContents, "pr-contents"},
 	{CapReviewComments, "review-comments"},
 	{CapCollaborators, "collaborators"},
+	{CapGitHooks, "git-hooks"},
+	{CapHookDeliveries, "hook-deliveries"},
 }
 
 // Has reports whether c includes every capability in want.

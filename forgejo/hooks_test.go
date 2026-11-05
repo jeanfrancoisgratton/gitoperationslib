@@ -302,6 +302,39 @@ func TestSiteHooksForbidden(t *testing.T) {
 	}
 }
 
+func TestWebhookWildcard(t *testing.T) {
+	if got := toForgejoEvents([]gitoperationslib.HookEvent{gitoperationslib.HookEventAll}); !slices.Equal(got, allHookEvents) {
+		t.Errorf("toForgejoEvents(*) = %v", got)
+	}
+	for _, want := range append([]string{"push", "issues", "release", "pull_request_sync"}, reviewHookEvents...) {
+		if !slices.Contains(allHookEvents, want) {
+			t.Errorf("allHookEvents lacks %s", want)
+		}
+	}
+}
+
+func TestWebhookInsecureSSLNotSupported(t *testing.T) {
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("request sent: %s %s", r.Method, r.URL)
+		}
+		io.WriteString(w, `{"id":1,"config":{"url":"https://h"},"events":["push"]}`)
+	})
+	ctx := context.Background()
+	scope := gitoperationslib.RepoHooks("acme", "widget")
+	_, err := c.Webhooks().Create(ctx, scope, gitoperationslib.CreateWebhookOptions{URL: "https://h", Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}, InsecureSSL: true})
+	if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("Create = %v", err)
+	}
+	if _, err = c.Webhooks().Edit(ctx, scope, 1, gitoperationslib.EditWebhookOptions{InsecureSSL: gitoperationslib.Ptr(true)}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("Edit(true) = %v", err)
+	}
+	// Asking for what is always the case is no reason to fail.
+	if _, err = c.Webhooks().Edit(ctx, scope, 1, gitoperationslib.EditWebhookOptions{InsecureSSL: gitoperationslib.Ptr(false)}); err != nil {
+		t.Errorf("Edit(false) = %v", err)
+	}
+}
+
 func TestWebhookDroppedEvents(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
 		// Forgejo answers 201 but keeps only the events it knows.
