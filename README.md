@@ -35,7 +35,7 @@ How 1.x grows without breaking anyone:
 - Minor versions may add struct fields, methods on concrete types, sentinel errors, constants and backend options.
 
 **Requirements:**
-- Go 1.27.2 or later.
+- Go 1.27.3 or later.
 - Forgejo 11.0.10 or later. `forgejo.New` checks the server version and refuses older servers.
 - GitHub: github.com, or GitHub Enterprise Server.
 - Bitbucket: Bitbucket Cloud only. Data Center has a different API.
