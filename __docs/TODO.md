@@ -67,9 +67,14 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 ## Webhooks
 
 - [x] Repository and organisation webhooks on both backends; `webhook` sub-package for receiving (verification, forge detection, typed push/pull_request/release). Increment 8.
-- [ ] Forgejo 15: `POST /admin/hooks` creates a *default* webhook (copied into every new repository), not a system hook, and `GET /admin/hooks` only lists system hooks. `SystemWebhooks` was dropped; possible `DefaultWebhooks` (get/create/edit/delete by ID only). Consider reporting upstream.
+- [x] User, system and default webhooks: `UserHooks`, `SiteHooks` (1.3.0). Checked on 11.0.16 and 15.0.11, with system hooks really created in the web interface.
+- [ ] Forgejo: `POST /admin/hooks` creates a *default* webhook (copied into every new repository), not a system hook, even with `is_system_webhook`; `GET /admin/hooks` only lists system hooks; `/admin/hooks/{id}` takes both, and its answers do not tell them apart. `SystemWebhooks` and `DefaultWebhooks` check the kind by listing. `PATCH /admin/hooks/{id}` answers 500 on a repository hook's ID. Consider reporting upstream.
+- [ ] Forgejo sends X-Total-Count but no `Link` header on its webhook lists (repository, organisation, user, admin), so `hookService.list` works out the next page itself (1.3.0). Other list endpoints rely on `Link` alone and have not been audited: a missing header there would silently stop `All` after the first page.
+- [ ] Forgejo 11's `GET /admin/hooks` ignores `page` and `limit` and sends no X-Total-Count.
+- [ ] `TestIntegrationPullRequests` is flaky on both versions: a merge sometimes gets HTTP 405 "Please try again later", which the test's retry does not cover.
+- [ ] The live suite has three failures on Forgejo 11.0.16, also on v1.2.0, so 11 may not fully meet the documented minimum version: `TestIntegrationAdminOrgs` (admin_integration_test.go, the checks after editing an organisation), `TestIntegrationAdminTokens` (a token's `Repositories` comes back empty), `TestIntegrationCI` (a variable is not listed after being set). Not investigated.
 - [ ] The production instance has default webhooks (Mattermost, Jenkins) copied into every new repository, including test repositories: integration tests trigger them.
-- [ ] Not exposed yet: Forgejo user-level hooks (`/user/hooks`), git hooks (`/hooks/git`), delivery history/redelivery, GitHub `insecure_ssl`, wildcard event subscriptions.
+- [ ] Not exposed yet: git hooks (`/hooks/git`), delivery history/redelivery, GitHub `insecure_ssl`, wildcard event subscriptions.
 - [ ] Typed payloads beyond push/pull_request/release (issues, comments, reviews, create/delete). Forgejo review events arrive under Forgejo-specific names; check before typing them.
 
 ## Branches and tags

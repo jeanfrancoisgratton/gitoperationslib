@@ -106,7 +106,14 @@ func (s hookService) list(ctx context.Context, opts gitoperationslib.ListOptions
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Webhook]{}, err
 	}
-	return toPage(resp, out, (*hookJSON).toWebhook), nil
+	page := toPage(resp, out, (*hookJSON).toWebhook)
+	// /user/hooks and /admin/hooks send X-Total-Count but no Link header
+	// (checked on 11.0.16 and 15.0.11). When the page size is unknown, a short
+	// last page can cost one more request, which comes back empty.
+	if size := max(opts.PerPage, len(out)); page.NextPage == 0 && len(out) > 0 && max(opts.Page, 1)*size < resp.TotalCount {
+		page.NextPage = max(opts.Page, 1) + 1
+	}
+	return page, nil
 }
 
 func (s hookService) get(ctx context.Context, id int64) (*gitoperationslib.Webhook, error) {
@@ -253,4 +260,132 @@ func (w webhooks) Ping(ctx context.Context, scope gitoperationslib.HookScope, id
 	}
 	_, err = w.c.api.Do(ctx, http.MethodPost, s.path(id)+"/tests", nil, nil, nil)
 	return err
+}
+
+var (
+	_ gitoperationslib.UserHooks = (*Client)(nil)
+	_ gitoperationslib.SiteHooks = (*Client)(nil)
+)
+
+func (c *Client) UserWebhooks() gitoperationslib.UserWebhooks {
+	return userHooks{hookService{c, "user/hooks"}}
+}
+
+type userHooks struct{ s hookService }
+
+func (u userHooks) List(ctx context.Context, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Webhook], error) {
+	return u.s.list(ctx, opts)
+}
+
+func (u userHooks) Get(ctx context.Context, id int64) (*gitoperationslib.Webhook, error) {
+	return u.s.get(ctx, id)
+}
+
+func (u userHooks) Create(ctx context.Context, opts gitoperationslib.CreateWebhookOptions) (*gitoperationslib.Webhook, error) {
+	return u.s.create(ctx, opts)
+}
+
+func (u userHooks) Edit(ctx context.Context, id int64, opts gitoperationslib.EditWebhookOptions) (*gitoperationslib.Webhook, error) {
+	return u.s.edit(ctx, id, opts)
+}
+
+func (u userHooks) Delete(ctx context.Context, id int64) error { return u.s.delete(ctx, id) }
+
+func (c *Client) SystemWebhooks() gitoperationslib.SystemWebhooks {
+	return systemHooks{hookService{c, "admin/hooks"}}
+}
+
+func (c *Client) DefaultWebhooks() gitoperationslib.DefaultWebhooks {
+	return defaultHooks{hookService{c, "admin/hooks"}}
+}
+
+// isSystemHook tells the two kinds apart: GET /admin/hooks lists system hooks
+// only, while /admin/hooks/{id} takes both and its answers look the same
+// (checked on 11.0.16 and 15.0.11).
+func isSystemHook(ctx context.Context, s hookService, id int64) (bool, error) {
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, s.list) {
+		if err != nil {
+			return false, err
+		}
+		if hook.ID == id {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func wrongHookKind(id int64, kind string) error {
+	return &gitoperationslib.APIError{Backend: gitoperationslib.BackendForgejo, StatusCode: http.StatusNotFound, Message: fmt.Sprintf("webhook %d is not a %s webhook", id, kind)}
+}
+
+type systemHooks struct{ s hookService }
+
+func (h systemHooks) check(ctx context.Context, id int64) error {
+	system, err := isSystemHook(ctx, h.s, id)
+	if err == nil && !system {
+		return wrongHookKind(id, "system")
+	}
+	return err
+}
+
+func (h systemHooks) List(ctx context.Context, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Webhook], error) {
+	return h.s.list(ctx, opts)
+}
+
+func (h systemHooks) Get(ctx context.Context, id int64) (*gitoperationslib.Webhook, error) {
+	if err := h.check(ctx, id); err != nil {
+		return nil, err
+	}
+	return h.s.get(ctx, id)
+}
+
+func (h systemHooks) Edit(ctx context.Context, id int64, opts gitoperationslib.EditWebhookOptions) (*gitoperationslib.Webhook, error) {
+	if err := h.check(ctx, id); err != nil {
+		return nil, err
+	}
+	return h.s.edit(ctx, id, opts)
+}
+
+func (h systemHooks) Delete(ctx context.Context, id int64) error {
+	if err := h.check(ctx, id); err != nil {
+		return err
+	}
+	return h.s.delete(ctx, id)
+}
+
+type defaultHooks struct{ s hookService }
+
+func (h defaultHooks) check(ctx context.Context, id int64) error {
+	system, err := isSystemHook(ctx, h.s, id)
+	if err == nil && system {
+		return wrongHookKind(id, "default")
+	}
+	return err
+}
+
+func (h defaultHooks) Create(ctx context.Context, opts gitoperationslib.CreateWebhookOptions) (*gitoperationslib.Webhook, error) {
+	return h.s.create(ctx, opts)
+}
+
+func (h defaultHooks) Get(ctx context.Context, id int64) (*gitoperationslib.Webhook, error) {
+	if err := h.check(ctx, id); err != nil {
+		return nil, err
+	}
+	return h.s.get(ctx, id)
+}
+
+// Edit reads the hook first: Forgejo answers HTTP 500 to a PATCH on the ID of a
+// repository's hook, and 404 to a GET.
+func (h defaultHooks) Edit(ctx context.Context, id int64, opts gitoperationslib.EditWebhookOptions) (*gitoperationslib.Webhook, error) {
+	if _, err := h.Get(ctx, id); err != nil {
+		return nil, err
+	}
+	return h.s.edit(ctx, id, opts)
+}
+
+func (h defaultHooks) Delete(ctx context.Context, id int64) error {
+	if err := h.check(ctx, id); err != nil {
+		return err
+	}
+	return h.s.delete(ctx, id)
 }

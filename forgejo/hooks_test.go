@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -104,6 +105,200 @@ func TestWebhooksRequests(t *testing.T) {
 		if fmt.Sprint(bodies[i]) != fmt.Sprint(want) {
 			t.Errorf("%s body = %v\nwant %v", requests[i], bodies[i], want)
 		}
+	}
+}
+
+// hookPages answers like /user/hooks and /admin/hooks: pages and X-Total-Count,
+// no Link header.
+func hookPages(w http.ResponseWriter, r *http.Request, ids ...int) {
+	limit, page := 30, 1
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
+		limit = v
+	}
+	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil {
+		page = v
+	}
+	w.Header().Set("X-Total-Count", strconv.Itoa(len(ids)))
+	var items []string
+	for i := (page - 1) * limit; i < page*limit && i < len(ids); i++ {
+		items = append(items, fmt.Sprintf(`{"id":%d,"config":{"url":"https://h/x"},"events":["push"],"active":true}`, ids[i]))
+	}
+	io.WriteString(w, "["+strings.Join(items, ",")+"]")
+}
+
+func TestUserWebhooks(t *testing.T) {
+	var requests []string
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/user/hooks":
+			hookPages(w, r, 1, 2, 3, 4, 5)
+		default:
+			io.WriteString(w, `{"id":7,"config":{"url":"https://h/x"},"events":["push"],"active":true}`)
+		}
+	})
+	ctx := context.Background()
+	if !c.Capabilities().Has(gitoperationslib.CapUserWebhooks) {
+		t.Error("CapUserWebhooks not announced")
+	}
+	var h gitoperationslib.UserHooks = c
+	hooks := h.UserWebhooks()
+
+	for _, opts := range []gitoperationslib.ListOptions{{}, {PerPage: 1}, {PerPage: 2}, {PerPage: 5}, {PerPage: 100}} {
+		var ids []int64
+		for hook, err := range gitoperationslib.All(ctx, opts, hooks.List) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids = append(ids, hook.ID)
+		}
+		if !slices.Equal(ids, []int64{1, 2, 3, 4, 5}) {
+			t.Errorf("All with %+v = %v", opts, ids)
+		}
+	}
+
+	requests = nil
+	if _, err := hooks.Get(ctx, 7); err != nil {
+		t.Error(err)
+	}
+	if _, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{URL: "https://h/x", Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}}); err != nil {
+		t.Error(err)
+	}
+	if _, err := hooks.Edit(ctx, 7, gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(true)}); err != nil {
+		t.Error(err)
+	}
+	if err := hooks.Delete(ctx, 7); err != nil {
+		t.Error(err)
+	}
+	want := []string{"GET /api/v1/user/hooks/7", "POST /api/v1/user/hooks", "PATCH /api/v1/user/hooks/7", "DELETE /api/v1/user/hooks/7"}
+	if !slices.Equal(requests, want) {
+		t.Errorf("requests = %v\nwant       %v", requests, want)
+	}
+}
+
+// In the fake, 1 to 3 are system hooks (3 on the second page of a listing), and
+// 9 is a default hook.
+func fakeSiteHooks(t *testing.T) (*Client, *[]string) {
+	t.Helper()
+	var writes []string
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writes = append(writes, r.Method+" "+r.URL.Path)
+		}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/admin/hooks":
+			limit := r.URL.Query()
+			limit.Set("limit", "2")
+			r.URL.RawQuery = limit.Encode()
+			hookPages(w, r, 1, 2, 3)
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			io.WriteString(w, `{"id":3,"config":{"url":"https://h/x"},"events":["push"],"active":true}`)
+		}
+	})
+	return c, &writes
+}
+
+func TestSystemWebhooksKind(t *testing.T) {
+	c, writes := fakeSiteHooks(t)
+	ctx := context.Background()
+	if !c.Capabilities().Has(gitoperationslib.CapSystemWebhooks) {
+		t.Error("CapSystemWebhooks not announced")
+	}
+	var h gitoperationslib.SiteHooks = c
+	hooks := h.SystemWebhooks()
+	edit := gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(false)}
+
+	if _, err := hooks.Get(ctx, 9); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get(default hook): err = %v, want 404", err)
+	}
+	if _, err := hooks.Edit(ctx, 9, edit); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Edit(default hook): err = %v, want 404", err)
+	}
+	if err := hooks.Delete(ctx, 9); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Delete(default hook): err = %v, want 404", err)
+	}
+	if len(*writes) != 0 {
+		t.Errorf("refused calls sent %v", *writes)
+	}
+
+	// 3 is on the second page: the check must walk the whole list.
+	if got, err := hooks.Get(ctx, 3); err != nil || got.ID != 3 {
+		t.Errorf("Get(3) = %+v, %v", got, err)
+	}
+	if _, err := hooks.Edit(ctx, 3, edit); err != nil {
+		t.Error(err)
+	}
+	if err := hooks.Delete(ctx, 3); err != nil {
+		t.Error(err)
+	}
+	want := []string{"PATCH /api/v1/admin/hooks/3", "DELETE /api/v1/admin/hooks/3"}
+	if !slices.Equal(*writes, want) {
+		t.Errorf("writes = %v, want %v", *writes, want)
+	}
+}
+
+func TestDefaultWebhooksKind(t *testing.T) {
+	c, writes := fakeSiteHooks(t)
+	ctx := context.Background()
+	hooks := c.DefaultWebhooks()
+	edit := gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(false)}
+
+	// 3 is a system hook, on the second page of the listing.
+	if _, err := hooks.Get(ctx, 3); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get(system hook): err = %v, want 404", err)
+	}
+	if _, err := hooks.Edit(ctx, 3, edit); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Edit(system hook): err = %v, want 404", err)
+	}
+	if err := hooks.Delete(ctx, 3); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Delete(system hook): err = %v, want 404", err)
+	}
+	if len(*writes) != 0 {
+		t.Errorf("refused calls sent %v", *writes)
+	}
+
+	if _, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{URL: "https://h/x", Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}}); err != nil {
+		t.Error(err)
+	}
+	if _, err := hooks.Get(ctx, 9); err != nil {
+		t.Error(err)
+	}
+	if _, err := hooks.Edit(ctx, 9, edit); err != nil {
+		t.Error(err)
+	}
+	if err := hooks.Delete(ctx, 9); err != nil {
+		t.Error(err)
+	}
+	want := []string{"POST /api/v1/admin/hooks", "PATCH /api/v1/admin/hooks/9", "DELETE /api/v1/admin/hooks/9"}
+	if !slices.Equal(*writes, want) {
+		t.Errorf("writes = %v, want %v", *writes, want)
+	}
+}
+
+// A non-admin cannot list the system hooks: the check fails with the 403 and
+// nothing is changed.
+func TestSiteHooksForbidden(t *testing.T) {
+	var writes []string
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writes = append(writes, r.Method)
+		}
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, `{"message":"forbidden"}`)
+	})
+	ctx := context.Background()
+	if err := c.SystemWebhooks().Delete(ctx, 1); !gitoperationslib.IsForbidden(err) {
+		t.Errorf("system: err = %v, want 403", err)
+	}
+	if err := c.DefaultWebhooks().Delete(ctx, 1); !gitoperationslib.IsForbidden(err) {
+		t.Errorf("default: err = %v, want 403", err)
+	}
+	if len(writes) != 0 {
+		t.Errorf("sent %v", writes)
 	}
 }
 

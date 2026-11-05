@@ -199,7 +199,9 @@ Backends: **Forgejo** (≥ 11.0.10, primary), **GitHub** (github.com, GitHub Ent
 | Authorization header | ✅ | ❌ | ❌ |
 | Unknown event names | ⚠️ dropped by the server, reported as an error | ✅ rejected | ✅ rejected |
 | Target URL | any | any | must resolve in DNS |
-| Instance-wide (system) webhooks | ❌ (Forgejo 15 API creates default hooks instead) | — | — |
+| User webhooks: list, get, create, edit, delete (`UserHooks`) | ✅ | ❌ | ❌ |
+| System webhooks: list, get, edit, delete (`SiteHooks`) | ✅ site admins; create in the web interface | ❌ | ❌ |
+| Default webhooks: create, get, edit, delete (`SiteHooks`) | ✅ site admins; no listing in Forgejo's API | ❌ | ❌ |
 
 Events (`HookEvent`):
 

@@ -1,6 +1,74 @@
 package gitoperationslib
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// UserHooks gives access to the authenticated user's own webhooks. Only the
+// Forgejo backend implements it (CapUserWebhooks); find it with a type
+// assertion:
+//
+//	h, ok := client.(gitoperationslib.UserHooks)
+type UserHooks interface {
+	UserWebhooks() UserWebhooks
+}
+
+// UserWebhooks manages the webhooks of the authenticated user, which fire for
+// events in that user's repositories. They are always the caller's own: a site
+// admin gets a 404 for another user's hook.
+type UserWebhooks interface {
+	List(ctx context.Context, opts ListOptions) (Page[Webhook], error)
+	Get(ctx context.Context, id int64) (*Webhook, error)
+	// Create adds a webhook. Forgejo silently drops event names it does not
+	// know; Create then returns the webhook together with an error.
+	Create(ctx context.Context, opts CreateWebhookOptions) (*Webhook, error)
+	// Edit changes a webhook; dropped events are reported as in Create.
+	Edit(ctx context.Context, id int64, opts EditWebhookOptions) (*Webhook, error)
+	Delete(ctx context.Context, id int64) error
+}
+
+// SiteHooks gives access to a Forgejo instance's system and default webhooks,
+// which need a site-admin token (HTTP 403 otherwise). Only the Forgejo backend
+// implements it (CapSystemWebhooks); find it with a type assertion:
+//
+//	h, ok := client.(gitoperationslib.SiteHooks)
+//
+// Forgejo's API addresses both kinds by ID at the same path, and nothing in its
+// answers tells them apart. Both interfaces therefore check the kind by listing
+// the system webhooks first, and answer an ID of the other kind with a 404
+// *APIError, changing nothing.
+type SiteHooks interface {
+	SystemWebhooks() SystemWebhooks
+	DefaultWebhooks() DefaultWebhooks
+}
+
+// SystemWebhooks manages system webhooks, which fire for events in every
+// repository of the instance. There is no Create: Forgejo's API cannot create
+// one, so they are created in the web interface (Site administration, Webhooks).
+type SystemWebhooks interface {
+	List(ctx context.Context, opts ListOptions) (Page[Webhook], error)
+	Get(ctx context.Context, id int64) (*Webhook, error)
+	// Edit changes a webhook; dropped events are reported as in
+	// Webhooks.Create.
+	Edit(ctx context.Context, id int64, opts EditWebhookOptions) (*Webhook, error)
+	Delete(ctx context.Context, id int64) error
+}
+
+// DefaultWebhooks manages default webhooks: templates copied into each
+// repository created afterwards. Existing repositories are not affected, and
+// the copies are independent repository webhooks: editing or deleting the
+// default webhook leaves them as they are. There is no List: Forgejo's API
+// cannot list them, so keep the ID that Create returns.
+type DefaultWebhooks interface {
+	// Create adds a default webhook. Forgejo silently drops event names it does
+	// not know; Create then returns the webhook together with an error.
+	Create(ctx context.Context, opts CreateWebhookOptions) (*Webhook, error)
+	Get(ctx context.Context, id int64) (*Webhook, error)
+	// Edit changes a webhook; dropped events are reported as in Create.
+	Edit(ctx context.Context, id int64, opts EditWebhookOptions) (*Webhook, error)
+	Delete(ctx context.Context, id int64) error
+}
 
 // HookScope selects where webhooks live: a repository, or an organisation
 // when Repo is empty.

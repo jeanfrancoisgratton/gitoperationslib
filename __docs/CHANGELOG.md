@@ -6,7 +6,29 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
-## [1.2.0] — unreleased
+## [1.3.0] — 2026-11-05
+
+Forgejo's user, system and default webhooks.
+
+### Added
+- **`UserHooks`** (`CapUserWebhooks`, Forgejo only): `UserWebhooks()` lists, gets, creates, edits and deletes the
+  authenticated user's own webhooks.
+- **`SiteHooks`** (`CapSystemWebhooks`, Forgejo only, site admins):
+  - `SystemWebhooks()`: list, get, edit, delete. There is no create: Forgejo's API cannot make a system webhook, so
+    they are created in the web interface.
+  - `DefaultWebhooks()`: create, get, edit, delete. These are copied into each new repository, and there is no list,
+    because Forgejo's API has none.
+  - Each only reaches its own kind: an ID of the other gives HTTP 404, changing nothing. Forgejo's API does not tell
+    the kinds apart, so the library checks by listing the system webhooks first.
+
+### Changed
+- `CapSystemWebhooks` is no longer reserved: the Forgejo client now announces it.
+
+### Fixed
+- `gol.All` on Forgejo's `Webhooks().List` stopped after the first page: Forgejo sends no `Link` header on webhook
+  lists. `NextPage` now comes from `X-Total-Count` there.
+
+## [1.2.0] — 2026-11-05
 
 Organisation avatars, and two fixes where `Account` promised what Forgejo does not do. Both were found by gitclt
 on a real server: the library's fake servers answered the way it expected.

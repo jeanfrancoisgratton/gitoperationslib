@@ -295,7 +295,9 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapSecrets` | `secrets` (CI secrets and variables: `gol.CI`) | ✅ | ✅ | ✅ |
 | `CapCommits` | `commits` (commit history: `gol.History`) | ✅ | ✅ | ✅ |
 | `CapOrgAvatars` | `org-avatars` (organisation avatars: `gol.OrgAvatars`) | ✅ | | |
-| `CapMirrors`, `CapMigrate`, `CapSystemWebhooks` | reserved for future features | | | |
+| `CapUserWebhooks` | `user-webhooks` (your own webhooks: `gol.UserHooks`) | ✅ | | |
+| `CapSystemWebhooks` | `system-webhooks` (system and default webhooks: `gol.SiteHooks`) | ✅ | | |
+| `CapMirrors`, `CapMigrate` | reserved for future features | | | |
 
 ```go
 caps := client.Capabilities()
@@ -322,6 +324,14 @@ if ext, ok := client.Releases().(gol.ExternalAssets); ok {
 // Organisation avatars (§17.2): Forgejo only.
 if avatars, ok := client.(gol.OrgAvatars); ok {
 	_ = avatars
+}
+
+// User, system and default webhooks (§14.5): Forgejo only.
+if h, ok := client.(gol.UserHooks); ok {
+	_ = h.UserWebhooks()
+}
+if h, ok := client.(gol.SiteHooks); ok {
+	_ = h.SystemWebhooks()
 }
 
 // Your own account (§16.5) and CI secrets and variables (§20): all three backends.
@@ -1684,6 +1694,69 @@ orgHook, err := hooks.Create(ctx, gol.OrgHooks("acme"), gol.CreateWebhookOptions
 | Form-encoded payloads | ✅ | ✅ | ❌ |
 | `BranchFilter`, `AuthorizationHeader` | ✅ | ❌ | ❌ |
 | Target URL | any | any | must resolve in DNS |
+
+### 14.5 User, system and default webhooks (Forgejo)
+
+Beyond repositories and organisations, Forgejo has three more kinds of webhook. They are optional interfaces: the GitHub and Bitbucket clients do not implement them, so the type assertion fails there.
+
+| Kind | Fires for | Access | List | Get, edit, delete | Create |
+|---|---|---|---|---|---|
+| User (`UserHooks`, `CapUserWebhooks`) | the user's repositories | your own only | ✅ | ✅ | ✅ |
+| System (`SiteHooks`, `CapSystemWebhooks`) | every repository of the instance | site admin | ✅ | ✅ | ❌ web interface only |
+| Default (`SiteHooks`, `CapSystemWebhooks`) | nothing itself: it is copied into each new repository | site admin | ❌ no API | ✅ | ✅ |
+
+```go
+type UserHooks interface{ UserWebhooks() UserWebhooks }
+type SiteHooks interface {
+	SystemWebhooks() SystemWebhooks
+	DefaultWebhooks() DefaultWebhooks
+}
+
+type UserWebhooks interface {
+	List(ctx, opts ListOptions) (Page[Webhook], error)
+	Get(ctx, id int64) (*Webhook, error)
+	Create(ctx, opts CreateWebhookOptions) (*Webhook, error)
+	Edit(ctx, id int64, opts EditWebhookOptions) (*Webhook, error)
+	Delete(ctx, id int64) error
+}
+type SystemWebhooks interface { // no Create
+	List(ctx, opts ListOptions) (Page[Webhook], error)
+	Get(ctx, id int64) (*Webhook, error)
+	Edit(ctx, id int64, opts EditWebhookOptions) (*Webhook, error)
+	Delete(ctx, id int64) error
+}
+type DefaultWebhooks interface { // no List
+	Create(ctx, opts CreateWebhookOptions) (*Webhook, error)
+	Get(ctx, id int64) (*Webhook, error)
+	Edit(ctx, id int64, opts EditWebhookOptions) (*Webhook, error)
+	Delete(ctx, id int64) error
+}
+```
+
+```go
+site, ok := client.(gol.SiteHooks)
+if !ok {
+	log.Fatalf("%s has no system or default webhooks", client.Backend())
+}
+
+// Copied into every repository created from now on. Keep the ID: it cannot be listed.
+hook, err := site.DefaultWebhooks().Create(ctx, gol.CreateWebhookOptions{
+	URL:    "https://ci.example.com/hooks/forge",
+	Secret: os.Getenv("WEBHOOK_SECRET"),
+	Events: []gol.HookEvent{gol.HookEventPush},
+})
+
+for h, err := range gol.All(ctx, gol.ListOptions{}, site.SystemWebhooks().List) {
+	// …
+}
+```
+
+Notes:
+- **System webhooks cannot be created through the API.** Forgejo's `POST /admin/hooks` creates a default webhook, even with `is_system_webhook` in the body. Create them in the web interface: Site administration, Webhooks.
+- **Default webhooks are copied once.** A new repository gets its own independent repository webhook. Existing repositories get nothing, and editing or deleting the default webhook leaves the copies as they are. Change those with `Webhooks()`.
+- **Each interface only reaches its own kind.** Forgejo's API addresses system and default webhooks at the same path, and its answers do not tell them apart. So get, edit and delete first list the system webhooks to check the kind, which costs one extra request per page of them. An ID of the other kind gives HTTP 404 and changes nothing.
+- **`Ping` has no equivalent here:** Forgejo offers no test delivery for these kinds.
+- **Paging:** Forgejo 11's `GET /admin/hooks` ignores `Page` and `PerPage` and returns every system webhook, so use `gol.All` rather than counting pages.
 
 ---
 

@@ -11,7 +11,7 @@ const (
 	CapMigrate
 	CapAdmin
 	CapWebhooks
-	CapSystemWebhooks
+	CapSystemWebhooks // system and default webhooks (SiteHooks)
 	CapReleases
 	CapPullRequests
 	CapExternalAssets
@@ -29,6 +29,8 @@ const (
 	CapCommits // commit history (History)
 	// Added in 1.2.0.
 	CapOrgAvatars // organisation avatars (OrgAvatars)
+	// Added in 1.3.0.
+	CapUserWebhooks // the authenticated user's webhooks (UserHooks)
 )
 
 var capabilityNames = []struct {
@@ -55,6 +57,7 @@ var capabilityNames = []struct {
 	{CapSecrets, "secrets"},
 	{CapCommits, "commits"},
 	{CapOrgAvatars, "org-avatars"},
+	{CapUserWebhooks, "user-webhooks"},
 }
 
 // Has reports whether c includes every capability in want.

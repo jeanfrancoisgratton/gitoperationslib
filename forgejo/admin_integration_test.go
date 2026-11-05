@@ -24,11 +24,14 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -859,6 +862,326 @@ func TestIntegrationAdminAvatar(t *testing.T) {
 	}
 	if got := avatarURL(); got != original {
 		t.Errorf("avatar URL after DeleteAvatar = %s, want the default %s", got, original)
+	}
+}
+
+// webSystemHook creates a system webhook in the web interface, the only way to
+// get one, and returns its ID. It logs in as a throwaway site admin.
+func webSystemHook(t *testing.T, ctx context.Context, c *Client, target, secret string) int64 {
+	t.Helper()
+	base := os.Getenv("GITOPSLIB_TESTENV_URL")
+	login := testLogin(t)
+	const password = "Hooks-Passw0rd!"
+	cleanupUser(t, c, &login)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: login, Email: login + "@example.com", Password: password, MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Users().Edit(ctx, login, gitoperationslib.EditUserOptions{Admin: gitoperationslib.Ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	web := &http.Client{Jar: jar}
+	// Forgejo 11 wants a CSRF token from the form; 15 has none.
+	submit := func(page, action string, fields url.Values) {
+		t.Helper()
+		resp, err := web.Get(base + page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		html, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if m := regexp.MustCompile(`name="_csrf"\s+value="([^"]+)"`).FindSubmatch(html); m != nil {
+			fields.Set("_csrf", string(m[1]))
+		}
+		resp, err = web.PostForm(base+action, fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("POST %s: HTTP %d", action, resp.StatusCode)
+		}
+	}
+	submit("/user/login", "/user/login", url.Values{"user_name": {login}, "password": {password}})
+
+	known := map[int64]bool{}
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, c.SystemWebhooks().List) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		known[hook.ID] = true
+	}
+	const form = "/admin/system-hooks/forgejo/new"
+	submit(form, form, url.Values{
+		"payload_url": {target}, "http_method": {"POST"}, "content_type": {"1"}, "secret": {secret},
+		"events": {"push_only"}, "branch_filter": {"*"}, "active": {"on"},
+	})
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, c.SystemWebhooks().List) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !known[hook.ID] {
+			t.Cleanup(func() { _ = c.SystemWebhooks().Delete(context.Background(), hook.ID) })
+			if hook.URL != target {
+				t.Errorf("new system webhook points to %s, want %s", hook.URL, target)
+			}
+			return hook.ID
+		}
+	}
+	t.Fatal("the system webhook created in the web interface is not listed")
+	return 0
+}
+
+// waitAll waits until each path has received a delivery with the given event
+// name, in any order.
+func (r *hookReceiver) waitAll(t *testing.T, name string, paths ...string) {
+	t.Helper()
+	timeout := time.After(30 * time.Second)
+	for len(paths) > 0 {
+		select {
+		case got := <-r.events:
+			if got.ev.Name == name {
+				paths = slices.DeleteFunc(paths, func(p string) bool { return p == got.path })
+			}
+		case <-timeout:
+			t.Fatalf("no %s delivery on %v", name, paths)
+		}
+	}
+}
+
+func TestIntegrationAdminUserWebhooks(t *testing.T) {
+	ctx, c := adminEnv(t)
+	const secret = "user-hook-secret"
+	recv := newHookReceiver(t, map[string][]byte{"/user": []byte(secret)})
+	admin, err := c.currentLogin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooks := c.UserWebhooks()
+	events := []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}
+
+	created := map[int64]bool{}
+	for range 3 {
+		hook, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{URL: recv.srv.URL + "/user", Secret: secret, Events: events})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = hooks.Delete(context.Background(), hook.ID) })
+		created[hook.ID] = true
+	}
+	// Forgejo sends no Link header here: All must still reach every page.
+	seen := map[int64]bool{}
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: 1}, hooks.List) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if seen[hook.ID] {
+			t.Errorf("hook %d listed twice", hook.ID)
+		}
+		seen[hook.ID] = true
+	}
+	for id := range created {
+		if !seen[id] {
+			t.Errorf("hook %d not listed: %v", id, seen)
+		}
+	}
+
+	var id int64
+	for k := range created {
+		id = k
+	}
+	got, err := hooks.Get(ctx, id)
+	if err != nil || got.URL != recv.srv.URL+"/user" {
+		t.Errorf("Get = %+v, %v", got, err)
+	}
+	edited, err := hooks.Edit(ctx, id, gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(false)})
+	if err != nil || edited.Active {
+		t.Errorf("Edit = %+v, %v", edited, err)
+	}
+	if _, err := hooks.Edit(ctx, id, gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(true)}); err != nil {
+		t.Error(err)
+	}
+
+	// The hook fires for the user's repositories.
+	repo := contracttest.RepoPrefix + "userhooks"
+	t.Cleanup(func() { c.Repos().Delete(context.Background(), admin, repo) })
+	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Name: repo, AutoInit: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.createBranch(ctx, admin, repo, "topic", "a.txt", "a"); err != nil {
+		t.Fatal(err)
+	}
+	recv.waitAll(t, "push", "/user")
+
+	// Hooks are their owner's: another user, even through an admin's Sudo, gets 404.
+	other := testLogin(t)
+	cleanupUser(t, c, &other)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: other, Email: other + "@example.com", Password: "Hooks-Passw0rd!", MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sudo, err := New(ctx, os.Getenv("GITOPSLIB_TESTENV_URL"), Token(os.Getenv("GITOPSLIB_TESTENV_ADMIN_TOKEN")), WithSudo(other))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sudo.UserWebhooks().Get(ctx, id); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("another user's hook: err = %v, want 404", err)
+	}
+
+	if err := hooks.Delete(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hooks.Get(ctx, id); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get after Delete: err = %v, want 404", err)
+	}
+}
+
+// TestIntegrationAdminSiteWebhooks uses a system webhook really created in the
+// web interface, and checks that neither kind can reach the other.
+func TestIntegrationAdminSiteWebhooks(t *testing.T) {
+	ctx, c := adminEnv(t)
+	systemSecret, defaultSecret := "system-secret", "default-secret"
+	recv := newHookReceiver(t, map[string][]byte{"/system": []byte(systemSecret), "/default": []byte(defaultSecret), "/other": []byte(systemSecret)})
+	admin, err := c.currentLogin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	system, deflt := c.SystemWebhooks(), c.DefaultWebhooks()
+	events := []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}
+
+	systemID := webSystemHook(t, ctx, c, recv.srv.URL+"/system", systemSecret)
+	secondID := webSystemHook(t, ctx, c, recv.srv.URL+"/other", systemSecret)
+
+	created, err := deflt.Create(ctx, gitoperationslib.CreateWebhookOptions{URL: recv.srv.URL + "/default", Secret: defaultSecret, Events: events})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultID := created.ID
+	t.Cleanup(func() { _ = deflt.Delete(context.Background(), defaultID) })
+
+	// Listing shows system hooks only, and All reaches them all.
+	seen := map[int64]bool{}
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: 1}, system.List) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if seen[hook.ID] {
+			t.Errorf("hook %d listed twice", hook.ID)
+		}
+		seen[hook.ID] = true
+	}
+	if !seen[systemID] || !seen[secondID] || seen[defaultID] {
+		t.Errorf("listed %v; want system hooks %d and %d, not default hook %d", seen, systemID, secondID, defaultID)
+	}
+
+	// Neither kind reaches the other.
+	off := gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(false)}
+	if _, err := system.Get(ctx, defaultID); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("system Get(default): err = %v, want 404", err)
+	}
+	if _, err := system.Edit(ctx, defaultID, off); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("system Edit(default): err = %v, want 404", err)
+	}
+	if err := system.Delete(ctx, defaultID); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("system Delete(default): err = %v, want 404", err)
+	}
+	if _, err := deflt.Get(ctx, systemID); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("default Get(system): err = %v, want 404", err)
+	}
+	if _, err := deflt.Edit(ctx, systemID, off); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("default Edit(system): err = %v, want 404", err)
+	}
+	if err := deflt.Delete(ctx, systemID); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("default Delete(system): err = %v, want 404", err)
+	}
+	if got, err := deflt.Get(ctx, defaultID); err != nil || !got.Active {
+		t.Errorf("default hook after the refused calls = %+v, %v", got, err)
+	}
+	if got, err := system.Get(ctx, systemID); err != nil || !got.Active {
+		t.Errorf("system hook after the refused calls = %+v, %v", got, err)
+	}
+
+	// A new repository gets a copy of the default hook, and both kinds deliver.
+	repo := contracttest.RepoPrefix + "sitehooks"
+	t.Cleanup(func() { c.Repos().Delete(context.Background(), admin, repo) })
+	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Name: repo, AutoInit: true}); err != nil {
+		t.Fatal(err)
+	}
+	scope := gitoperationslib.RepoHooks(admin, repo)
+	var copyID int64
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Webhook], error) {
+		return c.Webhooks().List(ctx, scope, o)
+	}) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hook.URL == recv.srv.URL+"/default" {
+			copyID = hook.ID
+		}
+	}
+	if copyID == 0 || copyID == defaultID {
+		t.Fatalf("copy of the default hook in the new repository: ID %d (default hook %d)", copyID, defaultID)
+	}
+	if err := c.createBranch(ctx, admin, repo, "topic", "a.txt", "a"); err != nil {
+		t.Fatal(err)
+	}
+	recv.waitAll(t, "push", "/system", "/other", "/default")
+
+	// A repository's hook is neither kind: 404, not Forgejo's 500 on the PATCH.
+	if _, err := deflt.Edit(ctx, copyID, off); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("default Edit(repository hook): err = %v, want 404", err)
+	}
+	if err := deflt.Delete(ctx, copyID); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("default Delete(repository hook): err = %v, want 404", err)
+	}
+
+	// The copy is independent of the default hook.
+	moved := recv.srv.URL + "/moved"
+	if edited, err := deflt.Edit(ctx, defaultID, gitoperationslib.EditWebhookOptions{URL: &moved}); err != nil || edited.URL != moved {
+		t.Errorf("default Edit = %+v, %v", edited, err)
+	}
+	if err := deflt.Delete(ctx, defaultID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := deflt.Get(ctx, defaultID); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get after Delete: err = %v, want 404", err)
+	}
+	if got, err := c.Webhooks().Get(ctx, scope, copyID); err != nil || got.URL != recv.srv.URL+"/default" {
+		t.Errorf("copy after editing and deleting the default hook = %+v, %v", got, err)
+	}
+
+	// Editing and deleting a real system hook, and a non-admin's refusal.
+	if edited, err := system.Edit(ctx, systemID, off); err != nil || edited.Active {
+		t.Errorf("system Edit = %+v, %v", edited, err)
+	}
+	other := testLogin(t)
+	cleanupUser(t, c, &other)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{
+		Login: other, Email: other + "@example.com", Password: "Hooks-Passw0rd!", MustChangePassword: gitoperationslib.Ptr(false),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sudo, err := New(ctx, os.Getenv("GITOPSLIB_TESTENV_URL"), Token(os.Getenv("GITOPSLIB_TESTENV_ADMIN_TOKEN")), WithSudo(other))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sudo.SystemWebhooks().Delete(ctx, systemID); !gitoperationslib.IsForbidden(err) {
+		t.Errorf("non-admin system Delete: err = %v, want 403", err)
+	}
+	if _, err := sudo.DefaultWebhooks().Create(ctx, gitoperationslib.CreateWebhookOptions{URL: moved, Events: events}); !gitoperationslib.IsForbidden(err) {
+		t.Errorf("non-admin default Create: err = %v, want 403", err)
+	}
+	if err := system.Delete(ctx, systemID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := system.Get(ctx, systemID); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get after Delete: err = %v, want 404", err)
 	}
 }
 
