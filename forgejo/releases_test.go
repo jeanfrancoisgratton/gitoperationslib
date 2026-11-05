@@ -113,7 +113,7 @@ func TestReleasesRequests(t *testing.T) {
 	check(rels.DeleteAsset(ctx, "acme", "widget", 11, 21))
 
 	wantRequests := []string{
-		"GET /api/v1/repos/acme/widget/releases?limit=5",
+		"GET /api/v1/repos/acme/widget/releases?limit=5&page=1",
 		"GET /api/v1/repos/acme/widget/releases/11?",
 		"GET /api/v1/repos/acme/widget/releases/tags/v1.0.1?",
 		"GET /api/v1/repos/acme/widget/releases/latest?",

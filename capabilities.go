@@ -39,6 +39,8 @@ const (
 	CapHookDeliveries // a webhook's delivery history (HookDeliveries)
 	CapCIEnvironments // secrets and variables of an environment (EnvCI)
 	CapOrgSecrets     // organisation secrets limited to some repositories (OrgSecrets)
+	// CapCollaboratorInvitations: invitations not yet accepted (CollaboratorInvitations).
+	CapCollaboratorInvitations
 )
 
 var capabilityNames = []struct {
@@ -74,6 +76,7 @@ var capabilityNames = []struct {
 	{CapHookDeliveries, "hook-deliveries"},
 	{CapCIEnvironments, "ci-environments"},
 	{CapOrgSecrets, "org-secrets"},
+	{CapCollaboratorInvitations, "collaborator-invitations"},
 }
 
 // Has reports whether c includes every capability in want.

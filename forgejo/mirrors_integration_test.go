@@ -32,7 +32,14 @@ func TestIntegrationMirrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The address as the server sees it, whatever port the test reaches it on.
+	// Forgejo 17 refuses plain http remotes, and the test instance has no TLS.
 	const local = "http://127.0.0.1:3000/"
+	needsPlainHTTP := func(t *testing.T) {
+		t.Helper()
+		if v, err := ParseVersion("17.0.0"); err == nil && c.Version().Compare(v) >= 0 {
+			t.Skipf("Forgejo %s refuses plain http remotes", c.Version())
+		}
+	}
 	token := os.Getenv("GITOPSLIB_TESTENV_ADMIN_TOKEN")
 
 	eventually := func(what string, cond func() bool) {
@@ -52,7 +59,7 @@ func TestIntegrationMirrors(t *testing.T) {
 
 	t.Run("refused", func(t *testing.T) {
 		for name, opts := range map[string]gitoperationslib.CreatePushMirrorOptions{
-			"short interval": {RemoteAddress: local + me + "/" + target + ".git", Interval: time.Minute},
+			"short interval": {RemoteAddress: "https://example.com/x.git", Interval: time.Minute},
 			"host":           {RemoteAddress: "https://gitopslib.invalid/x.git", Interval: time.Hour},
 			"credentials":    {RemoteAddress: "https://u:p@example.com/x.git", Interval: time.Hour},
 		} {
@@ -78,6 +85,7 @@ func TestIntegrationMirrors(t *testing.T) {
 	})
 
 	t.Run("push", func(t *testing.T) {
+		needsPlainHTTP(t)
 		m, err := c.CreatePushMirror(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{
 			RemoteAddress: local + me + "/" + target + ".git", Username: me, Password: token,
 			Interval: 8 * time.Hour, SyncOnCommit: true, BranchFilter: "main",
@@ -140,6 +148,7 @@ func TestIntegrationMirrors(t *testing.T) {
 
 	// A push that fails stops the sync: the mirrors after it are not reached.
 	t.Run("failing", func(t *testing.T) {
+		needsPlainHTTP(t)
 		good := func() *gitoperationslib.PushMirror {
 			t.Helper()
 			m, err := c.CreatePushMirror(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{
@@ -186,6 +195,7 @@ func TestIntegrationMirrors(t *testing.T) {
 	})
 
 	t.Run("pull", func(t *testing.T) {
+		needsPlainHTTP(t)
 		// The library has no migration yet.
 		body := map[string]any{
 			"clone_addr": local + me + "/" + source + ".git", "auth_token": token, "repo_name": pull, "mirror": true, "service": "git",

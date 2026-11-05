@@ -1,6 +1,9 @@
 package gitoperationslib
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // CollaboratorPermission is a user's access level on a repository.
 type CollaboratorPermission string
@@ -32,6 +35,29 @@ type Collaborator struct {
 	// organisation's custom role. On Forgejo it is empty when the caller may
 	// not read it: only repository admins can, except for their own.
 	Permission CollaboratorPermission `json:"permission,omitzero"`
+}
+
+// CollaboratorInvitation is an invitation a user has not accepted yet.
+type CollaboratorInvitation struct {
+	ID         int64                  `json:"id"`
+	Login      string                 `json:"login"`
+	Permission CollaboratorPermission `json:"permission"`
+	// Expired is true once the user can no longer accept it.
+	Expired   bool      `json:"expired,omitzero"`
+	HTMLURL   string    `json:"htmlUrl,omitzero"`
+	CreatedAt time.Time `json:"createdAt,omitzero"`
+}
+
+// CollaboratorInvitations lists who has been invited to a repository and has not
+// accepted yet, which takes admin access to it. Only the GitHub backend implements
+// it (CapCollaboratorInvitations): the other forges give access at once. Find it
+// with a type assertion:
+//
+//	i, ok := client.(gitoperationslib.CollaboratorInvitations)
+//
+// To withdraw an invitation, use Collaborators.RemoveCollaborator.
+type CollaboratorInvitations interface {
+	ListCollaboratorInvitations(ctx context.Context, owner, repo string, opts ListOptions) (Page[CollaboratorInvitation], error)
 }
 
 // Collaborators manages the users with their own access to a repository, which

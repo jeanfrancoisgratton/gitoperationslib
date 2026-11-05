@@ -45,8 +45,9 @@ type SiteHooks interface {
 }
 
 // SystemWebhooks manages system webhooks, which fire for events in every
-// repository of the instance. There is no Create: Forgejo's API cannot create
-// one, so they are created in the web interface (Site administration, Webhooks).
+// repository of the instance. The library has no Create, as Forgejo only offers
+// one through an undocumented flag: create them in the web interface (Site
+// administration, Webhooks).
 type SystemWebhooks interface {
 	List(ctx context.Context, opts ListOptions) (Page[Webhook], error)
 	Get(ctx context.Context, id int64) (*Webhook, error)

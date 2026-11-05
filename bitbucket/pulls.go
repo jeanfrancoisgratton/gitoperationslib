@@ -116,13 +116,13 @@ func (p pulls) List(ctx context.Context, owner, repo string, opts gitoperationsl
 	default:
 		return gitoperationslib.Page[gitoperationslib.PullRequest]{}, fmt.Errorf("bitbucket: pulls.list: invalid state %q", opts.State)
 	}
-	page, err := bitbucketapi.List[pullJSON](ctx, p.c.api, pullsPath(owner, repo), q)
+	values, next, err := bitbucketapi.ListPaged[pullJSON](ctx, p.c.api, pullsPath(owner, repo), q)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.PullRequest]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.PullRequest]{Items: make([]gitoperationslib.PullRequest, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = page.Values[i].toPR()
+	out := gitoperationslib.Page[gitoperationslib.PullRequest]{Items: make([]gitoperationslib.PullRequest, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = values[i].toPR()
 	}
 	return out, nil
 }

@@ -153,7 +153,7 @@ func TestPullsRequests(t *testing.T) {
 	}
 
 	wantRequests := []string{
-		"GET /api/v1/repos/acme/widget/pulls?limit=5&state=all",
+		"GET /api/v1/repos/acme/widget/pulls?limit=5&page=1&state=all",
 		"GET /api/v1/repos/acme/widget/pulls/3?",
 		"POST /api/v1/repos/acme/widget/pulls?",
 		"PATCH /api/v1/repos/acme/widget/pulls/3?",

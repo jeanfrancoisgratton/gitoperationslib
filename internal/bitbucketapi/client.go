@@ -197,6 +197,30 @@ func (p *Page[T]) NextPage() int {
 	return n
 }
 
+// ListPaged reads one page for a public list, returning its items and the next
+// page's number. An endpoint can page with tokens instead of numbers (a pull
+// request's commits use page=67Fg, webhooks next=<uuid>; checked 2026-11-05),
+// which Page.NextPage cannot carry. Stopping there would silently drop the rest,
+// so the following pages are read at once, and the last page number is 0.
+func ListPaged[T any](ctx context.Context, c *Client, path string, query url.Values) ([]T, int, error) {
+	page, err := List[T](ctx, c, path, query)
+	if err != nil {
+		return nil, 0, err
+	}
+	items, next := page.Values, page.NextPage()
+	for next == 0 && page.Next != "" {
+		u, err := url.Parse(page.Next)
+		if err != nil {
+			return nil, 0, fmt.Errorf("bitbucket: next page of %s: %w", path, err)
+		}
+		if page, err = List[T](ctx, c, path, u.Query()); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, page.Values...)
+	}
+	return items, next, nil
+}
+
 // ListQuery converts ListOptions into Bitbucket's page/pagelen parameters.
 func ListQuery(opts gitoperationslib.ListOptions) url.Values {
 	q := url.Values{}

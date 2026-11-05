@@ -17,6 +17,8 @@ repositories, and fixes found by auditing pagination. Forgejo 15 is now the mini
 - `EnvCI` (`CapCIEnvironments`) reaches the secrets and variables of a repository's environment through `Secrets()` and
   `Variables()`: GitHub's environments and Bitbucket's deployment variables. Forgejo has no environments and returns
   `ErrNotSupported`. `CIScope` gains an `Environment` field.
+- **`CollaboratorInvitations`** (`CapCollaboratorInvitations`, GitHub only): `ListCollaboratorInvitations` shows who has
+  been invited and has not accepted yet.
 - **`OrgSecrets`** (`CapOrgSecrets`, GitHub only): `GetOrgSecretAccess`, `SetOrgSecret` and `SetOrgSecretRepos` limit an
   organisation secret to the private or selected repositories.
 - **`GitHooks`** (`CapGitHooks`, Forgejo only): `ListGitHooks`, `GetGitHook`, `SetGitHook` and `DeleteGitHook`. Forgejo
@@ -41,8 +43,8 @@ repositories, and fixes found by auditing pagination. Forgejo 15 is now the mini
 - **`UserHooks`** (`CapUserWebhooks`, Forgejo only): `UserWebhooks()` lists, gets, creates, edits and deletes the
   authenticated user's own webhooks.
 - **`SiteHooks`** (`CapSystemWebhooks`, Forgejo only, site admins):
-  - `SystemWebhooks()`: list, get, edit, delete. There is no create: Forgejo's API cannot make a system webhook, so
-    they are created in the web interface.
+  - `SystemWebhooks()`: list, get, edit, delete. There is no create, as Forgejo's API only offers it through an
+    undocumented flag: they are created in the web interface.
   - `DefaultWebhooks()`: create, get, edit, delete. These are copied into each new repository, and there is no list,
     because Forgejo's API has none.
   - Each only reaches its own kind: an ID of the other gives HTTP 404, changing nothing. Forgejo's API does not tell
@@ -63,6 +65,13 @@ repositories, and fixes found by auditing pagination. Forgejo 15 is now the mini
   is.
 
 ### Fixed
+- `Webhooks().List` on Bitbucket silently dropped webhooks past the first 10: that endpoint pages with a token, which
+  `NextPage` cannot carry, and ignores `page=`. It now returns them all at once. Every other Bitbucket list now reads on
+  when it meets such a token, instead of stopping.
+- On Forgejo, `PerPage` without `Page` was ignored by some lists, which returned more items than asked. `/push_mirrors`
+  also linked a next page, repeating items. The library now always sends a page with a limit.
+- `HookEventAll` on Forgejo reported an error on versions without one of its events, such as `action_run_recover` on 17.
+- `CreatePushMirror` explains a refused remote, where Forgejo 17 says "Unknown error" for a plain http address.
 - `Secrets().Set` on a GitHub organisation made the secret available to all repositories every time, whatever its
   visibility was: changing a limited secret's value widened its access. It now keeps the visibility and repositories.
 - `Webhooks().Edit` on Bitbucket keeps a webhook's "skip certificate verification" setting, which it used to reset.

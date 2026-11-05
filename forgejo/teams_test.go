@@ -138,16 +138,16 @@ func TestTeamsRequests(t *testing.T) {
 	check(teams.Delete(ctx, 6))
 
 	wantRequests := []string{
-		"GET /api/v1/orgs/acme/teams?limit=5",
+		"GET /api/v1/orgs/acme/teams?limit=5&page=1",
 		"GET /api/v1/teams/6?",
 		"POST /api/v1/orgs/acme/teams?",
 		"GET /api/v1/teams/6?",
 		"PATCH /api/v1/teams/6?",
-		"GET /api/v1/teams/6/members?limit=5",
+		"GET /api/v1/teams/6/members?limit=5&page=1",
 		"GET /api/v1/teams/6/members/alice?",
 		"PUT /api/v1/teams/6/members/alice?",
 		"DELETE /api/v1/teams/6/members/alice?",
-		"GET /api/v1/teams/6/repos?limit=5",
+		"GET /api/v1/teams/6/repos?limit=5&page=1",
 		"PUT /api/v1/teams/6/repos/acme/widget?",
 		"DELETE /api/v1/teams/6/repos/acme/widget?",
 		"GET /api/v1/teams/6?",

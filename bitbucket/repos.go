@@ -117,13 +117,13 @@ func (r repos) List(ctx context.Context, owner string, opts gitoperationslib.Lis
 		}
 		return all, nil
 	}
-	page, err := bitbucketapi.List[repoJSON](ctx, r.c.api, bitbucketapi.Path("repositories", owner), bitbucketapi.ListQuery(opts))
+	values, next, err := bitbucketapi.ListPaged[repoJSON](ctx, r.c.api, bitbucketapi.Path("repositories", owner), bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Repo]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.Repo]{Items: make([]gitoperationslib.Repo, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = page.Values[i].toRepo()
+	out := gitoperationslib.Page[gitoperationslib.Repo]{Items: make([]gitoperationslib.Repo, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = values[i].toRepo()
 	}
 	return out, nil
 }

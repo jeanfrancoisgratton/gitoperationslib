@@ -42,7 +42,8 @@ var reviewHookEvents = []string{"pull_request_review_approved", "pull_request_re
 
 // allHookEvents is what HookEventAll sends: Forgejo has no wildcard, and takes
 // "*" as an unknown event, leaving a webhook subscribed to nothing. These are the
-// names 15.0.11 accepts.
+// names 15.0.11 accepts. Versions differ (17.0.1 has no action_run_recover), so a
+// name the server drops here is not reported: see requestedEvents.
 var allHookEvents = append([]string{
 	"create", "delete", "fork", "push", "issues", "issue_assign", "issue_label", "issue_milestone", "issue_comment",
 	"pull_request", "pull_request_assign", "pull_request_label", "pull_request_milestone", "pull_request_comment",
@@ -63,6 +64,14 @@ func toForgejoEvents(events []gitoperationslib.HookEvent) []string {
 		}
 	}
 	return out
+}
+
+// requestedEvents is what checkEvents holds the server to: the events the caller
+// named, not those HookEventAll stands for.
+func requestedEvents(events []gitoperationslib.HookEvent) []string {
+	return toForgejoEvents(slices.DeleteFunc(slices.Clone(events), func(e gitoperationslib.HookEvent) bool {
+		return e == gitoperationslib.HookEventAll
+	}))
 }
 
 func fromForgejoEvents(names []string) []gitoperationslib.HookEvent {
@@ -163,7 +172,7 @@ func (s hookService) create(ctx context.Context, opts gitoperationslib.CreateWeb
 		return nil, err
 	}
 	hook := out.toWebhook()
-	return checkEvents(&hook, body.Events, out.Events, op)
+	return checkEvents(&hook, requestedEvents(opts.Events), out.Events, op)
 }
 
 // insecureSSLNotSupported refuses what Forgejo would drop silently: skipping the
@@ -205,7 +214,7 @@ func (s hookService) edit(ctx context.Context, id int64, opts gitoperationslib.E
 		return nil, err
 	}
 	hook := out.toWebhook()
-	return checkEvents(&hook, body.Events, out.Events, "webhooks.edit")
+	return checkEvents(&hook, requestedEvents(opts.Events), out.Events, "webhooks.edit")
 }
 
 func (s hookService) delete(ctx context.Context, id int64) error {

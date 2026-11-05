@@ -308,6 +308,7 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapHookDeliveries` | `hook-deliveries` (a webhook's delivery history: `gol.HookDeliveries`) | | ✅ | |
 | `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
 | `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
+| `CapCollaboratorInvitations` | `collaborator-invitations` (invitations not yet accepted: `gol.CollaboratorInvitations`) | | ✅ | |
 | `CapMigrate` | reserved for a future feature | | | |
 
 ```go
@@ -1780,7 +1781,7 @@ Beyond repositories and organisations, Forgejo has three more kinds of webhook. 
 | Kind | Fires for | Access | List | Get, edit, delete | Create |
 |---|---|---|---|---|---|
 | User (`UserHooks`, `CapUserWebhooks`) | the user's repositories | your own only | ✅ | ✅ | ✅ |
-| System (`SiteHooks`, `CapSystemWebhooks`) | every repository of the instance | site admin | ✅ | ✅ | ❌ web interface only |
+| System (`SiteHooks`, `CapSystemWebhooks`) | every repository of the instance | site admin | ✅ | ✅ | ❌ not in the library |
 | Default (`SiteHooks`, `CapSystemWebhooks`) | nothing itself: it is copied into each new repository | site admin | ❌ no API | ✅ | ✅ |
 
 ```go
@@ -1830,7 +1831,7 @@ for h, err := range gol.All(ctx, gol.ListOptions{}, site.SystemWebhooks().List) 
 ```
 
 Notes:
-- **System webhooks cannot be created through the API.** Forgejo's `POST /admin/hooks` creates a default webhook, even with `is_system_webhook` in the body. Create them in the web interface: Site administration, Webhooks.
+- **The library does not create system webhooks.** Forgejo only offers it through an undocumented flag: `POST /admin/hooks` makes a default webhook unless `config` holds the string `"is_system_webhook": "true"`. Create them in the web interface: Site administration, Webhooks.
 - **Default webhooks are copied once.** A new repository gets its own independent repository webhook. Existing repositories get nothing, and editing or deleting the default webhook leaves the copies as they are. Change those with `Webhooks()`.
 - **Each interface only reaches its own kind.** Forgejo's API addresses system and default webhooks at the same path, and its answers do not tell them apart. So get, edit and delete first list the system webhooks to check the kind, which costs one extra request per page of them. An ID of the other kind gives HTTP 404 and changes nothing.
 - **`Ping` has no equivalent here:** Forgejo offers no test delivery for these kinds.
@@ -3080,7 +3081,15 @@ err = c.RemoveCollaborator(ctx, "acme", "widget", "bob") // also withdraws a Git
 | `AddCollaborator` on a repository owned by a user | ✅ | ⚠️ the permission is ignored | — |
 | How to name a user | Login | Login | Nickname of a workspace member, account ID or `{UUID}` (the last two for an outsider) |
 
-The library cannot list GitHub's pending invitations yet.
+To see who has been invited and has not accepted yet, GitHub clients also implement `gol.CollaboratorInvitations` (`CapCollaboratorInvitations`). The other forges give access at once:
+
+```go
+if i, ok := client.(gol.CollaboratorInvitations); ok {
+	page, err := i.ListCollaboratorInvitations(ctx, "acme", "widget", gol.ListOptions{})
+	// each: ID, Login, Permission, Expired, HTMLURL, CreatedAt
+	_, _ = page, err
+}
+```
 
 ### 22.2 Mirrors (`Mirrors`)
 
@@ -3121,4 +3130,4 @@ Things to know, all checked on Forgejo 15.0.11:
 - A branch can take a moment to show on a remote that is itself a forge, after `SyncPushMirrors` has returned.
 - `SyncMirror` only queues the fetch, and is HTTP 400 for a repository that is not a mirror.
 - A push mirror cannot be edited: delete it and create another. The server chooses `Name`, and rewrites an SSH address as `ssh://host/path`, without the user.
-- A remote address the server refuses, such as a host that does not resolve, is HTTP 400 here. Forgejo answers 401 "Permission denied", which would look like a problem with your token.
+- A remote address the server refuses is HTTP 400 here, with a message saying so. For a host that does not resolve, Forgejo answers 401 "Permission denied", which would look like a problem with your token. Since Forgejo 17, plain `http://` remotes are refused too.

@@ -66,13 +66,13 @@ func (k sshKeys) List(ctx context.Context, opts gitoperationslib.ListOptions) (g
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.SSHKey]{}, err
 	}
-	page, err := bitbucketapi.List[sshKeyJSON](ctx, k.c.api, path, bitbucketapi.ListQuery(opts))
+	values, next, err := bitbucketapi.ListPaged[sshKeyJSON](ctx, k.c.api, path, bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.SSHKey]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.SSHKey]{Items: make([]gitoperationslib.SSHKey, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = page.Values[i].toSSHKey()
+	out := gitoperationslib.Page[gitoperationslib.SSHKey]{Items: make([]gitoperationslib.SSHKey, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = values[i].toSSHKey()
 	}
 	return out, nil
 }
@@ -169,13 +169,13 @@ func (k gpgKeys) List(ctx context.Context, opts gitoperationslib.ListOptions) (g
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.GPGKey]{}, err
 	}
-	page, err := bitbucketapi.List[gpgKeyJSON](ctx, k.c.api, path, bitbucketapi.ListQuery(opts))
+	values, next, err := bitbucketapi.ListPaged[gpgKeyJSON](ctx, k.c.api, path, bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.GPGKey]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.GPGKey]{Items: make([]gitoperationslib.GPGKey, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = page.Values[i].toGPGKey()
+	out := gitoperationslib.Page[gitoperationslib.GPGKey]{Items: make([]gitoperationslib.GPGKey, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = values[i].toGPGKey()
 	}
 	return out, nil
 }

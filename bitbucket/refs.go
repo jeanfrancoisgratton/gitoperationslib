@@ -98,13 +98,13 @@ func (b branches) List(ctx context.Context, owner, repo string, opts gitoperatio
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Branch]{}, err
 	}
-	page, err := bitbucketapi.List[refJSON](ctx, b.c.api, repoPath(owner, repo, "refs", "branches"), bitbucketapi.ListQuery(opts))
+	values, next, err := bitbucketapi.ListPaged[refJSON](ctx, b.c.api, repoPath(owner, repo, "refs", "branches"), bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Branch]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.Branch]{Items: make([]gitoperationslib.Branch, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = toBranch(&page.Values[i], def)
+	out := gitoperationslib.Page[gitoperationslib.Branch]{Items: make([]gitoperationslib.Branch, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = toBranch(&values[i], def)
 	}
 	return out, nil
 }
@@ -233,13 +233,13 @@ func toTag(owner, repo string, r *refJSON) gitoperationslib.Tag {
 }
 
 func (t tags) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Tag], error) {
-	page, err := bitbucketapi.List[refJSON](ctx, t.c.api, repoPath(owner, repo, "refs", "tags"), bitbucketapi.ListQuery(opts))
+	values, next, err := bitbucketapi.ListPaged[refJSON](ctx, t.c.api, repoPath(owner, repo, "refs", "tags"), bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Tag]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.Tag]{Items: make([]gitoperationslib.Tag, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = toTag(owner, repo, &page.Values[i])
+	out := gitoperationslib.Page[gitoperationslib.Tag]{Items: make([]gitoperationslib.Tag, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = toTag(owner, repo, &values[i])
 	}
 	return out, nil
 }

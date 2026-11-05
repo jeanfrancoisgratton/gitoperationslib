@@ -12,7 +12,10 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 )
 
-var _ gitoperationslib.Collaborators = (*Client)(nil)
+var (
+	_ gitoperationslib.Collaborators           = (*Client)(nil)
+	_ gitoperationslib.CollaboratorInvitations = (*Client)(nil)
+)
 
 // collaboratorPermissions translates to the names GitHub's requests take, which
 // are not those its responses give.
@@ -75,6 +78,21 @@ func (c *Client) AddCollaborator(ctx context.Context, owner, repo, user string, 
 		return false, convertError(err)
 	}
 	return resp.StatusCode == http.StatusCreated, nil
+}
+
+// ListCollaboratorInvitations implements gitoperationslib.CollaboratorInvitations.
+func (c *Client) ListCollaboratorInvitations(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.CollaboratorInvitation], error) {
+	lo := ghList(opts)
+	list, resp, err := c.gh.Repositories.ListInvitations(ctx, owner, repo, &lo)
+	if err != nil {
+		return gitoperationslib.Page[gitoperationslib.CollaboratorInvitation]{}, convertError(err)
+	}
+	return toPage(list, resp, func(i *gh.RepositoryInvitation) gitoperationslib.CollaboratorInvitation {
+		return gitoperationslib.CollaboratorInvitation{
+			ID: i.GetID(), Login: i.GetInvitee().GetLogin(), Permission: gitoperationslib.CollaboratorPermission(i.GetPermissions()),
+			Expired: i.GetExpired(), HTMLURL: i.GetHTMLURL(), CreatedAt: i.GetCreatedAt().Time,
+		}
+	}), nil
 }
 
 // RemoveCollaborator implements gitoperationslib.Collaborators. The removal does

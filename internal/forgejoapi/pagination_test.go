@@ -11,6 +11,10 @@ func TestListQuery(t *testing.T) {
 	if got := ListQuery(gitoperationslib.ListOptions{}).Encode(); got != "" {
 		t.Errorf("zero options gave %q", got)
 	}
+	// Without a page, several endpoints ignore the limit.
+	if got := ListQuery(gitoperationslib.ListOptions{PerPage: 50}).Encode(); got != "limit=50&page=1" {
+		t.Errorf("limit alone = %q", got)
+	}
 	if got := ListQuery(gitoperationslib.ListOptions{Page: 2, PerPage: 50}).Encode(); got != "limit=50&page=2" {
 		t.Errorf("got %q", got)
 	}

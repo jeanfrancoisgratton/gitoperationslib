@@ -11,13 +11,16 @@ import (
 
 // ListQuery converts ListOptions into Forgejo's page/limit query parameters.
 // Zero values are omitted so the server defaults apply; the server also caps
-// limit at its configured maximum.
+// limit at its configured maximum. A limit always comes with a page: without one,
+// several endpoints ignore the limit, and /push_mirrors also links a next page
+// (checked on 15.0.11).
 func ListQuery(opts gitoperationslib.ListOptions) url.Values {
 	q := url.Values{}
 	if opts.Page > 0 {
 		q.Set("page", strconv.Itoa(opts.Page))
 	}
 	if opts.PerPage > 0 {
+		q.Set("page", strconv.Itoa(max(opts.Page, 1)))
 		q.Set("limit", strconv.Itoa(opts.PerPage))
 	}
 	return q

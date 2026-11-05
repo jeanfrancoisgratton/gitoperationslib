@@ -63,6 +63,8 @@ func createError(err error, address string) error {
 	switch {
 	case apiErr.StatusCode == http.StatusBadRequest && strings.HasPrefix(apiErr.Message, emptyMessage):
 		apiErr.Message = "the interval is below the server's minimum"
+	case apiErr.StatusCode == http.StatusBadRequest && apiErr.Message == "Unknown error":
+		apiErr.Message = fmt.Sprintf("the server refuses the remote address %q: since Forgejo 17 that includes plain http", address)
 	case apiErr.StatusCode == http.StatusUnauthorized && apiErr.Message == "Permission denied":
 		apiErr.StatusCode = http.StatusBadRequest
 		apiErr.Message = fmt.Sprintf("the server refuses the remote address %q", address)
@@ -70,11 +72,8 @@ func createError(err error, address string) error {
 	return err
 }
 
-// ListPushMirrors implements gitoperationslib.Mirrors. It always names a page:
-// without one, Forgejo ignores the limit, returns every mirror and still links a
-// next page, so that All would see some twice (checked on 15.0.11).
+// ListPushMirrors implements gitoperationslib.Mirrors.
 func (c *Client) ListPushMirrors(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.PushMirror], error) {
-	opts.Page = max(opts.Page, 1)
 	return listAt(c, repoPath(owner, repo, "push_mirrors"), (*pushMirrorJSON).toPushMirror)(ctx, opts)
 }
 

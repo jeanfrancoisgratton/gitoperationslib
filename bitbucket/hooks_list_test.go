@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -22,11 +23,16 @@ func TestListWebhooksBitbucket(t *testing.T) {
 	var requests []string
 	c := fakeBitbucket(t, func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.URL.Path)
-		io.WriteString(w, `{"values":[{"uuid":"{6f1c2a9e-1111-2222-3333-444455556666}","url":"https://h/x","active":true,"events":["repo:push"]}],"page":1,"next":"https://x/?page=2"}`)
+		// Bitbucket pages webhooks with a token, and ignores page=.
+		if r.URL.Query().Get("next") == "" && !strings.Contains(r.URL.Path, "workspaces") {
+			io.WriteString(w, `{"values":[{"uuid":"{6f1c2a9e-1111-2222-3333-444455556666}","url":"https://h/x","active":true,"events":["repo:push"]}],"pagelen":100,"next":"https://x/?next=0d6cd10f&pagelen=100"}`)
+			return
+		}
+		io.WriteString(w, `{"values":[{"uuid":"{7f1c2a9e-1111-2222-3333-444455556666}","url":"https://h/y","active":true,"events":["repo:push"]}],"pagelen":100}`)
 	})
 	ctx := context.Background()
 	page, err := c.Webhooks().List(ctx, gitoperationslib.RepoHooks("acme", "widget"), gitoperationslib.ListOptions{})
-	if err != nil || len(page.Items) != 1 || page.NextPage != 2 {
+	if err != nil || len(page.Items) != 2 || page.NextPage != 0 {
 		t.Fatalf("List = %+v, %v", page, err)
 	}
 	if h := page.Items[0]; h.URL != "https://h/x" || !h.Active || h.ID == 0 || !slices.Equal(h.Events, []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}) {
@@ -35,7 +41,7 @@ func TestListWebhooksBitbucket(t *testing.T) {
 	if _, err := c.Webhooks().List(ctx, gitoperationslib.OrgHooks("acme"), gitoperationslib.ListOptions{}); err != nil {
 		t.Error(err)
 	}
-	if !slices.Equal(requests, []string{"/2.0/repositories/acme/widget/hooks", "/2.0/workspaces/acme/hooks"}) {
+	if !slices.Equal(requests, []string{"/2.0/repositories/acme/widget/hooks", "/2.0/repositories/acme/widget/hooks", "/2.0/workspaces/acme/hooks"}) {
 		t.Errorf("requests = %v", requests)
 	}
 	n := len(requests)

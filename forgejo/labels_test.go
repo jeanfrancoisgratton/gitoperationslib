@@ -141,7 +141,7 @@ func TestMilestonesForgejo(t *testing.T) {
 	if _, err := ms.List(ctx, "acme", "widget", "", gitoperationslib.ListOptions{}); err != nil {
 		t.Error(err)
 	}
-	if !slices.Equal((*requests)[:2], []string{"GET /milestones?limit=5&state=closed", "GET /milestones?"}) {
+	if !slices.Equal((*requests)[:2], []string{"GET /milestones?limit=5&page=1&state=closed", "GET /milestones?"}) {
 		t.Errorf("requests = %v", (*requests)[:2])
 	}
 	if got, err := ms.Get(ctx, "acme", "widget", 3); err != nil || got.ID != 3 {
@@ -218,7 +218,7 @@ func TestDirectoryListAllOrgsAndTeamReposForgejo(t *testing.T) {
 	ctx := context.Background()
 	dir := c.Directory()
 	orgs, err := dir.ListAllOrgs(ctx, gitoperationslib.ListOptions{PerPage: 5})
-	if err != nil || len(orgs.Items) != 1 || orgs.Items[0].Name != "acme" || requests[0] != "/api/v1/orgs?limit=5" {
+	if err != nil || len(orgs.Items) != 1 || orgs.Items[0].Name != "acme" || requests[0] != "/api/v1/orgs?limit=5&page=1" {
 		t.Errorf("ListAllOrgs = %+v, %v, %v", orgs, err, requests)
 	}
 	repos, err := dir.TeamRepos(ctx, "acme", "devs", gitoperationslib.ListOptions{})

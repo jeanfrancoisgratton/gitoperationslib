@@ -108,15 +108,15 @@ func TestOrgsRequests(t *testing.T) {
 	check(orgs.Delete(ctx, "acme2"))
 
 	wantRequests := []string{
-		"GET /api/v1/user/orgs?limit=5",
-		"GET /api/v1/users/bob/orgs?limit=5",
-		"GET /api/v1/orgs?limit=5",
+		"GET /api/v1/user/orgs?limit=5&page=1",
+		"GET /api/v1/users/bob/orgs?limit=5&page=1",
+		"GET /api/v1/orgs?limit=5&page=1",
 		"POST /api/v1/orgs?",
 		"POST /api/v1/orgs?",
 		"POST /api/v1/admin/users/bob/orgs?",
 		"PATCH /api/v1/orgs/acme?",
 		"POST /api/v1/orgs/acme/rename?",
-		"GET /api/v1/orgs/acme/members?limit=5",
+		"GET /api/v1/orgs/acme/members?limit=5&page=1",
 		"GET /api/v1/orgs/acme/members/alice?",
 		"DELETE /api/v1/orgs/acme/members/alice?",
 		"DELETE /api/v1/orgs/acme2?",

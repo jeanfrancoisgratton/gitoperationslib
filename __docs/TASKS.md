@@ -9,15 +9,15 @@ Increments of the 1.3.0 work. Item numbers refer to `__docs/TODO.md`.
 | C | 8, 9 | PR diff/patch, files, commits and line comments, plus `A..B`, author filter and commit diffs. | Done, committed |
 | D | 43, 44 | Forgejo git hooks, delivery history and redelivery, `insecure_ssl`, wildcard events and more typed payloads. | Done, committed |
 | E | 5 | Collaborators, push mirrors and mirror sync, without deploy keys or migration (`CapMigrate`). | Done, committed |
-| F | 6 | GitHub environment secrets, Bitbucket deployment variables and GitHub organisation secrets limited to selected repositories. | Done, not committed |
+| F | 6 | GitHub environment secrets, Bitbucket deployment variables and GitHub organisation secrets limited to selected repositories. | Done, committed |
 
 ## Outside the increments
 
 | Items | Status |
 |---|---|
 | 27, 39, 55, 57 | Closed, no increment needed |
-| 37 | Open: the upstream report is drafted and needs filing |
+| 37, 97 | Library side done, not committed. The reports are in `__docs/UPSTREAM-REPORTS.md`, ready to file |
 | 56 | Deferred |
-| 96 | Open: audit the other Bitbucket list calls for page tokens; found during C, not yet scheduled |
-| 97, 98 | Open: Forgejo lists without `page` ignoring `limit`; GitHub's pending invitations and its untested write path; found during E, not yet scheduled |
+| 100–110 | Open: what Forgejo gained after 15.0.2, see `__docs/post-v15.md` |
+| 96, 98 | Done, not committed |
 | 99 | Open: finish checking D and F on GitHub once it allows creating repositories again; `OrgSecrets` also needs an organisation to test in |

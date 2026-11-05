@@ -45,13 +45,13 @@ func (c *Client) PullRequestDiff(ctx context.Context, owner, repo string, number
 
 // PullRequestFiles implements gitoperationslib.PRContents.
 func (c *Client) PullRequestFiles(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ChangedFile], error) {
-	page, err := bitbucketapi.List[diffstatJSON](ctx, c.api, pullsPath(owner, repo, strconv.Itoa(number), "diffstat"), bitbucketapi.ListQuery(opts))
+	values, next, err := bitbucketapi.ListPaged[diffstatJSON](ctx, c.api, pullsPath(owner, repo, strconv.Itoa(number), "diffstat"), bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.ChangedFile]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.ChangedFile]{Items: make([]gitoperationslib.ChangedFile, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = page.Values[i].toChangedFile()
+	out := gitoperationslib.Page[gitoperationslib.ChangedFile]{Items: make([]gitoperationslib.ChangedFile, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = values[i].toChangedFile()
 	}
 	return out, nil
 }

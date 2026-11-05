@@ -313,6 +313,32 @@ func TestWebhookWildcard(t *testing.T) {
 	}
 }
 
+// Versions differ in the events they know: a name the library added for the
+// wildcard is no error, but one the caller named still is.
+func TestWebhookWildcardDroppedEvents(t *testing.T) {
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"id":1,"active":true,"config":{"url":"https://h","content_type":"json"},"events":["push","issues"]}`)
+	})
+	ctx := context.Background()
+	scope := gitoperationslib.RepoHooks("acme", "widget")
+	create := func(events ...gitoperationslib.HookEvent) error {
+		_, err := c.Webhooks().Create(ctx, scope, gitoperationslib.CreateWebhookOptions{URL: "https://h", Events: events})
+		return err
+	}
+	if err := create(gitoperationslib.HookEventAll); err != nil {
+		t.Errorf("everything: %v", err)
+	}
+	if err := create(gitoperationslib.HookEventAll, gitoperationslib.HookEventPush); err != nil {
+		t.Errorf("everything and an event the server has: %v", err)
+	}
+	if err := create(gitoperationslib.HookEventAll, "no_such_event"); err == nil {
+		t.Error("an unknown event named next to the wildcard went unreported")
+	}
+	if _, err := c.Webhooks().Edit(ctx, scope, 1, gitoperationslib.EditWebhookOptions{Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventAll}}); err != nil {
+		t.Errorf("Edit(everything): %v", err)
+	}
+}
+
 func TestWebhookInsecureSSLNotSupported(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPatch {

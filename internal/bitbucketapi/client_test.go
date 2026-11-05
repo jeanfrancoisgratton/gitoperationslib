@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -127,5 +129,71 @@ func TestPostForm(t *testing.T) {
 	})
 	if _, err := c.PostForm(context.Background(), "repositories/w/r/src", map[string][]string{"README.md": {"# hi"}, "message": {"Initial commit"}}, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestListPaged(t *testing.T) {
+	tests := []struct {
+		name  string
+		pages map[string]string
+		want  []int
+		next  int
+	}{
+		{
+			name:  "numbered: one page, and the next one's number",
+			pages: map[string]string{"": `{"values":[1],"next":"https://x/?page=2&ctx=abc"}`},
+			want:  []int{1}, next: 2,
+		},
+		{
+			name:  "last page",
+			pages: map[string]string{"": `{"values":[1]}`},
+			want:  []int{1},
+		},
+		{
+			name: "next token, as webhooks use: all at once",
+			pages: map[string]string{
+				"":  `{"values":[1],"next":"https://x/?next=aa-bb&pagelen=1"}`,
+				"n": `{"values":[2],"next":"https://x/?next=cc-dd&pagelen=1"}`,
+			},
+			want: []int{1, 2, 2},
+		},
+		{
+			name: "page token, as a pull request's commits use: all at once",
+			pages: map[string]string{
+				"":  `{"values":[1],"next":"https://x/?page=67Fg"}`,
+				"p": `{"values":[2]}`,
+			},
+			want: []int{1, 2},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seen := map[string]int{}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch q := r.URL.Query(); {
+				case q.Get("page") == "67Fg":
+					io.WriteString(w, tt.pages["p"])
+				case q.Get("next") == "cc-dd":
+					io.WriteString(w, `{"values":[2]}`)
+				case q.Get("next") != "":
+					io.WriteString(w, tt.pages["n"])
+				default:
+					seen["first"]++
+					io.WriteString(w, tt.pages[""])
+				}
+			}))
+			defer srv.Close()
+			c, err := NewClient(srv.URL+"/2.0", srv.Client(), nil, "ua")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, next, err := ListPaged[int](context.Background(), c, "things", url.Values{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(got, tt.want) || next != tt.next || seen["first"] != 1 {
+				t.Errorf("got %v, next %d, first page read %d times; want %v, next %d", got, next, seen["first"], tt.want, tt.next)
+			}
+		})
 	}
 }

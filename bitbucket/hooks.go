@@ -142,18 +142,21 @@ func (w webhooks) find(ctx context.Context, scope gitoperationslib.HookScope, id
 	}
 }
 
-func (w webhooks) List(ctx context.Context, scope gitoperationslib.HookScope, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Webhook], error) {
+// List returns the webhooks all at once, ignoring opts: this endpoint pages with
+// next=<uuid> and ignores page=, which would give the first page again (checked
+// 2026-11-05).
+func (w webhooks) List(ctx context.Context, scope gitoperationslib.HookScope, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Webhook], error) {
 	base, err := hooksPath(scope)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Webhook]{}, err
 	}
-	page, err := bitbucketapi.List[hookJSON](ctx, w.c.api, base, bitbucketapi.ListQuery(opts))
+	all, err := bitbucketapi.All[hookJSON](ctx, w.c.api, base, nil)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Webhook]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.Webhook]{Items: make([]gitoperationslib.Webhook, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = page.Values[i].toWebhook()
+	out := gitoperationslib.Page[gitoperationslib.Webhook]{Items: make([]gitoperationslib.Webhook, len(all))}
+	for i := range all {
+		out.Items[i] = all[i].toWebhook()
 	}
 	return out, nil
 }

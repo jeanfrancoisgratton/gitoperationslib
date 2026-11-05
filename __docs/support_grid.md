@@ -207,7 +207,7 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Unknown event names | ⚠️ dropped by the server, reported as an error | ✅ rejected | ✅ rejected |
 | Target URL | any | any | must resolve in DNS |
 | User webhooks: list, get, create, edit, delete (`UserHooks`) | ✅ | ❌ | ❌ |
-| System webhooks: list, get, edit, delete (`SiteHooks`) | ✅ site admins; create in the web interface | ❌ | ❌ |
+| System webhooks: list, get, edit, delete (`SiteHooks`) | ✅ site admins; create in the web interface (the API's way is undocumented) | ❌ | ❌ |
 | Default webhooks: create, get, edit, delete (`SiteHooks`) | ✅ site admins; no listing in Forgejo's API | ❌ | ❌ |
 | Skipping the certificate check (`InsecureSSL`) | ❌ an instance setting | ✅ | ✅ |
 | Delivery history and redelivery (`HookDeliveries`) | ❌ not in Forgejo's API | ✅† | ❌ not in Bitbucket's API |
@@ -331,7 +331,7 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | Remove | ✅ | ✅† also withdraws an invitation | ✅ |
 | Permissions read, write, admin | ✅ | ✅† | ✅ |
 | Permissions triage, maintain | ❌ | ✅† | ❌ |
-| List pending invitations | — | ❌ not in the library | — |
+| List pending invitations (`CollaboratorInvitations`) | — | ✅ | — |
 
 The GitHub checks marked † need a second account, which would receive a real invitation: set `GITOPSLIB_GITHUB_COLLABORATOR` to run them. Reading and refusals are checked live.
 

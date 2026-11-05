@@ -37,7 +37,7 @@ func TestPushMirrorRead(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	page, err := c.ListPushMirrors(ctx, "acme", "widget", gitoperationslib.ListOptions{PerPage: 2})
+	page, err := c.ListPushMirrors(ctx, "acme", "widget", gitoperationslib.ListOptions{PerPage: 2}) // no page asked for
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,6 +133,7 @@ func TestCreatePushMirrorRefused(t *testing.T) {
 	}{
 		{"interval below the minimum", nilMessage, 400, 400, "the interval is below the server's minimum"},
 		{"remote refused", `{"message":"Permission denied"}`, 401, 400, `the server refuses the remote address "https://example.invalid/x.git"`},
+		{"plain http on Forgejo 17", `{"message":"Unknown error"}`, 400, 400, `the server refuses the remote address "https://example.invalid/x.git": since Forgejo 17 that includes plain http`},
 		{"really unauthorized", `{"message":"token is required"}`, 401, 401, "token is required"},
 		{"other", `{"message":"The URL contains credentials"}`, 400, 400, "The URL contains credentials"},
 	}

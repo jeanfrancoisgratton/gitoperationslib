@@ -103,13 +103,13 @@ func (m commits) List(ctx context.Context, owner, repo string, opts gitoperation
 	if opts.Exclude != "" {
 		q.Set("exclude", opts.Exclude)
 	}
-	page, err := bitbucketapi.List[commitJSON](ctx, m.c.api, repoPath(owner, repo, "commits", ref), q)
+	values, next, err := bitbucketapi.ListPaged[commitJSON](ctx, m.c.api, repoPath(owner, repo, "commits", ref), q)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Commit]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.Commit]{Items: make([]gitoperationslib.Commit, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = page.Values[i].toCommit()
+	out := gitoperationslib.Page[gitoperationslib.Commit]{Items: make([]gitoperationslib.Commit, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = values[i].toCommit()
 	}
 	return out, nil
 }

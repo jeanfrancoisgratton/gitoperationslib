@@ -88,7 +88,7 @@ func TestBranchesAndTagsRequests(t *testing.T) {
 
 	wantRequests := []string{
 		"GET /api/v1/repos/acme/widget?",
-		"GET /api/v1/repos/acme/widget/branches?limit=5",
+		"GET /api/v1/repos/acme/widget/branches?limit=5&page=1",
 		"GET /api/v1/repos/acme/widget/branches/dev?",
 		"GET /api/v1/repos/acme/widget?",
 		"POST /api/v1/repos/acme/widget/branches?",

@@ -20,12 +20,14 @@ package bitbucket
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/contracttest"
 )
 
@@ -69,6 +71,79 @@ func integrationEnv(t *testing.T) contracttest.Env {
 			_, err := c.api.Do(ctx, http.MethodPost, repoPath(owner, repo, "environments"), nil, body, nil)
 			return err
 		},
+	}
+}
+
+// TestIntegrationPaging checks lists past what fits on a page, on the real paging
+// of each endpoint: webhooks use tokens, commits numbers with a context token.
+func TestIntegrationPaging(t *testing.T) {
+	env := integrationEnv(t)
+	c := env.Client.(*Client)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	name := contracttest.RepoPrefix + "paging"
+	t.Cleanup(func() { c.Repos().Delete(context.Background(), env.Org, name) })
+	created, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Owner: env.Org, Name: name, AutoInit: true, Visibility: gitoperationslib.VisibilityPrivate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := gitoperationslib.RepoHooks(created.Owner, created.Name)
+	const hooks = 12 // the default page holds 10
+	for i := range hooks {
+		if _, err := c.Webhooks().Create(ctx, scope, gitoperationslib.CreateWebhookOptions{
+			URL: fmt.Sprintf("https://example.com/%d", i), Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}, Active: gitoperationslib.Ptr(false),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, perPage := range []int{0, 5} {
+		seen := map[int64]bool{}
+		for h, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: perPage}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Webhook], error) {
+			return c.Webhooks().List(ctx, scope, o)
+		}) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if seen[h.ID] {
+				t.Errorf("webhook %d listed twice", h.ID)
+			}
+			seen[h.ID] = true
+		}
+		if len(seen) != hooks {
+			t.Errorf("PerPage %d: listed %d webhooks, want %d", perPage, len(seen), hooks)
+		}
+	}
+
+	if err := c.createBranch(ctx, created.Owner, created.Name, "paged", "first.txt", "x\n"); err != nil {
+		t.Fatal(err)
+	}
+	const commits = 5
+	for i := 1; i < commits; i++ {
+		if err := c.writeFile(ctx, created.Owner, created.Name, "paged", fmt.Sprintf("f%d.txt", i), "x\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, opts := range []gitoperationslib.ListCommitsOptions{
+		{Ref: "paged", ListOptions: gitoperationslib.ListOptions{PerPage: 2}, Exclude: created.DefaultBranch},
+		{Ref: "paged", ListOptions: gitoperationslib.ListOptions{PerPage: 1}, Exclude: created.DefaultBranch},
+	} {
+		seen := map[string]bool{}
+		for commit, err := range gitoperationslib.All(ctx, opts.ListOptions, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+			opts := opts
+			opts.ListOptions = o
+			return c.Commits().List(ctx, created.Owner, created.Name, opts)
+		}) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if seen[commit.SHA] {
+				t.Errorf("commit %s listed twice", commit.SHA)
+			}
+			seen[commit.SHA] = true
+		}
+		if len(seen) != commits {
+			t.Errorf("PerPage %d: listed %d commits of the branch, want %d", opts.PerPage, len(seen), commits)
+		}
 	}
 }
 

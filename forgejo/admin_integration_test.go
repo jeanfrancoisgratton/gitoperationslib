@@ -863,7 +863,7 @@ func TestIntegrationAdminAvatar(t *testing.T) {
 	}
 }
 
-// webSystemHook creates a system webhook in the web interface, the only way to
+// webSystemHook creates a system webhook in the web interface, the documented way to
 // get one, and returns its ID. It logs in as a throwaway site admin.
 func webSystemHook(t *testing.T, ctx context.Context, c *Client, target, secret string) int64 {
 	t.Helper()

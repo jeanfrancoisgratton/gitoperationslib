@@ -41,13 +41,13 @@ func (c *Client) collaboratorPath(ctx context.Context, owner, repo, user string)
 
 // ListCollaborators implements gitoperationslib.Collaborators.
 func (c *Client) ListCollaborators(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Collaborator], error) {
-	page, err := bitbucketapi.List[userPermissionJSON](ctx, c.api, repoPath(owner, repo, "permissions-config", "users"), bitbucketapi.ListQuery(opts))
+	values, next, err := bitbucketapi.ListPaged[userPermissionJSON](ctx, c.api, repoPath(owner, repo, "permissions-config", "users"), bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Collaborator]{}, err
 	}
-	out := gitoperationslib.Page[gitoperationslib.Collaborator]{Items: make([]gitoperationslib.Collaborator, len(page.Values)), NextPage: page.NextPage()}
-	for i := range page.Values {
-		out.Items[i] = page.Values[i].toCollaborator()
+	out := gitoperationslib.Page[gitoperationslib.Collaborator]{Items: make([]gitoperationslib.Collaborator, len(values)), NextPage: next}
+	for i := range values {
+		out.Items[i] = values[i].toCollaborator()
 	}
 	return out, nil
 }

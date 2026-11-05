@@ -152,3 +152,33 @@ func TestRemoveCollaboratorGitHub(t *testing.T) {
 		t.Error("Remove without a user succeeded")
 	}
 }
+
+func TestListCollaboratorInvitations(t *testing.T) {
+	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/repos/acme/widget/invitations" {
+			t.Errorf("unexpected %s", r.URL)
+		}
+		if r.URL.Query().Get("page") == "9" {
+			w.WriteHeader(http.StatusForbidden)
+			io.WriteString(w, `{"message":"Must have admin rights"}`)
+			return
+		}
+		w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?page=2>; rel="next"`, r.Host, r.URL.Path))
+		io.WriteString(w, `[{"id":7,"invitee":{"login":"bob"},"permissions":"write","expired":true,"html_url":"https://g/i/7","created_at":"2026-11-05T10:00:00Z"}]`)
+	})
+	ctx := context.Background()
+	page, err := c.ListCollaboratorInvitations(ctx, "acme", "widget", gitoperationslib.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.NextPage != 2 {
+		t.Fatalf("page = %+v", page)
+	}
+	i := page.Items[0]
+	if i.ID != 7 || i.Login != "bob" || i.Permission != gitoperationslib.CollaboratorWrite || !i.Expired || i.HTMLURL != "https://g/i/7" || i.CreatedAt.IsZero() {
+		t.Errorf("invitation = %+v", i)
+	}
+	if _, err := c.ListCollaboratorInvitations(ctx, "acme", "widget", gitoperationslib.ListOptions{Page: 9}); gitoperationslib.StatusCode(err) != http.StatusForbidden {
+		t.Errorf("err = %v", err)
+	}
+}
