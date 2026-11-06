@@ -6,9 +6,9 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
-## [1.5.0] — unreleased
+## [1.5.0] — 2026-11-05
 
-What Forgejo's API gained after 15, from `__docs/post-v15.md`.
+What Forgejo's API gained after 15, from `__docs/post-v15.md`, except workflow runs, which are deferred (item 100).
 
 ### Added
 - **`UserFilters`** (`CapUserFilters`, Forgejo only): `ListUsersBy` lists users with or without two-factor authentication.

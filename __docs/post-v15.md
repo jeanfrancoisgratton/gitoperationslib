@@ -14,7 +14,7 @@ The swagger only describes the API: how these calls really behave is still to be
 
 ## Action items
 
-- [ ] **100 →** **Workflow runs**, the biggest gap: `CI` only manages secrets and variables today, so this is a new optional interface. See what GitHub Actions and Bitbucket Pipelines offer for the shared shape.
+- [ ] **100 →** Deferred on 2026-11-05, to no particular version: no consumer needs it yet. **Workflow runs**, the biggest gap: `CI` only manages secrets and variables today, so this is a new optional interface. See what GitHub Actions and Bitbucket Pipelines offer for the shared shape.
   - v16: list a run's jobs (`GET .../actions/runs/{run_id}/jobs`), a job's logs (`GET .../actions/jobs/{job_id}/logs`), a run's logs as a ZIP (`GET .../actions/runs/{run_id}/logs`), cancel (`POST .../runs/{run_id}/cancel`), delete a completed run (`DELETE .../runs/{run_id}`).
   - v16: artifacts: of a repository (`GET .../actions/artifacts`), of a run (`GET .../runs/{run_id}/artifacts`), get, delete, download (`GET .../artifacts/{artifact_id}/zip`). Type `ActionArtifact`.
   - v17: a single job with its steps (`GET .../actions/jobs/{job_id}`, type `ActionRunJobStep`), rerun a job and its dependents (`POST .../jobs/{job_id}/rerun`), rerun a run (`POST .../runs/{run_id}/rerun`).
