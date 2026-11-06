@@ -54,7 +54,7 @@ type CI interface {
 // Forgejo turns line endings into LF: base64-encode values whose exact bytes
 // matter.
 type Secrets interface {
-	// List returns the secrets' names. Forgejo cannot list the user's
+	// List returns the secrets' names. Forgejo before 17 cannot list the user's
 	// secrets (ErrNotSupported).
 	List(ctx context.Context, scope CIScope, opts ListOptions) (Page[Secret], error)
 	// Set creates the secret or replaces its value. On GitHub the value is

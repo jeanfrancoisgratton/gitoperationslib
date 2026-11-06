@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
@@ -13,17 +14,18 @@ import (
 )
 
 type orgJSON struct {
-	ID                        int64  `json:"id"`
-	Username                  string `json:"username"`
-	Name                      string `json:"name"`
-	FullName                  string `json:"full_name"`
-	Description               string `json:"description"`
-	Website                   string `json:"website"`
-	Location                  string `json:"location"`
-	Email                     string `json:"email"`
-	Visibility                string `json:"visibility"`
-	AvatarURL                 string `json:"avatar_url"`
-	RepoAdminChangeTeamAccess bool   `json:"repo_admin_change_team_access"`
+	ID                        int64     `json:"id"`
+	Username                  string    `json:"username"`
+	Name                      string    `json:"name"`
+	FullName                  string    `json:"full_name"`
+	Description               string    `json:"description"`
+	Website                   string    `json:"website"`
+	Location                  string    `json:"location"`
+	Email                     string    `json:"email"`
+	Visibility                string    `json:"visibility"`
+	AvatarURL                 string    `json:"avatar_url"`
+	RepoAdminChangeTeamAccess bool      `json:"repo_admin_change_team_access"`
+	Created                   time.Time `json:"created"`
 }
 
 func (o *orgJSON) toOrg() gitoperationslib.Org {
@@ -41,6 +43,7 @@ func (o *orgJSON) toOrg() gitoperationslib.Org {
 		Email:                     o.Email,
 		Visibility:                gitoperationslib.OwnerVisibility(o.Visibility),
 		AvatarURL:                 o.AvatarURL,
+		CreatedAt:                 o.Created,
 		RepoAdminChangeTeamAccess: o.RepoAdminChangeTeamAccess,
 	}
 }

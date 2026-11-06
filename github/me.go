@@ -15,7 +15,7 @@ func toEmail(e *gh.UserEmail) gitoperationslib.Email {
 
 func toSSHKey(k *gh.Key) gitoperationslib.SSHKey {
 	return gitoperationslib.SSHKey{
-		ID: k.GetID(), Title: k.GetTitle(), Key: k.GetKey(), ReadOnly: k.GetReadOnly(),
+		ID: k.GetID(), Title: k.GetTitle(), Key: k.GetKey(), ReadOnly: k.GetReadOnly(), Verified: k.GetVerified(),
 		CreatedAt: k.GetCreatedAt().Time, LastUsed: k.GetLastUsed().Time,
 	}
 }

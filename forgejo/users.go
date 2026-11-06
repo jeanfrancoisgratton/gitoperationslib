@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -120,6 +121,28 @@ func (u users) Get(ctx context.Context, login string) (*gitoperationslib.User, e
 func (u users) List(ctx context.Context, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
 	var out []userJSON
 	resp, err := u.c.api.Do(ctx, http.MethodGet, "admin/users", forgejoapi.ListQuery(opts), nil, &out)
+	if err != nil {
+		return gitoperationslib.Page[gitoperationslib.User]{}, err
+	}
+	return toPage(resp, out, (*userJSON).toUser), nil
+}
+
+var _ gitoperationslib.UserFilters = (*Client)(nil)
+
+// twoFactorFilterVersion is the first release with is_2fa_enabled. Older ones
+// ignore it, and return everyone.
+var twoFactorFilterVersion = Version{16, 0, 0}
+
+func (c *Client) ListUsersBy(ctx context.Context, filter gitoperationslib.UserFilter, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+	q := forgejoapi.ListQuery(opts)
+	if filter.TwoFactor != nil {
+		if c.version.Compare(twoFactorFilterVersion) < 0 {
+			return gitoperationslib.Page[gitoperationslib.User]{}, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "users.list", "filtering by two-factor authentication before Forgejo "+twoFactorFilterVersion.String())
+		}
+		q.Set("is_2fa_enabled", strconv.FormatBool(*filter.TwoFactor))
+	}
+	var out []userJSON
+	resp, err := c.api.Do(ctx, http.MethodGet, "admin/users", q, nil, &out)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.User]{}, err
 	}

@@ -3,6 +3,7 @@ package gitoperationslib
 import (
 	"context"
 	"io"
+	"time"
 )
 
 // Account manages the authenticated user's own account. The Forgejo, GitHub
@@ -164,6 +165,8 @@ type AccessToken struct {
 	// empty means all of them.
 	Repositories []string `json:"repositories,omitzero"`
 	LastEight    string   `json:"lastEight"` // the secret's last eight characters
+	// CreatedAt is zero on Forgejo before 16.
+	CreatedAt time.Time `json:"createdAt,omitzero"`
 	// Secret is the token itself, set by Create only. It is never
 	// serialised: print or store it explicitly.
 	Secret string `json:"-"`

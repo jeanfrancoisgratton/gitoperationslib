@@ -277,6 +277,8 @@ Works with any token; the server filters what the caller may see. Forgejo checks
 | Organisation members: list, check, remove | ✅ | — | — |
 | Teams: list, get, get by name, create, edit, delete | ✅ | — | — |
 | Team members and repositories | ✅ | — | — |
+| Adding a team member when the instance invites instead (`ErrInvitationPending`) | ✅ from 16 | — | — |
+| Listing users by two-factor authentication (`UserFilters`) | ✅ from 16 | — | — |
 | Per-unit team access (`TeamAccess`) | ✅ | — | — |
 | Owner team protected (`ErrOwnerTeam`) | ✅ | — | — |
 
@@ -290,6 +292,7 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | Add, delete e-mail addresses | ✅ | ✅ (verification e-mail sent) | ❌ refused with token authentication |
 | List, get, add, delete SSH keys | ✅ | ✅ | ✅ `ID` derived from the UUID |
 | Read-only SSH keys | ❌ the API has the option but stores a read-write key, so the library refuses it | ❌ | ❌ |
+| SSH key `UpdatedAt`, `Verified` | ✅ from 16 | ⚠️ `Verified` only | ❌ |
 | List, get, add, delete GPG keys | ✅ | ✅ | ✅ `ID` derived from the fingerprint; key must bear an account address |
 | GPG verification by signed token | ⚠️ not for key IDs starting with 0 (Forgejo bug): add the key with the signature instead | ❌ | ❌ |
 | Edit profile (name, description, website, location) | ✅ | ✅ | ❌ |
@@ -297,6 +300,7 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | GitHub profile fields (company, public e-mail, hireable, Twitter) | ❌ | ✅ | ❌ |
 | Set, delete avatar | ✅ | ❌ | ❌ |
 | Access tokens: list (any credentials), create, delete (password only) | ✅ | ❌ | ❌ |
+| Access token `CreatedAt` | ✅ from 16 | ❌ | ❌ |
 
 ## CI secrets and variables (`CI`)
 
@@ -307,7 +311,7 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | Organisation / workspace secrets and variables | ✅ | ✅† visible to all repositories when created; `Set` keeps later changes | ✅ workspace variables |
 | Environment secrets and variables (`EnvCI`) | ❌ no environments | ✅† | ✅ deployment variables |
 | Organisation secrets limited to some repositories (`OrgSecrets`) | ❌ | ✅† | ❌ |
-| User secrets and variables | ⚠️ secrets cannot be listed | ❌ | ❌ refused with API tokens |
+| User secrets and variables | ⚠️ secrets can only be listed from 17 | ❌ | ❌ refused with API tokens |
 
 ## Commit history (`History`)
 

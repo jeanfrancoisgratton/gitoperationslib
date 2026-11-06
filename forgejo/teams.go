@@ -246,9 +246,27 @@ func (t teams) IsMember(ctx context.Context, id int64, user string) (bool, error
 	return err == nil, err
 }
 
+// teamInvitationsVersion is the first release that can invite team members.
+var teamInvitationsVersion = Version{16, 0, 0}
+
+// AddMember checks the result, as the server answers 204 for an invitation too,
+// the first time; a second attempt gets a 409.
 func (t teams) AddMember(ctx context.Context, id int64, user string) error {
 	_, err := t.c.api.Do(ctx, http.MethodPut, teamPath(id, "members", user), nil, nil, nil)
-	return err
+	if err != nil {
+		return refusal.Mark(err, refusal.Rule{Status: http.StatusConflict, Fragment: "team invite already exists", Sentinel: gitoperationslib.ErrInvitationPending})
+	}
+	if t.c.version.Compare(teamInvitationsVersion) < 0 {
+		return nil
+	}
+	member, err := t.IsMember(ctx, id, user)
+	if err != nil {
+		return fmt.Errorf("forgejo: teams.addMember: checking %s joined: %w", user, err)
+	}
+	if !member {
+		return fmt.Errorf("forgejo: teams.addMember: %s: %w", user, gitoperationslib.ErrInvitationPending)
+	}
+	return nil
 }
 
 func (t teams) RemoveMember(ctx context.Context, id int64, user string) error {

@@ -98,7 +98,7 @@ func TestCapabilityValues(t *testing.T) {
 		CapBranchProtection, CapTagProtection, CapIssues, CapDirectory,
 		CapAccount, CapTokens, CapSecrets, CapCommits, CapOrgAvatars, CapUserWebhooks,
 		CapCommitDiffs, CapPRContents, CapReviewComments, CapCollaborators, CapGitHooks, CapHookDeliveries,
-		CapCIEnvironments, CapOrgSecrets, CapCollaboratorInvitations,
+		CapCIEnvironments, CapOrgSecrets, CapCollaboratorInvitations, CapUserFilters,
 	}
 	for i, c := range want {
 		if c != 1<<i {

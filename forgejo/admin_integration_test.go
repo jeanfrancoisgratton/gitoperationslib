@@ -1300,6 +1300,9 @@ func TestIntegrationAdminTokens(t *testing.T) {
 	if tok.Secret == "" || len(tok.LastEight) != 8 || !strings.HasSuffix(tok.Secret, tok.LastEight) || len(tok.Scopes) != 2 {
 		t.Errorf("Create returned %+v", tok)
 	}
+	if tok.CreatedAt.IsZero() == (c.Version().Compare(Version{16, 0, 0}) >= 0) {
+		t.Errorf("CreatedAt = %v on %s", tok.CreatedAt, c.Version())
+	}
 	// The new token works, but even with write:user it cannot manage
 	// tokens.
 	viaToken, err := New(ctx, rawURL, Token(tok.Secret))

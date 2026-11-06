@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
@@ -269,18 +270,19 @@ func (c *Client) Tokens() gitoperationslib.Tokens { return tokens{c} }
 type tokens struct{ c *Client }
 
 type accessTokenJSON struct {
-	ID           int64    `json:"id"`
-	Name         string   `json:"name"`
-	SHA1         string   `json:"sha1"`
-	LastEight    string   `json:"token_last_eight"`
-	Scopes       []string `json:"scopes"`
+	ID           int64     `json:"id"`
+	Name         string    `json:"name"`
+	SHA1         string    `json:"sha1"`
+	LastEight    string    `json:"token_last_eight"`
+	Scopes       []string  `json:"scopes"`
+	CreatedAt    time.Time `json:"created_at"`
 	Repositories []struct {
 		FullName string `json:"full_name"`
 	} `json:"repositories"`
 }
 
 func (t *accessTokenJSON) toAccessToken() gitoperationslib.AccessToken {
-	tok := gitoperationslib.AccessToken{ID: t.ID, Name: t.Name, Scopes: t.Scopes, LastEight: t.LastEight, Secret: t.SHA1}
+	tok := gitoperationslib.AccessToken{ID: t.ID, Name: t.Name, Scopes: t.Scopes, LastEight: t.LastEight, CreatedAt: t.CreatedAt, Secret: t.SHA1}
 	for _, r := range t.Repositories {
 		tok.Repositories = append(tok.Repositories, r.FullName)
 	}

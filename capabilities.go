@@ -41,6 +41,8 @@ const (
 	CapOrgSecrets     // organisation secrets limited to some repositories (OrgSecrets)
 	// CapCollaboratorInvitations: invitations not yet accepted (CollaboratorInvitations).
 	CapCollaboratorInvitations
+	// Added in 1.5.0.
+	CapUserFilters // listing users by criteria (UserFilters)
 )
 
 var capabilityNames = []struct {
@@ -77,6 +79,7 @@ var capabilityNames = []struct {
 	{CapCIEnvironments, "ci-environments"},
 	{CapOrgSecrets, "org-secrets"},
 	{CapCollaboratorInvitations, "collaborator-invitations"},
+	{CapUserFilters, "user-filters"},
 }
 
 // Has reports whether c includes every capability in want.

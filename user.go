@@ -56,7 +56,11 @@ type SSHKey struct {
 	Fingerprint string    `json:"fingerprint,omitzero"` // not reported by GitHub
 	ReadOnly    bool      `json:"readOnly,omitzero"`    // GitHub only
 	CreatedAt   time.Time `json:"createdAt,omitzero"`
-	LastUsed    time.Time `json:"lastUsed,omitzero"` // GitHub and Bitbucket only; zero if never used
+	UpdatedAt   time.Time `json:"updatedAt,omitzero"` // Forgejo 16 and later
+	LastUsed    time.Time `json:"lastUsed,omitzero"`  // GitHub and Bitbucket only; zero if never used
+	// Verified tells whether the key's owner proved they hold it (Forgejo 16
+	// and later, GitHub).
+	Verified bool `json:"verified,omitzero"`
 }
 
 // GPGKey is a GPG key of the authenticated user.

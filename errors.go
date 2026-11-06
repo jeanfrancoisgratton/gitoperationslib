@@ -34,6 +34,10 @@ var (
 	// ErrLastOwner: removing the last member of an organisation's owner team,
 	// from the organisation or from the team (Forgejo: HTTP 500).
 	ErrLastOwner = errors.New("cannot remove the last owner of an organisation")
+	// ErrInvitationPending: adding a team member on a Forgejo instance that sets
+	// ADD_MEMBERS_BY_INVITATIONS (Forgejo 16 and later). The user is invited, and
+	// joins by accepting: they are not a member yet.
+	ErrInvitationPending = errors.New("the user was invited, and is not a member until they accept")
 	// ErrBranchProtected: deleting a branch a protection rule covers
 	// (Forgejo 403, GitHub 422, Bitbucket 500).
 	ErrBranchProtected = errors.New("the branch is protected")

@@ -1,6 +1,6 @@
-# Reports for Forgejo upstream
+# Forgejo API findings
 
-Ready to file at https://codeberg.org/forgejo/forgejo/issues (items 37, 97 and 111 in `TODO.md`). Each was reproduced on disposable instances of **15.0.11, 16.0.7 and 17.0.1** on 2026-11-05, unless it says otherwise. A search of the tracker found no duplicate, but its search is imprecise, so look again before filing. Remove a report from this file once it is filed.
+**Not being filed:** the procedure to file at Codeberg is not worth it, so this is only a record of how Forgejo's API behaves, and of why the library works as it does (items 37, 97 and 111 in `TODO.md`). Each was reproduced on disposable instances of **15.0.11, 16.0.7 and 17.0.1** on 2026-11-05, unless it says otherwise.
 
 Throughout, `$F` is the instance's `/api/v1`, and `$AUTH` is `Authorization: token <a site admin's token>`.
 

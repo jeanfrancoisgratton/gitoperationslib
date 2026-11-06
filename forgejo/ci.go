@@ -48,6 +48,9 @@ func requireName(op, name string) error {
 
 type secrets struct{ c *Client }
 
+// userSecretsVersion is the first release that lists a user's own secrets.
+var userSecretsVersion = Version{17, 0, 0}
+
 type secretJSON struct {
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
@@ -58,8 +61,8 @@ func (s *secretJSON) toSecret() gitoperationslib.Secret {
 }
 
 func (s secrets) List(ctx context.Context, scope gitoperationslib.CIScope, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Secret], error) {
-	if scope == gitoperationslib.UserCI() {
-		return gitoperationslib.Page[gitoperationslib.Secret]{}, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "secrets.list", "Forgejo cannot list a user's own secrets")
+	if scope == gitoperationslib.UserCI() && s.c.version.Compare(userSecretsVersion) < 0 {
+		return gitoperationslib.Page[gitoperationslib.Secret]{}, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "secrets.list", "listing a user's own secrets before Forgejo "+userSecretsVersion.String())
 	}
 	path, err := ciPath(scope, "secrets", "")
 	if err != nil {

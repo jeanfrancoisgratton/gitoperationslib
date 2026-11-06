@@ -20,7 +20,7 @@ The swagger only describes the API: how these calls really behave is still to be
   - v17: a single job with its steps (`GET .../actions/jobs/{job_id}`, type `ActionRunJobStep`), rerun a job and its dependents (`POST .../jobs/{job_id}/rerun`), rerun a run (`POST .../runs/{run_id}/rerun`).
   - `ActionRunJob` gained `run_id` (v16), `html_url` and `steps` (v17). Workflow dispatch can now answer 400 (v16).
 - [ ] **101 →** **Admin-managed tokens** (v16): `GET` and `POST /admin/users/{username}/tokens`, `DELETE .../tokens/{token}`. May lift the limit in item 10 of `TODO.md`, where creating or deleting a token needs a password, even for an admin. Test first whether an admin's token is accepted here.
-- [ ] **102 →** **List a user's own secrets** (v17): `GET /user/actions/secrets`. `Secrets().List` on `UserCI` returns `ErrNotSupported` today; it should work on 17 and keep refusing below that. Update the "cannot be listed" notes in `USAGE.md` and `support_grid.md`.
+- [x] **102 →** (1.5.0) **List a user's own secrets** (v17): `GET /user/actions/secrets`. `Secrets().List` on `UserCI` returns `ErrNotSupported` today; it should work on 17 and keep refusing below that. Update the "cannot be listed" notes in `USAGE.md` and `support_grid.md`.
 - [ ] **103 →** **Filter pull requests by branch** (v16): `base` and `head` on `GET .../pulls`. `ListPROptions` only has `State` today. See what GitHub and Bitbucket offer before choosing the options' shape.
 - [ ] **104 →** **Lock and unlock an issue** (v17): `PUT` and `DELETE .../issues/{index}/lock`, type `IssueLockOption`. `Issue.Locked` can only be read today. GitHub also has this, Bitbucket has no issues.
 
@@ -33,11 +33,11 @@ The swagger files do not show these, as they do not list event names. Checked on
 
 ## Small additions
 
-- [ ] **105 →** New fields to report (v16): `AccessToken.created_at`, `Organization.created`, `PublicKey.updated_at` and `verified` (`SSHKey`). Zero on older servers, which needs no version check.
+- [x] **105 →** (1.5.0) New fields to report (v16): `AccessToken.created_at`, `Organization.created`, `PublicKey.updated_at` and `verified` (`SSHKey`). Zero on older servers, which needs no version check.
 - [ ] **106 →** Multi-line review comments (v16): `extra_lines_count` on `CreatePullReviewComment` and `PullReviewComment`. It appears to allow them, to be confirmed. Would touch `CreateReviewCommentOptions` and `ReviewComment`.
 - [ ] **107 →** Compare options (v17): `files` and `verification` on `GET .../compare/{basehead}`. Check whether they can save work where the library compares branches.
-- [ ] **108 →** `is_2fa_enabled` filter on `GET /admin/users` (v16), for `Admin().Users()`.
-- [ ] **109 →** Adding a team member can answer 409 (`PUT /teams/{id}/members/{username}`, v16). Find what triggers it, and whether it deserves a typed error like `ErrOwnsRepos`.
+- [x] **108 →** (1.5.0) `is_2fa_enabled` filter on `GET /admin/users` (v16): `UserFilters`, as `Users.List` cannot take a filter without changing its signature. 15 ignores the filter and returns everyone, so it is refused there.
+- [x] **109 →** (1.5.0) The 409 from `PUT /teams/{id}/members/{username}` (v16) means an invitation is already pending. With `[service] ADD_MEMBERS_BY_INVITATIONS`, the first attempt on someone outside the organisation answers 204, but only invites them. `AddMember` checks, and returns `ErrInvitationPending`. Checked by hand on 17.0.1, as the setting cannot be changed per test.
 - [ ] **110 →** `force_overwrite_new_branch` on file changes (`CreateFileOptions`, `UpdateFileOptions`, `DeleteFileOptions`, `ChangeFilesOptions`, v16). The library has no file-writing API, so this only applies if it gets one.
 
 ## Set aside

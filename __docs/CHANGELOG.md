@@ -6,7 +6,24 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
-## [1.4.0] — unreleased
+## [1.5.0] — unreleased
+
+What Forgejo's API gained after 15, from `__docs/post-v15.md`.
+
+### Added
+- **`UserFilters`** (`CapUserFilters`, Forgejo only): `ListUsersBy` lists users with or without two-factor authentication.
+  It needs Forgejo 16, and returns `ErrNotSupported` below it, as older servers ignore the filter and return everyone.
+- `Secrets().List` on `UserCI` works from Forgejo 17, and still returns `ErrNotSupported` below it.
+- New fields: `AccessToken.CreatedAt`, `Org.CreatedAt`, `SSHKey.UpdatedAt` and `SSHKey.Verified`, from Forgejo 16 and zero
+  below it. `Org.CreatedAt` and `SSHKey.Verified` are also set on GitHub.
+- `ErrInvitationPending`.
+
+### Fixed
+- **`Teams().AddMember` reported success for a user who had only been invited.** From Forgejo 16, on an instance with
+  `ADD_MEMBERS_BY_INVITATIONS`, the server answers 204 for an invitation, and 409 for a second attempt. `AddMember` now
+  checks the result, which takes one more request from 16 on, and returns an error matching `ErrInvitationPending`.
+
+## [1.4.0] — 2026-11-05
 
 Forgejo 17's workflow webhook events, creating system webhooks, webhook types, typed workflow deliveries, and fixes to
 Forgejo webhooks that were checked for the first time against a server's real behaviour.

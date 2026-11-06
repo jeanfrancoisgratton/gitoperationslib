@@ -1,5 +1,7 @@
 package gitoperationslib
 
+import "time"
+
 // Org is an organisation.
 type Org struct {
 	ID          int64           `json:"id"`
@@ -12,6 +14,9 @@ type Org struct {
 	Visibility  OwnerVisibility `json:"visibility"`
 	AvatarURL   string          `json:"avatarUrl"`
 	HTMLURL     string          `json:"htmlUrl,omitzero"` // GitHub only
+	// CreatedAt is zero on Forgejo before 16, on Bitbucket, and in GitHub's lists
+	// of organisations.
+	CreatedAt time.Time `json:"createdAt,omitzero"`
 	// RepoAdminChangeTeamAccess lets repository admins change team access.
 	RepoAdminChangeTeamAccess bool `json:"repoAdminChangeTeamAccess,omitzero"`
 }

@@ -78,9 +78,6 @@ func CI(t *testing.T, env Env) {
 			}
 			return
 		}
-		if _, err := ci.Secrets().List(ctx, gitoperationslib.UserCI(), gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
-			t.Errorf("Forgejo user secrets List: err = %v, want ErrNotSupported", err)
-		}
 		ciScope(t, env, ci, gitoperationslib.UserCI())
 	})
 }
@@ -91,7 +88,9 @@ func ciName(t *testing.T) string { return "GITOPSLIB_IT_" + strings.ToUpper(rand
 func ciScope(t *testing.T, env Env, ci gitoperationslib.CI, scope gitoperationslib.CIScope) {
 	ctx := testContext(t)
 	secrets, variables := ci.Secrets(), ci.Variables()
-	listable := scope != gitoperationslib.UserCI() // Forgejo cannot list user secrets
+	// Forgejo before 17 cannot list user secrets.
+	_, listErr := secrets.List(ctx, scope, gitoperationslib.ListOptions{PerPage: 1})
+	listable := !errors.Is(listErr, gitoperationslib.ErrNotSupported)
 
 	secretNames := func() []string {
 		var names []string

@@ -306,6 +306,7 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapMirrors` | `mirrors` (push mirrors and syncing mirrors: `gol.Mirrors`) | ✅ | | |
 | `CapGitHooks` | `git-hooks` (server-side git hooks: `gol.GitHooks`) | ✅ | | |
 | `CapHookDeliveries` | `hook-deliveries` (a webhook's delivery history: `gol.HookDeliveries`) | | ✅ | |
+| `CapUserFilters` | `user-filters` (listing users by criteria: `gol.UserFilters`) | ✅ | | |
 | `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
 | `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
 | `CapCollaboratorInvitations` | `collaborator-invitations` (invitations not yet accepted: `gol.CollaboratorInvitations`) | | ✅ | |
@@ -394,6 +395,7 @@ Since 1.0.0, new areas arrive this way rather than as new `Client` methods, so c
 | `gol.ErrOwnsRepos` | `Orgs().Delete`, `Users().Delete` without `Purge` (Forgejo) | 500 / 422 "user still has ownership of repositories" |
 | `gol.ErrOrgMember` | `Users().Delete` without `Purge` (Forgejo) | 422 "user still has membership of organizations" |
 | `gol.ErrLastOwner` | `Orgs().RemoveMember`, `Teams().RemoveMember` (Forgejo) | 500 "user is the last member of owner team" |
+| `gol.ErrInvitationPending` | `Teams().AddMember` (Forgejo 16+ with `ADD_MEMBERS_BY_INVITATIONS`) | 204 and not a member yet, or 409 "team invite already exists" |
 | `gol.ErrBranchProtected` | `Branches().Delete` | Forgejo 403 "branch protected"; GitHub 422 "Repository rule violations found"; Bitbucket 500 "Something went wrong", confirmed by checking the branch's delete restrictions |
 | `gol.ErrInvalidOTP` | any Forgejo call, `forgejo.New` included | 401 "invalid provided OTP": basic authentication of a 2FA account without a valid code |
 | `gol.ErrPasswordRequired` | `Tokens().Create`, `Delete`, `DeleteByName` (Forgejo) | 401 "auth method not allowed": token authentication is refused here |
@@ -2259,6 +2261,7 @@ type Directory interface {
 | `Visibility` | ✅ | always `public` |
 | `HTMLURL` | — | ✅ |
 | `RepoAdminChangeTeamAccess` (whether repository admins may change team access) | ✅ | — |
+| `CreatedAt` | ✅ from 16 | ✅ `Directory().Org` only, not in lists |
 
 `Team`:
 
@@ -2583,6 +2586,13 @@ type Users interface {
 
 `User` fields are listed in [§16.1](#161-account-types). `Users().List` uses the admin endpoint; the other read calls work with any token.
 
+`gol.UserFilters` (`CapUserFilters`, Forgejo only) lists users by criteria, with a site-admin token. Filtering by two-factor authentication needs Forgejo 16, and returns `ErrNotSupported` below it, as older servers ignore the filter and return everyone:
+
+```go
+f, ok := client.(gol.UserFilters)
+page, err := f.ListUsersBy(ctx, gol.UserFilter{TwoFactor: gol.Ptr(false)}, gol.ListOptions{})
+```
+
 ```go
 type CreateUserOptions struct {
 	Login, Email       string // required
@@ -2677,7 +2687,7 @@ err = orgs.Rename(ctx, "acme", "acme-corp") // the old name keeps redirecting
 err = orgs.Delete(ctx, "acme-corp")         // fails while it still owns repositories
 ```
 
-There is no direct "add member": users join an organisation through one of its teams (`Teams().AddMember`).
+There is no direct "add member": users join an organisation through one of its teams (`Teams().AddMember`). From Forgejo 16, on an instance with `ADD_MEMBERS_BY_INVITATIONS`, someone outside the organisation is only invited. `AddMember` then returns an error matching `gol.ErrInvitationPending`: the invitation has been sent, and they join by accepting it.
 
 **Avatars** are a separate optional interface, `gol.OrgAvatars` (`CapOrgAvatars`), implemented by the Forgejo client itself:
 
@@ -2707,7 +2717,7 @@ type Teams interface {
 
 	Members(ctx, id int64, opts ListOptions) (Page[User], error)
 	IsMember(ctx, id int64, user string) (bool, error)
-	AddMember(ctx, id int64, user string) error // also makes them an organisation member
+	AddMember(ctx, id int64, user string) error // also makes them an organisation member; see ErrInvitationPending
 	RemoveMember(ctx, id int64, user string) error
 
 	Repos(ctx, id int64, opts ListOptions) (Page[Repo], error)
@@ -2952,7 +2962,7 @@ v, err := ci.Variables().Get(ctx, scope, "ENVIRONMENT")
 | Repository (`RepoCI`) | ✅ | ✅ | ✅ |
 | Environment (`EnvCI`) | ❌ no environments | ✅ | ✅ deployment variables |
 | Organisation / workspace (`OrgCI`) | ✅ | ✅ visible to all the organisation's repositories, or limited (`OrgSecrets`) | ✅ workspace variables |
-| User (`UserCI`) | ✅ (secrets cannot be listed) | ❌ (user secrets are Codespaces') | ❌ refused with API tokens |
+| User (`UserCI`) | ✅ (secrets can only be listed from Forgejo 17: `ErrNotSupported` below) | ❌ (user secrets are Codespaces') | ❌ refused with API tokens |
 | Names | upper-cased | upper-cased | kept as given |
 | Dates | secrets: created | created, updated | — |
 | Secret encryption | none (sent over TLS) | sealed box with the scope's public key, done by the library | none; a secret is a secured variable |

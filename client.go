@@ -195,6 +195,23 @@ type Admin interface {
 	Teams() Teams
 }
 
+// UserFilters lists user accounts by criteria. It needs a site-admin token. Only
+// the Forgejo backend implements it (CapUserFilters); find it with a type
+// assertion:
+//
+//	f, ok := client.(gitoperationslib.UserFilters)
+type UserFilters interface {
+	ListUsersBy(ctx context.Context, filter UserFilter, opts ListOptions) (Page[User], error)
+}
+
+// UserFilter selects users. Nil fields do not filter.
+type UserFilter struct {
+	// TwoFactor selects users with, or without, two-factor authentication. It
+	// needs Forgejo 16 (ErrNotSupported on older servers, which would ignore it
+	// and return everyone).
+	TwoFactor *bool `json:"twoFactor,omitzero"`
+}
+
 // Users manages user accounts. All methods except Get require a site-admin
 // token.
 type Users interface {
@@ -274,7 +291,9 @@ type Teams interface {
 	Members(ctx context.Context, id int64, opts ListOptions) (Page[User], error)
 	IsMember(ctx context.Context, id int64, user string) (bool, error)
 	// AddMember adds user to the team, which also makes them a member of
-	// the organisation.
+	// the organisation. If the instance adds members by invitation, and user
+	// is not in the organisation yet, it returns an error matching
+	// ErrInvitationPending. The invitation is sent all the same.
 	AddMember(ctx context.Context, id int64, user string) error
 	RemoveMember(ctx context.Context, id int64, user string) error
 

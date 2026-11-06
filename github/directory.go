@@ -42,6 +42,7 @@ func toOrg(o *gh.Organization) gitoperationslib.Org {
 		Visibility:  gitoperationslib.OwnerVisibilityPublic, // GitHub organisations are always public
 		AvatarURL:   o.GetAvatarURL(),
 		HTMLURL:     o.GetHTMLURL(),
+		CreatedAt:   o.GetCreatedAt().Time,
 	}
 }
 
