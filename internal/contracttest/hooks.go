@@ -91,11 +91,18 @@ func Webhooks(t *testing.T, env Env) {
 		slices.Contains(edited.Events, gitoperationslib.HookEventPush) {
 		t.Errorf("edited = %+v", edited)
 	}
-	// Changing only the secret keeps the rest of the configuration.
+	// Changing only the secret keeps the rest of the configuration. Forgejo's API
+	// ignores a new secret, so it is refused there.
 	rekeyed, err := hooks.Edit(ctx, scope, hook.ID, gitoperationslib.EditWebhookOptions{Secret: gitoperationslib.Ptr("new-secret")})
-	check(err)
-	if rekeyed.URL != newURL || rekeyed.ContentType != form {
-		t.Errorf("after secret change = %+v", rekeyed)
+	if env.Client.Backend() == gitoperationslib.BackendForgejo {
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("changing the secret: err = %v, want ErrNotSupported", err)
+		}
+	} else {
+		check(err)
+		if rekeyed.URL != newURL || rekeyed.ContentType != form {
+			t.Errorf("after secret change = %+v", rekeyed)
+		}
 	}
 
 	// Unknown events are rejected (GitHub) or reported after the fact

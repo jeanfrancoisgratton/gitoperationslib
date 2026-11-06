@@ -80,11 +80,12 @@ type Event struct {
 	// they match ("repo:push" is "push"; "pullrequest:…" is "pull_request",
 	// "pull_request_review", "issue_comment" or "pull_request_review_comment");
 	// others keep their key. So are Forgejo's review events, which it calls
-	// "pull_request_approved", "pull_request_rejected" and "pull_request_comment".
+	// "pull_request_approved", "pull_request_rejected" and "pull_request_comment",
+	// and its workflow events: "workflow_run_failure" is "workflow_run".
 	Name string `json:"name"`
 	// Key is what the forge calls a renamed event: Bitbucket's event key
 	// (X-Event-Key), e.g. "pullrequest:fulfilled", or Forgejo's name for a
-	// review. It is empty otherwise.
+	// review or a workflow event. It is empty otherwise.
 	Key      string `json:"key,omitzero"`
 	Delivery string `json:"delivery"`        // unique delivery ID
 	Action   string `json:"action,omitzero"` // e.g. "opened", "published"; empty for push
@@ -137,6 +138,15 @@ func Decode(h http.Header, body []byte) (*Event, error) {
 		Sender *struct {
 			Login string `json:"login"`
 		} `json:"sender"`
+		// Forgejo's workflow deliveries have neither of those at the top level.
+		Run *struct {
+			Repository *struct {
+				FullName string `json:"full_name"`
+			} `json:"repository"`
+			TriggerUser *struct {
+				Login string `json:"login"`
+			} `json:"trigger_user"`
+		} `json:"run"`
 	}
 	if err := json.Unmarshal(payload, &env); err != nil {
 		return nil, fmt.Errorf("webhook: decode %s payload: %w", ev.Name, err)
@@ -146,11 +156,24 @@ func Decode(h http.Header, body []byte) (*Event, error) {
 		// Forgejo's action is "reviewed" whatever the verdict.
 		ev.Key, ev.Name, ev.Action = ev.Name, "pull_request_review", "submitted"
 	}
+	if ev.Forge == gitoperationslib.BackendForgejo {
+		for _, name := range []string{"workflow_run", "workflow_job"} {
+			if strings.HasPrefix(ev.Name, name+"_") {
+				ev.Key, ev.Name = ev.Name, name
+			}
+		}
+	}
 	if env.Repository != nil {
 		ev.Repo = env.Repository.FullName
 	}
 	if env.Sender != nil {
 		ev.Sender = env.Sender.Login
+	}
+	if env.Run != nil && env.Run.Repository != nil && ev.Repo == "" {
+		ev.Repo = env.Run.Repository.FullName
+	}
+	if env.Run != nil && env.Run.TriggerUser != nil && ev.Sender == "" {
+		ev.Sender = env.Run.TriggerUser.Login
 	}
 	return ev, nil
 }

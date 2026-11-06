@@ -185,6 +185,8 @@ func (w webhooks) Create(ctx context.Context, scope gitoperationslib.HookScope, 
 		return nil, notSupported(op, "branch filters")
 	case opts.AuthorizationHeader != "":
 		return nil, notSupported(op, "authorization headers")
+	case opts.Type != "" || opts.Slack != nil:
+		return nil, notSupported(op, "webhook types")
 	}
 	keys, err := toEventKeys(opts.Events, op)
 	if err != nil {
@@ -211,6 +213,8 @@ func (w webhooks) Edit(ctx context.Context, scope gitoperationslib.HookScope, id
 		return nil, notSupported(op, "branch filters")
 	case opts.AuthorizationHeader != nil:
 		return nil, notSupported(op, "authorization headers")
+	case opts.Slack != nil:
+		return nil, notSupported(op, "webhook types")
 	}
 	cur, path, err := w.find(ctx, scope, id)
 	if err != nil {

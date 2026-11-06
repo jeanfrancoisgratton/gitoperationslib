@@ -1,6 +1,6 @@
 # Reports for Forgejo upstream
 
-Ready to file at https://codeberg.org/forgejo/forgejo/issues (items 37 and 97 in `TODO.md`). Each was reproduced on disposable instances of **15.0.11, 16.0.7 and 17.0.1** on 2026-11-05, unless it says otherwise. A search of the tracker found no duplicate, but its search is imprecise, so look again before filing. Remove a report from this file once it is filed.
+Ready to file at https://codeberg.org/forgejo/forgejo/issues (items 37, 97 and 111 in `TODO.md`). Each was reproduced on disposable instances of **15.0.11, 16.0.7 and 17.0.1** on 2026-11-05, unless it says otherwise. A search of the tracker found no duplicate, but its search is imprecise, so look again before filing. Remove a report from this file once it is filed.
 
 Throughout, `$F` is the instance's `/api/v1`, and `$AUTH` is `Authorization: token <a site admin's token>`.
 
@@ -84,3 +84,63 @@ The last one is an interval below `[mirror] MIN_INTERVAL`.
 Related, and checked on 17.0.1: a plain `http://` remote gets 400 `{"message":"Unknown error"}`, although `POST /repos/migrate` with the same address explains that unencrypted transfer protocols are disabled, in a 500 "Unknown error type (ErrInvalidCloneAddr)". On 15.0.11, a host that does not resolve gets 401 "Permission denied", which reads as a problem with the caller's token.
 
 **Expected:** a message saying what is wrong, and a 4xx with a clear message for a refused address.
+
+---
+
+## 4. API: `PATCH` on a webhook resets what it does not name, and ignores a new secret
+
+Checked on 15.0.11 and 17.0.1, for a repository's webhook. `routers/api/v1/utils/hook.go`, `editHook`, explains all of it.
+
+```sh
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' "$F/repos/$O/$R/hooks" -d '{
+  "type": "forgejo", "active": true, "events": ["push", "release"], "branch_filter": "main",
+  "authorization_header": "Bearer x",
+  "config": {"url": "https://example.com/hook", "content_type": "json", "secret": "s1"}}'
+
+curl -X PATCH -H "$AUTH" -H 'Content-Type: application/json' -d '{"active": false}' "$F/repos/$O/$R/hooks/$ID"
+```
+
+| Sent in the `PATCH` | Result |
+|---|---|
+| no `events` | `events` becomes `["push"]`, so subscriptions are lost |
+| no `branch_filter` | the filter is erased |
+| `"config": {"secret": "s2"}` | answers 200, and deliveries stay signed with `s1` |
+| `"authorization_header": ""` | answers 200, and the header stays |
+
+The secret is the serious one: someone rotating a leaked secret sees success while the old one stays valid.
+
+**Expected:** a field left out stays as it is, and `secret` and an empty `authorization_header` take effect, or are refused. Until then, document it in the swagger.
+
+---
+
+## 5. API: webhook event names do not round-trip
+
+Checked on 15.0.11 and 17.0.1. Reading a webhook's `events` and sending them back should change nothing, but:
+
+| `events` when creating | Reported back | The same list sent back gives |
+|---|---|---|
+| `["pull_request_review_approved"]` | `[]` | `["push"]`, via the reset in report 4 |
+| `["pull_request_review"]` | `["pull_request_review_approved", "pull_request_review_rejected"]` | `[]` |
+| `["issues_only"]` | `["issues"]` | all five issue events |
+| `["pull_request_only"]` | `["pull_request"]` | all ten pull request events |
+
+The names the API reports are not all names it accepts, and `issues` means something else in each direction. Unknown names are also dropped without an error, which is how a webhook ends up subscribed to nothing.
+
+**Expected:** accept the names it reports, with the same meaning, and answer 422 for an unknown event.
+
+---
+
+## 6. API: Telegram, Matrix, Packagist and SourceHut webhooks lose their settings
+
+Checked on 17.0.1 for Telegram, Matrix and Packagist. `addHook` only reads `config` for Slack, while the others keep their settings in `metadata`, which `CreateHookOption` has no field for. So a webhook of these types created through the API cannot deliver, and no error says so:
+
+```sh
+curl -X POST -H "$AUTH" -H 'Content-Type: application/json' "$F/user/hooks" -d '{
+  "type": "telegram", "active": true, "events": ["push"],
+  "config": {"url": "https://example.com/t", "content_type": "json", "bot_token": "T", "chat_id": "C"}}'
+# 201, with "metadata": {"bot_token": "", "chat_id": "", "thread_id": ""}
+```
+
+The swagger's list of types for `CreateHookOption` also leaves out `matrix` and `sourcehut_builds`, which the server accepts. Separately, `GET` returns `metadata.bot_token`, `metadata.api_token` and `authorization_header` in clear, unlike the webhook's secret.
+
+**Expected:** accept these settings, or refuse the type with 422.

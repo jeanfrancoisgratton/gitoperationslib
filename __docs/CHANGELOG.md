@@ -6,6 +6,44 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [1.4.0] — unreleased
+
+Forgejo 17's workflow webhook events, creating system webhooks, webhook types, typed workflow deliveries, and fixes to
+Forgejo webhooks that were checked for the first time against a server's real behaviour.
+
+### Added
+- **`SystemWebhooks.Create`.** It relies on a flag Forgejo's API does not document, compared against a webhook made in the
+  web interface on 15.0.11 and 17.0.1, and checks the result: if it got a default webhook, it deletes it and returns an
+  error. This adds a method to an interface released in 1.3.0, an exception to the rule that new features arrive as
+  optional interfaces: `SiteHooks` was a day old and only this library implements it. Code that mocks `SystemWebhooks`
+  must add the method.
+- `HookEventWorkflowRun` and `HookEventWorkflowJob`: GitHub, and Forgejo 17, where each stands for its seven per-status
+  events. They return `ErrNotSupported` on older Forgejo servers, and on Bitbucket.
+- `Event.WorkflowRun` and `Event.WorkflowJob` decode workflow deliveries from Forgejo 17 and GitHub. Both were tested
+  against real deliveries. `Event.Name` is `workflow_run` or `workflow_job`, and on Forgejo `Event.Key` keeps the status.
+- Webhook types on Forgejo: `HookType`, `CreateWebhookOptions.Type`, `Webhook.Type`, and `SlackHookSettings` for Slack
+  and Mattermost. Telegram, Matrix, Packagist and SourceHut hooks can only be read: Forgejo's API drops their settings.
+- `Webhook.HasAuthorizationHeader`. The value stays out of `Webhook`, as it is a credential.
+
+### Changed
+- `HookEventAll` on Forgejo follows the server's version: `workflow_*` from 17, without the deprecated `action_run_*`,
+  which would notify a second time for each run; `action_run_*` below 17. A new "everything" webhook on 17 therefore
+  delivers the new format. Existing webhooks do not change.
+- **`Webhooks`, `UserWebhooks`, `SystemWebhooks` and `DefaultWebhooks`: `Edit` on Forgejo returns `ErrNotSupported` for
+  `Secret`, and for an empty `AuthorizationHeader`.** Forgejo's API ignores both without an error, so a rotated secret
+  was never applied.
+- `Webhook.URL` and `ContentType` on Forgejo now come from the top-level fields, as `config` is deprecated.
+
+### Fixed
+- **`Edit` on Forgejo lost data.** Without events and a branch filter, Forgejo's `PATCH` resets them to `push` and none,
+  on 15 and 17, so changing only `Active` or `URL` cut the webhook down to `push`. `Edit` now reads the webhook first
+  and sends back what was not changed, which takes one more request.
+- **`HookEventPullRequestReview` on Forgejo subscribed to nothing** and returned an error. The library sent the name of
+  each verdict, which the server drops. It now sends `pull_request_review`. `pull_request_review_comment` is no longer
+  folded into that constant, as it comes with `pull_request_comment`.
+- The raw names `issues_only` and `pull_request_only` no longer report a dropped event.
+- `Event.Repo` and `Event.Sender` are now set on Forgejo's `action_run_*` deliveries.
+
 ## [1.3.0] — 2026-11-05
 
 Forgejo's user, system and default webhooks, what a pull request changes, comments on its lines, commit ranges and raw

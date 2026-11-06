@@ -284,3 +284,94 @@ func TestGitHubDocumentedPayloads(t *testing.T) {
 		t.Errorf("delete = %+v, %v", gone, err)
 	}
 }
+
+func TestWorkflowRun(t *testing.T) {
+	ev := parseFixture(t, "forgejo-workflow_run-cancelled")
+	if ev.Name != "workflow_run" || ev.Key != "workflow_run_cancelled" || ev.Action != "run_completed" ||
+		ev.Repo != "gitopslib-admin/wf" || ev.Sender != "gitopslib-admin" {
+		t.Errorf("event = %+v", ev)
+	}
+	got, err := ev.WorkflowRun()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := got.Run
+	if got.Action != "run_completed" || r.ID != 4 || r.Number != 4 || r.Workflow != "c.yaml" || r.Event != "workflow_dispatch" || r.Branch != "main" ||
+		r.SHA == "" || r.Status != "cancelled" || r.Conclusion != "cancelled" || r.Actor != "gitopslib-admin" || r.HTMLURL == "" ||
+		r.CreatedAt.IsZero() || r.StartedAt.IsZero() || r.StoppedAt.IsZero() || r.UpdatedAt.IsZero() {
+		t.Errorf("run = %+v", got)
+	}
+	if _, err := ev.WorkflowJob(); err == nil {
+		t.Error("WorkflowJob() on a workflow_run delivery succeeded")
+	}
+
+	got, err = parseFixture(t, "forgejo-workflow_run-running").WorkflowRun()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Run.Status != "running" || got.Run.Conclusion != "" || !got.Run.StoppedAt.IsZero() {
+		t.Errorf("running = %+v", got)
+	}
+
+	ev = parseFixture(t, "github-workflow_run-completed")
+	if ev.Name != "workflow_run" || ev.Key != "" || ev.Action != "completed" || ev.Repo == "" || ev.Sender == "" {
+		t.Errorf("event = %+v", ev)
+	}
+	if got, err = ev.WorkflowRun(); err != nil {
+		t.Fatal(err)
+	}
+	r = got.Run
+	if r.ID == 0 || r.Number != 1 || r.Title != "add workflow" || r.Workflow != "w.yml" || r.Event != "push" || r.Branch == "" || r.SHA == "" ||
+		r.Status != "completed" || r.Conclusion != "success" || r.Actor == "" || r.HTMLURL == "" || r.CreatedAt.IsZero() || r.StartedAt.IsZero() || r.UpdatedAt.IsZero() {
+		t.Errorf("run = %+v", r)
+	}
+}
+
+func TestWorkflowJob(t *testing.T) {
+	ev := parseFixture(t, "forgejo-workflow_job-failure")
+	if ev.Name != "workflow_job" || ev.Key != "workflow_job_failure" || ev.Action != "job_completed" || ev.Repo != "gitopslib-admin/wf" || ev.Sender != "gitopslib-admin" {
+		t.Errorf("event = %+v", ev)
+	}
+	got, err := ev.WorkflowJob()
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := got.Job
+	if j.ID == 0 || j.RunID != 2 || j.Attempt != 1 || j.Name != "bad" || j.Status != "failure" || j.Conclusion != "failure" ||
+		!slices.Equal(j.Labels, []string{"self"}) || j.HTMLURL == "" || got.Run == nil || got.Run.ID != 2 {
+		t.Errorf("job = %+v", got)
+	}
+	if got, err = parseFixture(t, "forgejo-workflow_job-blocked").WorkflowJob(); err != nil {
+		t.Fatal(err)
+	}
+	if got.Action != "new_job_attempt" || got.Job.Status != "blocked" || got.Job.Conclusion != "" {
+		t.Errorf("blocked = %+v", got)
+	}
+
+	ev = parseFixture(t, "github-workflow_job-completed")
+	if ev.Name != "workflow_job" || ev.Action != "completed" || ev.Repo == "" {
+		t.Errorf("event = %+v", ev)
+	}
+	if got, err = ev.WorkflowJob(); err != nil {
+		t.Fatal(err)
+	}
+	j = got.Job
+	if j.ID == 0 || j.RunID == 0 || j.Attempt != 1 || j.Name != "ok" || j.Status != "completed" || j.Conclusion != "success" ||
+		!slices.Equal(j.Labels, []string{"ubuntu-latest"}) || j.HTMLURL == "" || j.StartedAt.IsZero() || j.CompletedAt.IsZero() || got.Run != nil {
+		t.Errorf("job = %+v", got)
+	}
+	if got, err = parseFixture(t, "github-workflow_job-queued").WorkflowJob(); err != nil {
+		t.Fatal(err)
+	}
+	if got.Job.Status != "queued" || got.Job.Conclusion != "" || !got.Job.CompletedAt.IsZero() {
+		t.Errorf("queued = %+v", got)
+	}
+}
+
+// The older events keep their names, and now say which repository they are for.
+func TestActionRunDelivery(t *testing.T) {
+	ev := parseFixture(t, "forgejo-action_run_failure")
+	if ev.Name != "action_run_failure" || ev.Key != "" || ev.Action != "failure" || ev.Repo != "gitopslib-admin/wf" || ev.Sender != "gitopslib-admin" {
+		t.Errorf("event = %+v", ev)
+	}
+}

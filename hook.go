@@ -45,12 +45,16 @@ type SiteHooks interface {
 }
 
 // SystemWebhooks manages system webhooks, which fire for events in every
-// repository of the instance. The library has no Create, as Forgejo only offers
-// one through an undocumented flag: create them in the web interface (Site
-// administration, Webhooks).
+// repository of the instance.
 type SystemWebhooks interface {
 	List(ctx context.Context, opts ListOptions) (Page[Webhook], error)
 	Get(ctx context.Context, id int64) (*Webhook, error)
+	// Create adds a system webhook, through a flag Forgejo's API does not
+	// document. It checks the result: if the server made a default webhook
+	// instead, Create deletes it and returns an error. Forgejo silently drops
+	// event names it does not know; Create then returns the webhook together
+	// with an error.
+	Create(ctx context.Context, opts CreateWebhookOptions) (*Webhook, error)
 	// Edit changes a webhook; dropped events are reported as in
 	// Webhooks.Create.
 	Edit(ctx context.Context, id int64, opts EditWebhookOptions) (*Webhook, error)
@@ -102,11 +106,48 @@ const (
 	HookEventPullRequestReview HookEvent = "pull_request_review"
 	HookEventRepository        HookEvent = "repository"
 	HookEventWiki              HookEvent = "wiki" // GitHub: gollum
+	// HookEventWorkflowRun and HookEventWorkflowJob follow CI workflows: GitHub,
+	// and Forgejo from 17 on, where each stands for its seven per-status events
+	// (ErrNotSupported on older servers). Subscribe to fewer with Forgejo's
+	// names, such as "workflow_run_failure". Bitbucket has no equivalent.
+	HookEventWorkflowRun HookEvent = "workflow_run"
+	HookEventWorkflowJob HookEvent = "workflow_job"
 	// HookEventAll subscribes to everything. Only GitHub has a wildcard, which
 	// also covers events added later, and reports it back as "*". For the
 	// others the library sends the events it knows, which come back one by one.
+	// On Forgejo that means workflow_* from 17 on, and the older action_run_*
+	// below it.
 	HookEventAll HookEvent = "*"
 )
+
+// HookType is the format of a webhook's deliveries (Forgejo only).
+type HookType string
+
+const (
+	HookTypeForgejo    HookType = "forgejo"
+	HookTypeGitea      HookType = "gitea"
+	HookTypeGogs       HookType = "gogs"
+	HookTypeSlack      HookType = "slack" // also Mattermost; needs Slack settings
+	HookTypeDiscord    HookType = "discord"
+	HookTypeDingTalk   HookType = "dingtalk"
+	HookTypeMSTeams    HookType = "msteams"
+	HookTypeFeishu     HookType = "feishu"
+	HookTypeWeChatWork HookType = "wechatwork"
+	// These can be read but not created: Forgejo's API drops the settings they
+	// need, leaving a webhook that cannot deliver.
+	HookTypeTelegram        HookType = "telegram"
+	HookTypeMatrix          HookType = "matrix"
+	HookTypePackagist       HookType = "packagist"
+	HookTypeSourceHutBuilds HookType = "sourcehut_builds"
+)
+
+// SlackHookSettings holds what a HookTypeSlack webhook needs.
+type SlackHookSettings struct {
+	Channel  string `json:"channel"` // required
+	Username string `json:"username,omitzero"`
+	IconURL  string `json:"iconUrl,omitzero"`
+	Color    string `json:"color,omitzero"`
+}
 
 // HookContentType is the encoding of webhook payloads.
 type HookContentType string
@@ -119,6 +160,7 @@ const (
 // Webhook is a configured webhook. The secret is never returned.
 type Webhook struct {
 	ID          int64           `json:"id"`
+	Type        HookType        `json:"type,omitzero"` // Forgejo only
 	URL         string          `json:"url"`
 	ContentType HookContentType `json:"contentType"`
 	// Events lists the subscribed events. Forgejo may add finer-grained
@@ -127,6 +169,10 @@ type Webhook struct {
 	Events       []HookEvent `json:"events"`
 	Active       bool        `json:"active"`
 	BranchFilter string      `json:"branchFilter,omitzero"` // Forgejo only
+	// HasAuthorizationHeader tells whether deliveries carry one. Its value is
+	// left out on purpose: it is a credential (Forgejo only).
+	HasAuthorizationHeader bool               `json:"hasAuthorizationHeader,omitzero"`
+	Slack                  *SlackHookSettings `json:"slack,omitzero"` // HookTypeSlack only
 	// InsecureSSL delivers without checking the target's TLS certificate
 	// (GitHub, Bitbucket).
 	InsecureSSL bool      `json:"insecureSsl,omitzero"`
@@ -136,6 +182,9 @@ type Webhook struct {
 
 // CreateWebhookOptions describes a webhook to create.
 type CreateWebhookOptions struct {
+	// Type is the format of the deliveries (Forgejo only). Zero value:
+	// HookTypeForgejo.
+	Type        HookType        `json:"type,omitzero"`
 	URL         string          `json:"url"`                  // required
 	ContentType HookContentType `json:"contentType,omitzero"` // zero value: json
 	// Secret signs deliveries (see the webhook package). Strongly
@@ -148,6 +197,8 @@ type CreateWebhookOptions struct {
 	BranchFilter string `json:"branchFilter,omitzero"`
 	// AuthorizationHeader is sent with every delivery (Forgejo only).
 	AuthorizationHeader string `json:"-"`
+	// Slack is required with HookTypeSlack, and refused with any other type.
+	Slack *SlackHookSettings `json:"slack,omitzero"`
 	// InsecureSSL delivers without checking the target's TLS certificate, so a
 	// third party could read or alter deliveries (GitHub, Bitbucket; on Forgejo
 	// it is an instance setting, and true returns ErrNotSupported).
@@ -156,15 +207,26 @@ type CreateWebhookOptions struct {
 
 // EditWebhookOptions changes a webhook. Nil fields are left unchanged; a
 // non-nil Events replaces the subscription list.
+//
+// On Forgejo, Edit reads the webhook first, as a PATCH without events and a
+// branch filter resets them to "push" and none. It is not atomic: a change made
+// between the two requests is overwritten.
 type EditWebhookOptions struct {
-	URL                 *string          `json:"url,omitzero"`
-	ContentType         *HookContentType `json:"contentType,omitzero"`
-	Secret              *string          `json:"-"`
-	Events              []HookEvent      `json:"events,omitzero"`
-	Active              *bool            `json:"active,omitzero"`
-	BranchFilter        *string          `json:"branchFilter,omitzero"` // Forgejo only
-	AuthorizationHeader *string          `json:"-"`                     // Forgejo only
-	InsecureSSL         *bool            `json:"insecureSsl,omitzero"`  // see CreateWebhookOptions
+	URL         *string          `json:"url,omitzero"`
+	ContentType *HookContentType `json:"contentType,omitzero"`
+	// Secret returns ErrNotSupported on Forgejo, whose API ignores a new secret
+	// and keeps signing with the old one. To rotate it there, create a new
+	// webhook and delete this one.
+	Secret       *string     `json:"-"`
+	Events       []HookEvent `json:"events,omitzero"`
+	Active       *bool       `json:"active,omitzero"`
+	BranchFilter *string     `json:"branchFilter,omitzero"` // Forgejo only
+	// AuthorizationHeader replaces the header (Forgejo only). Forgejo's API
+	// cannot remove it, so an empty value returns ErrNotSupported.
+	AuthorizationHeader *string `json:"-"`
+	// Slack replaces all the settings of a HookTypeSlack webhook.
+	Slack       *SlackHookSettings `json:"slack,omitzero"`
+	InsecureSSL *bool              `json:"insecureSsl,omitzero"` // see CreateWebhookOptions
 }
 
 // HookDeliveries reads a webhook's delivery history and sends deliveries again.

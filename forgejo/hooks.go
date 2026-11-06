@@ -1,7 +1,9 @@
 package forgejo
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,50 +17,123 @@ import (
 )
 
 type hookJSON struct {
-	ID           int64             `json:"id"`
-	Config       map[string]string `json:"config"`
-	Events       []string          `json:"events"`
-	Active       bool              `json:"active"`
-	BranchFilter string            `json:"branch_filter"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
+	ID                  int64           `json:"id"`
+	Type                string          `json:"type"`
+	URL                 string          `json:"url"`
+	ContentType         string          `json:"content_type"`
+	Metadata            json.RawMessage `json:"metadata"`
+	Events              []string        `json:"events"`
+	Active              bool            `json:"active"`
+	BranchFilter        string          `json:"branch_filter"`
+	AuthorizationHeader string          `json:"authorization_header"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
 func (h *hookJSON) toWebhook() gitoperationslib.Webhook {
-	return gitoperationslib.Webhook{
-		ID:           h.ID,
-		URL:          h.Config["url"],
-		ContentType:  gitoperationslib.HookContentType(h.Config["content_type"]),
-		Events:       fromForgejoEvents(h.Events),
-		Active:       h.Active,
-		BranchFilter: h.BranchFilter,
-		CreatedAt:    h.CreatedAt,
-		UpdatedAt:    h.UpdatedAt,
+	hook := gitoperationslib.Webhook{
+		ID:                     h.ID,
+		Type:                   gitoperationslib.HookType(h.Type),
+		URL:                    h.URL,
+		ContentType:            gitoperationslib.HookContentType(h.ContentType),
+		Events:                 fromForgejoEvents(h.Events),
+		Active:                 h.Active,
+		BranchFilter:           h.BranchFilter,
+		HasAuthorizationHeader: h.AuthorizationHeader != "",
+		CreatedAt:              h.CreatedAt,
+		UpdatedAt:              h.UpdatedAt,
 	}
+	if hook.Type == gitoperationslib.HookTypeSlack {
+		var meta struct {
+			Channel  string `json:"channel"`
+			Username string `json:"username"`
+			IconURL  string `json:"icon_url"`
+			Color    string `json:"color"`
+		}
+		if json.Unmarshal(h.Metadata, &meta) == nil {
+			hook.Slack = &gitoperationslib.SlackHookSettings{Channel: meta.Channel, Username: meta.Username, IconURL: meta.IconURL, Color: meta.Color}
+		}
+	}
+	return hook
 }
 
-// Forgejo splits GitHub's pull_request_review into one event per verdict.
-var reviewHookEvents = []string{"pull_request_review_approved", "pull_request_review_rejected", "pull_request_review_comment"}
+// Forgejo reports GitHub's pull_request_review as one event per verdict, but
+// only accepts it under that one name: a verdict's own name is dropped.
+var reviewVerdictEvents = []string{"pull_request_review_approved", "pull_request_review_rejected"}
+
+var hookStatuses = []string{"blocked", "cancelled", "failure", "running", "skipped", "success", "waiting"}
+
+func statusEvents(prefix string) []string {
+	out := make([]string, len(hookStatuses))
+	for i, s := range hookStatuses {
+		out[i] = prefix + "_" + s
+	}
+	return out
+}
+
+var workflowRunEvents, workflowJobEvents = statusEvents("workflow_run"), statusEvents("workflow_job")
+
+// workflowEventsVersion is the first release with workflow_* events.
+var workflowEventsVersion = Version{17, 0, 0}
 
 // allHookEvents is what HookEventAll sends: Forgejo has no wildcard, and takes
-// "*" as an unknown event, leaving a webhook subscribed to nothing. These are the
-// names 15.0.11 accepts. Versions differ (17.0.1 has no action_run_recover), so a
-// name the server drops here is not reported: see requestedEvents.
-var allHookEvents = append([]string{
+// "*" as an unknown event, leaving a webhook subscribed to nothing. A name the
+// server drops here is not reported: see requestedEvents.
+var allHookEvents = []string{
 	"create", "delete", "fork", "push", "issues", "issue_assign", "issue_label", "issue_milestone", "issue_comment",
 	"pull_request", "pull_request_assign", "pull_request_label", "pull_request_milestone", "pull_request_comment",
-	"pull_request_review_request", "pull_request_sync", "wiki", "repository", "release", "package",
-	"action_run_failure", "action_run_recover", "action_run_success",
-}, reviewHookEvents...)
+	"pull_request_review", "pull_request_review_request", "pull_request_sync", "wiki", "repository", "release", "package",
+}
 
-func toForgejoEvents(events []gitoperationslib.HookEvent) []string {
+// oldWorkflowEvents are what versions before 17 have for workflows. 17 deprecates
+// them, and both sets fire for one run there, so HookEventAll sends only one.
+var oldWorkflowEvents = []string{"action_run_failure", "action_run_recover", "action_run_success"}
+
+func (c *Client) toForgejoEvents(events []gitoperationslib.HookEvent, op string) ([]string, error) {
+	hasWorkflows := c.version.Compare(workflowEventsVersion) >= 0
 	out := make([]string, 0, len(events))
 	for _, e := range events {
 		switch e {
-		case gitoperationslib.HookEventPullRequestReview:
-			out = append(out, reviewHookEvents...)
+		case gitoperationslib.HookEventWorkflowRun, gitoperationslib.HookEventWorkflowJob:
+			if !hasWorkflows {
+				return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op, fmt.Sprintf("event %q before Forgejo %s", e, workflowEventsVersion))
+			}
+			if e == gitoperationslib.HookEventWorkflowRun {
+				out = append(out, workflowRunEvents...)
+			} else {
+				out = append(out, workflowJobEvents...)
+			}
 		case gitoperationslib.HookEventAll:
 			out = append(out, allHookEvents...)
+			if hasWorkflows {
+				out = append(append(out, workflowRunEvents...), workflowJobEvents...)
+			} else {
+				out = append(out, oldWorkflowEvents...)
+			}
+		default:
+			out = append(out, string(e))
+		}
+	}
+	return out, nil
+}
+
+// requestedEvents is what checkEvents holds the server to: the events the caller
+// named as the server reports them, not those HookEventAll stands for.
+func requestedEvents(events []gitoperationslib.HookEvent) []string {
+	out := make([]string, 0, len(events))
+	for _, e := range events {
+		switch e {
+		case gitoperationslib.HookEventAll:
+		case gitoperationslib.HookEventPullRequestReview:
+			out = append(out, reviewVerdictEvents...)
+		case gitoperationslib.HookEventWorkflowRun:
+			out = append(out, workflowRunEvents...)
+		case gitoperationslib.HookEventWorkflowJob:
+			out = append(out, workflowJobEvents...)
+		case "issues_only":
+			out = append(out, "issues")
+		case "pull_request_only":
+			out = append(out, "pull_request")
 		default:
 			out = append(out, string(e))
 		}
@@ -66,23 +141,50 @@ func toForgejoEvents(events []gitoperationslib.HookEvent) []string {
 	return out
 }
 
-// requestedEvents is what checkEvents holds the server to: the events the caller
-// named, not those HookEventAll stands for.
-func requestedEvents(events []gitoperationslib.HookEvent) []string {
-	return toForgejoEvents(slices.DeleteFunc(slices.Clone(events), func(e gitoperationslib.HookEvent) bool {
-		return e == gitoperationslib.HookEventAll
-	}))
-}
-
 func fromForgejoEvents(names []string) []gitoperationslib.HookEvent {
 	out := make([]gitoperationslib.HookEvent, 0, len(names))
-	for _, n := range names {
-		e := gitoperationslib.HookEvent(n)
-		if slices.Contains(reviewHookEvents, n) {
-			e = gitoperationslib.HookEventPullRequestReview
-		}
+	add := func(e gitoperationslib.HookEvent) {
 		if !slices.Contains(out, e) {
 			out = append(out, e)
+		}
+	}
+	has := func(group []string) bool {
+		return !slices.ContainsFunc(group, func(n string) bool { return !slices.Contains(names, n) })
+	}
+	for _, n := range names {
+		switch {
+		case slices.Contains(reviewVerdictEvents, n):
+			add(gitoperationslib.HookEventPullRequestReview)
+		case slices.Contains(workflowRunEvents, n) && has(workflowRunEvents):
+			add(gitoperationslib.HookEventWorkflowRun)
+		case slices.Contains(workflowJobEvents, n) && has(workflowJobEvents):
+			add(gitoperationslib.HookEventWorkflowJob)
+		default:
+			add(gitoperationslib.HookEvent(n))
+		}
+	}
+	return out
+}
+
+// keepEvents turns the events a hook reports into what makes a PATCH leave them
+// as they are. Forgejo reports "issues" for the issue event alone, but takes that
+// name as all of them; likewise "pull_request". A verdict's name is dropped, and
+// pull_request_review_comment comes with pull_request_comment.
+func keepEvents(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		switch {
+		case n == "issues":
+			n = "issues_only"
+		case n == "pull_request":
+			n = "pull_request_only"
+		case slices.Contains(reviewVerdictEvents, n):
+			n = "pull_request_review"
+		case n == "pull_request_review_comment":
+			continue
+		}
+		if !slices.Contains(out, n) {
+			out = append(out, n)
 		}
 	}
 	return out
@@ -141,12 +243,32 @@ func (s hookService) get(ctx context.Context, id int64) (*gitoperationslib.Webho
 }
 
 func (s hookService) create(ctx context.Context, opts gitoperationslib.CreateWebhookOptions) (*gitoperationslib.Webhook, error) {
+	return s.createWith(ctx, opts, nil)
+}
+
+// createWith adds extra to the hook's config.
+func (s hookService) createWith(ctx context.Context, opts gitoperationslib.CreateWebhookOptions, extra map[string]string) (*gitoperationslib.Webhook, error) {
 	const op = "webhooks.create"
 	if opts.URL == "" || len(opts.Events) == 0 {
 		return nil, errors.New("forgejo: webhooks.create: url and events are required")
 	}
 	if opts.InsecureSSL {
 		return nil, insecureSSLNotSupported(op)
+	}
+	hookType := opts.Type
+	if hookType == "" {
+		hookType = gitoperationslib.HookTypeForgejo
+	}
+	switch hookType {
+	case gitoperationslib.HookTypeTelegram, gitoperationslib.HookTypeMatrix, gitoperationslib.HookTypePackagist, gitoperationslib.HookTypeSourceHutBuilds:
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op, fmt.Sprintf("creating %s webhooks, whose settings its API drops", hookType))
+	}
+	if (hookType == gitoperationslib.HookTypeSlack) != (opts.Slack != nil) {
+		return nil, errors.New("forgejo: webhooks.create: Slack settings go with HookTypeSlack, and it needs them")
+	}
+	events, err := s.c.toForgejoEvents(opts.Events, op)
+	if err != nil {
+		return nil, err
 	}
 	ct := opts.ContentType
 	if ct == "" {
@@ -157,15 +279,19 @@ func (s hookService) create(ctx context.Context, opts gitoperationslib.CreateWeb
 		active = *opts.Active
 	}
 	body := hookBody{
-		Type:                "forgejo",
+		Type:                string(hookType),
 		Config:              map[string]string{"url": opts.URL, "content_type": string(ct)},
-		Events:              toForgejoEvents(opts.Events),
+		Events:              events,
 		Active:              &active,
 		BranchFilter:        nonEmpty(opts.BranchFilter),
 		AuthorizationHeader: nonEmpty(opts.AuthorizationHeader),
 	}
 	if opts.Secret != "" {
 		body.Config["secret"] = opts.Secret
+	}
+	addSlackConfig(body.Config, opts.Slack)
+	for k, v := range extra {
+		body.Config[k] = v
 	}
 	var out hookJSON
 	if _, err := s.c.api.Do(ctx, http.MethodPost, s.base, nil, body, &out); err != nil {
@@ -181,14 +307,47 @@ func insecureSSLNotSupported(op string) error {
 	return gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op, "skipping the certificate check for one webhook")
 }
 
+func addSlackConfig(config map[string]string, slack *gitoperationslib.SlackHookSettings) {
+	if slack != nil {
+		config["channel"], config["username"], config["icon_url"], config["color"] = slack.Channel, slack.Username, slack.IconURL, slack.Color
+	}
+}
+
 func (s hookService) edit(ctx context.Context, id int64, opts gitoperationslib.EditWebhookOptions) (*gitoperationslib.Webhook, error) {
-	if opts.InsecureSSL != nil && *opts.InsecureSSL {
-		return nil, insecureSSLNotSupported("webhooks.edit")
+	const op = "webhooks.edit"
+	switch {
+	case opts.InsecureSSL != nil && *opts.InsecureSSL:
+		return nil, insecureSSLNotSupported(op)
+	case opts.Secret != nil:
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op, "changing a webhook's secret, which its API ignores: create a new webhook")
+	case opts.AuthorizationHeader != nil && *opts.AuthorizationHeader == "":
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op, "removing a webhook's authorization header, which its API ignores")
+	case opts.Events != nil && len(opts.Events) == 0:
+		return nil, errors.New("forgejo: webhooks.edit: Events must not be empty")
+	case opts.Slack != nil && opts.Slack.Channel == "":
+		return nil, errors.New("forgejo: webhooks.edit: Slack settings need a channel")
+	}
+	events, err := s.c.toForgejoEvents(opts.Events, op)
+	if err != nil {
+		return nil, err
+	}
+	// A PATCH without events or a branch filter resets them, so read what it
+	// must keep. A hook subscribed to nothing still ends up with "push".
+	var cur hookJSON
+	if _, err := s.c.api.Do(ctx, http.MethodGet, s.path(id), nil, nil, &cur); err != nil {
+		return nil, err
+	}
+	if opts.Slack != nil && cur.Type != string(gitoperationslib.HookTypeSlack) {
+		return nil, errors.New("forgejo: webhooks.edit: Slack settings go with HookTypeSlack")
+	}
+	if opts.Events == nil {
+		events = keepEvents(cur.Events)
 	}
 	body := hookBody{
 		Active:              opts.Active,
-		BranchFilter:        opts.BranchFilter,
+		BranchFilter:        cmp.Or(opts.BranchFilter, &cur.BranchFilter),
 		AuthorizationHeader: opts.AuthorizationHeader,
+		Events:              events,
 	}
 	config := map[string]string{}
 	if opts.URL != nil {
@@ -197,24 +356,16 @@ func (s hookService) edit(ctx context.Context, id int64, opts gitoperationslib.E
 	if opts.ContentType != nil {
 		config["content_type"] = string(*opts.ContentType)
 	}
-	if opts.Secret != nil {
-		config["secret"] = *opts.Secret
-	}
+	addSlackConfig(config, opts.Slack)
 	if len(config) > 0 {
 		body.Config = config
-	}
-	if opts.Events != nil {
-		if len(opts.Events) == 0 {
-			return nil, errors.New("forgejo: webhooks.edit: Events must not be empty")
-		}
-		body.Events = toForgejoEvents(opts.Events)
 	}
 	var out hookJSON
 	if _, err := s.c.api.Do(ctx, http.MethodPatch, s.path(id), nil, body, &out); err != nil {
 		return nil, err
 	}
 	hook := out.toWebhook()
-	return checkEvents(&hook, requestedEvents(opts.Events), out.Events, "webhooks.edit")
+	return checkEvents(&hook, requestedEvents(opts.Events), out.Events, op)
 }
 
 func (s hookService) delete(ctx context.Context, id int64) error {
@@ -366,6 +517,27 @@ func (h systemHooks) Get(ctx context.Context, id int64) (*gitoperationslib.Webho
 	return h.s.get(ctx, id)
 }
 
+// Create depends on an undocumented flag (checked on 15.0.11 and 17.0.1, against
+// a hook made in the web interface). Without it, the server makes a default hook,
+// which is copied into every new repository, so do not leave one behind.
+func (h systemHooks) Create(ctx context.Context, opts gitoperationslib.CreateWebhookOptions) (*gitoperationslib.Webhook, error) {
+	hook, err := h.s.createWith(ctx, opts, map[string]string{"is_system_webhook": "true"})
+	if hook == nil {
+		return nil, err
+	}
+	system, checkErr := isSystemHook(ctx, h.s, hook.ID)
+	if checkErr != nil {
+		return hook, fmt.Errorf("forgejo: webhooks.create: webhook %d created, but its kind is unknown: %w", hook.ID, checkErr)
+	}
+	if !system {
+		if delErr := h.s.delete(ctx, hook.ID); delErr != nil {
+			return hook, fmt.Errorf("forgejo: webhooks.create: the server made webhook %d a default webhook, and deleting it failed: %w", hook.ID, delErr)
+		}
+		return nil, fmt.Errorf("forgejo: webhooks.create: the server made a default webhook instead of a system one; it was deleted")
+	}
+	return hook, err
+}
+
 func (h systemHooks) Edit(ctx context.Context, id int64, opts gitoperationslib.EditWebhookOptions) (*gitoperationslib.Webhook, error) {
 	if err := h.check(ctx, id); err != nil {
 		return nil, err
@@ -401,10 +573,8 @@ func (h defaultHooks) Get(ctx context.Context, id int64) (*gitoperationslib.Webh
 	return h.s.get(ctx, id)
 }
 
-// Edit reads the hook first: Forgejo answers HTTP 500 to a PATCH on the ID of a
-// repository's hook, and 404 to a GET.
 func (h defaultHooks) Edit(ctx context.Context, id int64, opts gitoperationslib.EditWebhookOptions) (*gitoperationslib.Webhook, error) {
-	if _, err := h.Get(ctx, id); err != nil {
+	if err := h.check(ctx, id); err != nil {
 		return nil, err
 	}
 	return h.s.edit(ctx, id, opts)

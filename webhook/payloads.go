@@ -3,6 +3,7 @@ package webhook
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -545,3 +546,190 @@ func (e *Event) Create() (*RefEvent, error) { return e.ref("create") }
 
 // Delete decodes a "delete" delivery: a branch or tag was deleted.
 func (e *Event) Delete() (*RefEvent, error) { return e.ref("delete") }
+
+// WorkflowRunEvent is a change to a run of a CI workflow.
+type WorkflowRunEvent struct {
+	// Action is the forge's: on Forgejo "new_run_attempt", "run_status_changed"
+	// or "run_completed", on GitHub "requested", "in_progress" or "completed".
+	Action string      `json:"action"`
+	Run    WorkflowRun `json:"run"`
+}
+
+// WorkflowRun is a run of a CI workflow.
+type WorkflowRun struct {
+	ID       int64  `json:"id"`
+	Number   int64  `json:"number"`
+	Title    string `json:"title"`
+	Workflow string `json:"workflow"` // the workflow's file, e.g. "build.yaml"
+	Event    string `json:"event"`    // what started it, e.g. "push"
+	Branch   string `json:"branch"`
+	SHA      string `json:"sha"`
+	// Status is the forge's own word: on Forgejo "waiting", "blocked", "running",
+	// or the outcome; on GitHub "queued", "in_progress" or "completed", among others.
+	Status string `json:"status"`
+	// Conclusion is the outcome, such as "success", "failure", "cancelled" or
+	// "skipped", and is empty until the run ends.
+	Conclusion string    `json:"conclusion,omitzero"`
+	Actor      string    `json:"actor"`
+	HTMLURL    string    `json:"htmlUrl"`
+	CreatedAt  time.Time `json:"createdAt,omitzero"`
+	StartedAt  time.Time `json:"startedAt,omitzero"`
+	StoppedAt  time.Time `json:"stoppedAt,omitzero"` // Forgejo only
+	UpdatedAt  time.Time `json:"updatedAt,omitzero"`
+}
+
+// WorkflowJobEvent is a change to a job of a workflow run.
+type WorkflowJobEvent struct {
+	// Action is the forge's: on Forgejo "new_job_attempt", "job_status_changed"
+	// or "job_completed", on GitHub "queued", "in_progress", "waiting" or
+	// "completed".
+	Action string      `json:"action"`
+	Job    WorkflowJob `json:"job"`
+	// Run is the job's run, as it was at that moment (Forgejo only). Its status
+	// can lag behind the job's.
+	Run *WorkflowRun `json:"run,omitzero"`
+}
+
+// WorkflowJob is a job of a workflow run.
+type WorkflowJob struct {
+	ID      int64  `json:"id"`
+	RunID   int64  `json:"runId"`
+	Attempt int    `json:"attempt"`
+	Name    string `json:"name"`
+	// Status and Conclusion are as in WorkflowRun.
+	Status      string    `json:"status"`
+	Conclusion  string    `json:"conclusion,omitzero"`
+	Labels      []string  `json:"labels,omitzero"` // of the runners it asks for
+	HTMLURL     string    `json:"htmlUrl"`
+	StartedAt   time.Time `json:"startedAt,omitzero"`   // GitHub only
+	CompletedAt time.Time `json:"completedAt,omitzero"` // GitHub only
+}
+
+// forgejoConclusion is the outcome in a Forgejo status, which has both in one word.
+func forgejoConclusion(status string) string {
+	switch status {
+	case "success", "failure", "cancelled", "skipped":
+		return status
+	}
+	return ""
+}
+
+type forgejoRunJSON struct {
+	ID           int64      `json:"id"`
+	IndexInRepo  int64      `json:"index_in_repo"`
+	Title        string     `json:"title"`
+	WorkflowID   string     `json:"workflow_id"`
+	TriggerEvent string     `json:"trigger_event"`
+	PrettyRef    string     `json:"prettyref"`
+	CommitSHA    string     `json:"commit_sha"`
+	Status       string     `json:"status"`
+	TriggerUser  userJSON   `json:"trigger_user"`
+	HTMLURL      string     `json:"html_url"`
+	Created      *time.Time `json:"created"`
+	Started      *time.Time `json:"started"`
+	Stopped      *time.Time `json:"stopped"`
+	Updated      *time.Time `json:"updated"`
+}
+
+func (r *forgejoRunJSON) toRun() WorkflowRun {
+	return WorkflowRun{
+		ID: r.ID, Number: r.IndexInRepo, Title: r.Title, Workflow: r.WorkflowID, Event: r.TriggerEvent,
+		Branch: r.PrettyRef, SHA: r.CommitSHA, Status: r.Status, Conclusion: forgejoConclusion(r.Status),
+		Actor: r.TriggerUser.login(), HTMLURL: r.HTMLURL, CreatedAt: timeOrZero(r.Created), StartedAt: timeOrZero(r.Started),
+		StoppedAt: timeOrZero(r.Stopped), UpdatedAt: timeOrZero(r.Updated),
+	}
+}
+
+// WorkflowRun decodes a "workflow_run" delivery. On Forgejo, these need version
+// 17: the older action_run_* events keep their names, with the fields of Forgejo's
+// run in Event.Payload.
+func (e *Event) WorkflowRun() (*WorkflowRunEvent, error) {
+	if e.Forge == gitoperationslib.BackendForgejo {
+		var p struct {
+			Action string         `json:"action"`
+			Run    forgejoRunJSON `json:"run"`
+		}
+		if err := e.decode("workflow_run", &p); err != nil {
+			return nil, err
+		}
+		return &WorkflowRunEvent{Action: p.Action, Run: p.Run.toRun()}, nil
+	}
+	var p struct {
+		Action string `json:"action"`
+		Run    struct {
+			ID           int64      `json:"id"`
+			RunNumber    int64      `json:"run_number"`
+			DisplayTitle string     `json:"display_title"`
+			Path         string     `json:"path"`
+			Event        string     `json:"event"`
+			HeadBranch   string     `json:"head_branch"`
+			HeadSHA      string     `json:"head_sha"`
+			Status       string     `json:"status"`
+			Conclusion   string     `json:"conclusion"`
+			Actor        userJSON   `json:"actor"`
+			HTMLURL      string     `json:"html_url"`
+			CreatedAt    *time.Time `json:"created_at"`
+			RunStartedAt *time.Time `json:"run_started_at"`
+			UpdatedAt    *time.Time `json:"updated_at"`
+		} `json:"workflow_run"`
+	}
+	if err := e.decode("workflow_run", &p); err != nil {
+		return nil, err
+	}
+	r := &p.Run
+	return &WorkflowRunEvent{Action: p.Action, Run: WorkflowRun{
+		ID: r.ID, Number: r.RunNumber, Title: r.DisplayTitle, Workflow: path.Base(r.Path), Event: r.Event,
+		Branch: r.HeadBranch, SHA: r.HeadSHA, Status: r.Status, Conclusion: r.Conclusion, Actor: r.Actor.login(),
+		HTMLURL: r.HTMLURL, CreatedAt: timeOrZero(r.CreatedAt), StartedAt: timeOrZero(r.RunStartedAt), UpdatedAt: timeOrZero(r.UpdatedAt),
+	}}, nil
+}
+
+// WorkflowJob decodes a "workflow_job" delivery.
+func (e *Event) WorkflowJob() (*WorkflowJobEvent, error) {
+	if e.Forge == gitoperationslib.BackendForgejo {
+		var p struct {
+			Action string `json:"action"`
+			Job    struct {
+				ID      int64    `json:"id"`
+				RunID   int64    `json:"run_id"`
+				Attempt int      `json:"attempt"`
+				Name    string   `json:"name"`
+				Status  string   `json:"status"`
+				RunsOn  []string `json:"runs_on"`
+				HTMLURL string   `json:"html_url"`
+			} `json:"job"`
+			Run forgejoRunJSON `json:"run"`
+		}
+		if err := e.decode("workflow_job", &p); err != nil {
+			return nil, err
+		}
+		j, run := &p.Job, p.Run.toRun()
+		return &WorkflowJobEvent{Action: p.Action, Run: &run, Job: WorkflowJob{
+			ID: j.ID, RunID: j.RunID, Attempt: j.Attempt, Name: j.Name, Status: j.Status,
+			Conclusion: forgejoConclusion(j.Status), Labels: j.RunsOn, HTMLURL: j.HTMLURL,
+		}}, nil
+	}
+	var p struct {
+		Action string `json:"action"`
+		Job    struct {
+			ID          int64      `json:"id"`
+			RunID       int64      `json:"run_id"`
+			RunAttempt  int        `json:"run_attempt"`
+			Name        string     `json:"name"`
+			Status      string     `json:"status"`
+			Conclusion  string     `json:"conclusion"`
+			Labels      []string   `json:"labels"`
+			HTMLURL     string     `json:"html_url"`
+			StartedAt   *time.Time `json:"started_at"`
+			CompletedAt *time.Time `json:"completed_at"`
+		} `json:"workflow_job"`
+	}
+	if err := e.decode("workflow_job", &p); err != nil {
+		return nil, err
+	}
+	j := &p.Job
+	return &WorkflowJobEvent{Action: p.Action, Job: WorkflowJob{
+		ID: j.ID, RunID: j.RunID, Attempt: j.RunAttempt, Name: j.Name, Status: j.Status, Conclusion: j.Conclusion,
+		Labels: j.Labels, HTMLURL: j.HTMLURL, StartedAt: timeOrZero(j.StartedAt), CompletedAt: timeOrZero(j.CompletedAt),
+	}}, nil
+}

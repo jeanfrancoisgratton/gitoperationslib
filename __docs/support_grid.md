@@ -199,15 +199,16 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Organisation / workspace webhooks | ✅† | ✅† | ✅† |
 | Webhook IDs | ✅ | ✅ | ⚠️ derived from Bitbucket's UUIDs |
 | Ping (test delivery) | ⚠️ repositories only; a `push` event | ✅ | ❌ |
-| Secret (signed deliveries) | ✅ | ✅ | ✅ |
+| Secret (signed deliveries) | ⚠️ set when creating; its API cannot change it, so `Edit` refuses | ✅ | ✅ |
 | JSON payloads | ✅ | ✅ | ✅ |
 | Form-encoded payloads | ✅ | ✅ | ❌ |
 | Branch filter | ✅ | ❌ | ❌ |
-| Authorization header | ✅ | ❌ | ❌ |
+| Authorization header | ⚠️ cannot be removed; reported as present or not | ❌ | ❌ |
+| Webhook types (`HookType`) | ⚠️ Slack, Discord, Teams and others; Telegram, Matrix, Packagist and SourceHut can only be read, as its API drops their settings | ❌ | ❌ |
 | Unknown event names | ⚠️ dropped by the server, reported as an error | ✅ rejected | ✅ rejected |
 | Target URL | any | any | must resolve in DNS |
 | User webhooks: list, get, create, edit, delete (`UserHooks`) | ✅ | ❌ | ❌ |
-| System webhooks: list, get, edit, delete (`SiteHooks`) | ✅ site admins; create in the web interface (the API's way is undocumented) | ❌ | ❌ |
+| System webhooks: list, get, create, edit, delete (`SiteHooks`) | ✅ site admins; creating relies on an undocumented flag, and the result is checked | ❌ | ❌ |
 | Default webhooks: create, get, edit, delete (`SiteHooks`) | ✅ site admins; no listing in Forgejo's API | ❌ | ❌ |
 | Skipping the certificate check (`InsecureSSL`) | ❌ an instance setting | ✅ | ✅ |
 | Delivery history and redelivery (`HookDeliveries`) | ❌ not in Forgejo's API | ✅† | ❌ not in Bitbucket's API |
@@ -223,10 +224,11 @@ Events (`HookEvent`):
 | `release` | ✅ | ✅ | ❌ |
 | `issues`, `issue_comment` | ✅ | ✅ | ❌ |
 | `pull_request` | ✅ | ✅ | ✅ `pullrequest:created/updated/fulfilled/rejected` |
-| `pull_request_review` | ✅ three review events | ✅ | ✅ approvals and change requests |
+| `pull_request_review` | ✅ approvals and rejections | ✅ | ✅ approvals and change requests |
+| `workflow_run`, `workflow_job` | ⚠️ from 17: seven events each, one per status; `ErrNotSupported` below | ✅ | ❌ |
 | `repository` | ✅ | ✅ | ✅ `repo:updated` |
 | `wiki` | ✅ | ✅ `gollum` | ❌ |
-| Everything (`HookEventAll`) | ⚠️ the events the library knows | ✅ wildcard | ⚠️ the events the library knows |
+| Everything (`HookEventAll`) | ⚠️ the events the library knows: `workflow_*` from 17, `action_run_*` below | ✅ wildcard | ⚠️ the events the library knows |
 | Backend-specific names | ✅ passed through | ✅ passed through | ✅ keys containing `:` passed through |
 
 ## Receiving webhooks (`webhook` package)
@@ -243,6 +245,7 @@ Events (`HookEvent`):
 | `Review()` | ✅ | ✅† from documentation | ⚠️ from documentation |
 | `ReviewComment()` | ❌ no such event | ✅† from documentation | ⚠️ from documentation |
 | `Create()`, `Delete()` | ✅ | ✅† from documentation | ❌ reported as a push |
+| `WorkflowRun()`, `WorkflowJob()` | ✅ from 17; real deliveries | ✅ real deliveries | ❌ |
 | Form-encoded deliveries | ✅ | ✅ | — |
 | Checked against live deliveries | ✅ | ✅ (real signatures) | ❌ synthetic fixtures |
 

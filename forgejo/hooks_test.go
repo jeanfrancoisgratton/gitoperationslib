@@ -16,15 +16,55 @@ import (
 )
 
 func TestHookEventTranslation(t *testing.T) {
+	c := &Client{version: Version{15, 0, 11}}
 	in := []gitoperationslib.HookEvent{gitoperationslib.HookEventPush, gitoperationslib.HookEventPullRequestReview, "package"}
-	got := toForgejoEvents(in)
-	want := []string{"push", "pull_request_review_approved", "pull_request_review_rejected", "pull_request_review_comment", "package"}
-	if !slices.Equal(got, want) {
+	got, err := c.toForgejoEvents(in, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"push", "pull_request_review", "package"}; !slices.Equal(got, want) {
 		t.Errorf("toForgejoEvents = %v", got)
 	}
-	back := fromForgejoEvents(append(got, "issue_assign"))
-	if fmt.Sprint(back) != "[push pull_request_review package issue_assign]" {
+	// The server answers with the verdicts, and a comment's event stays apart.
+	back := fromForgejoEvents([]string{"push", "pull_request_review_approved", "pull_request_review_rejected", "pull_request_review_comment", "package"})
+	if fmt.Sprint(back) != "[push pull_request_review pull_request_review_comment package]" {
 		t.Errorf("fromForgejoEvents = %v", back)
+	}
+}
+
+func TestWorkflowHookEvents(t *testing.T) {
+	workflow := []gitoperationslib.HookEvent{gitoperationslib.HookEventWorkflowRun}
+	old, current := &Client{version: Version{16, 0, 7}}, &Client{version: Version{17, 0, 1}}
+	if _, err := old.toForgejoEvents(workflow, "test"); !errors.Is(err, gitoperationslib.ErrNotSupported) || !strings.Contains(err.Error(), "17.0.0") {
+		t.Errorf("before 17: %v", err)
+	}
+	got, err := current.toForgejoEvents(workflow, "test")
+	if err != nil || !slices.Equal(got, workflowRunEvents) {
+		t.Errorf("on 17: %v, %v", got, err)
+	}
+
+	all := []gitoperationslib.HookEvent{gitoperationslib.HookEventAll}
+	got, _ = old.toForgejoEvents(all, "test")
+	if !slices.Contains(got, "action_run_success") || slices.Contains(got, "workflow_run_success") {
+		t.Errorf("All before 17 = %v", got)
+	}
+	got, _ = current.toForgejoEvents(all, "test")
+	if slices.Contains(got, "action_run_success") || !slices.Contains(got, "workflow_run_success") || !slices.Contains(got, "workflow_job_waiting") {
+		t.Errorf("All on 17 = %v", got)
+	}
+
+	// Complete groups fold back, and part of one keeps Forgejo's names.
+	back := fromForgejoEvents(append(slices.Clone(workflowJobEvents), "workflow_run_failure"))
+	if fmt.Sprint(back) != "[workflow_job workflow_run_failure]" {
+		t.Errorf("fromForgejoEvents = %v", back)
+	}
+}
+
+func TestKeepEvents(t *testing.T) {
+	got := keepEvents([]string{"push", "issues", "issue_label", "pull_request", "pull_request_review_approved", "pull_request_review_rejected", "pull_request_review_comment", "pull_request_comment"})
+	want := []string{"push", "issues_only", "issue_label", "pull_request_only", "pull_request_review", "pull_request_comment"}
+	if !slices.Equal(got, want) {
+		t.Errorf("keepEvents = %v", got)
 	}
 }
 
@@ -40,14 +80,15 @@ func TestWebhooksRequests(t *testing.T) {
 		case r.Method == http.MethodDelete, strings.HasSuffix(r.URL.Path, "/tests"):
 			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/hooks"):
-			io.WriteString(w, `[{"id":7,"config":{"url":"https://h/x","content_type":"json"},"events":["push"],"active":true}]`)
+			io.WriteString(w, `[{"id":7,"url":"https://h/x","content_type":"json","events":["push"],"active":true}]`)
 		default:
 			// Echo the requested events, as Forgejo does for known ones.
 			events, _ := json.Marshal(body["events"])
+			events = []byte(strings.ReplaceAll(string(events), `"pull_request_review"`, `"pull_request_review_approved","pull_request_review_rejected"`))
 			if body["events"] == nil {
 				events = []byte(`["push"]`)
 			}
-			fmt.Fprintf(w, `{"id":7,"config":{"url":"https://h/x","content_type":"form"},"events":%s,"active":false,"branch_filter":"main"}`, events)
+			fmt.Fprintf(w, `{"id":7,"url":"https://h/x","content_type":"form","events":%s,"active":false,"branch_filter":"main"}`, events)
 		}
 	})
 	ctx := context.Background()
@@ -78,7 +119,7 @@ func TestWebhooksRequests(t *testing.T) {
 		created.ContentType != gitoperationslib.HookContentForm || created.BranchFilter != "main" {
 		t.Errorf("created = %+v", created)
 	}
-	_, err = hooks.Edit(ctx, org, 7, gitoperationslib.EditWebhookOptions{Secret: gitoperationslib.Ptr("new"), Active: gitoperationslib.Ptr(false)})
+	_, err = hooks.Edit(ctx, org, 7, gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(false)})
 	check(err)
 	check(hooks.Ping(ctx, repo, 7))
 	check(hooks.Delete(ctx, org, 7))
@@ -88,6 +129,7 @@ func TestWebhooksRequests(t *testing.T) {
 		"GET /api/v1/orgs/acme/hooks",
 		"GET /api/v1/repos/acme/widget/hooks/7",
 		"POST /api/v1/repos/acme/widget/hooks",
+		"GET /api/v1/orgs/acme/hooks/7",
 		"PATCH /api/v1/orgs/acme/hooks/7",
 		"POST /api/v1/repos/acme/widget/hooks/7/tests",
 		"DELETE /api/v1/orgs/acme/hooks/7",
@@ -98,8 +140,9 @@ func TestWebhooksRequests(t *testing.T) {
 	wantBodies := map[int]map[string]any{
 		3: {"type": "forgejo", "active": true, "branch_filter": "main", "authorization_header": "Bearer x",
 			"config": map[string]any{"url": "https://h/x", "content_type": "json", "secret": "s"},
-			"events": []any{"push", "pull_request_review_approved", "pull_request_review_rejected", "pull_request_review_comment"}},
-		4: {"active": false, "config": map[string]any{"secret": "new"}},
+			"events": []any{"push", "pull_request_review"}},
+		// A PATCH without events and a branch filter would reset them.
+		5: {"active": false, "events": []any{"push"}, "branch_filter": "main"},
 	}
 	for i, want := range wantBodies {
 		if fmt.Sprint(bodies[i]) != fmt.Sprint(want) {
@@ -121,7 +164,7 @@ func hookPages(w http.ResponseWriter, r *http.Request, ids ...int) {
 	w.Header().Set("X-Total-Count", strconv.Itoa(len(ids)))
 	var items []string
 	for i := (page - 1) * limit; i < page*limit && i < len(ids); i++ {
-		items = append(items, fmt.Sprintf(`{"id":%d,"config":{"url":"https://h/x"},"events":["push"],"active":true}`, ids[i]))
+		items = append(items, fmt.Sprintf(`{"id":%d,"url":"https://h/x","events":["push"],"active":true}`, ids[i]))
 	}
 	io.WriteString(w, "["+strings.Join(items, ",")+"]")
 }
@@ -136,7 +179,7 @@ func TestUserWebhooks(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/user/hooks":
 			hookPages(w, r, 1, 2, 3, 4, 5)
 		default:
-			io.WriteString(w, `{"id":7,"config":{"url":"https://h/x"},"events":["push"],"active":true}`)
+			io.WriteString(w, `{"id":7,"url":"https://h/x","events":["push"],"active":true}`)
 		}
 	})
 	ctx := context.Background()
@@ -172,7 +215,7 @@ func TestUserWebhooks(t *testing.T) {
 	if err := hooks.Delete(ctx, 7); err != nil {
 		t.Error(err)
 	}
-	want := []string{"GET /api/v1/user/hooks/7", "POST /api/v1/user/hooks", "PATCH /api/v1/user/hooks/7", "DELETE /api/v1/user/hooks/7"}
+	want := []string{"GET /api/v1/user/hooks/7", "POST /api/v1/user/hooks", "GET /api/v1/user/hooks/7", "PATCH /api/v1/user/hooks/7", "DELETE /api/v1/user/hooks/7"}
 	if !slices.Equal(requests, want) {
 		t.Errorf("requests = %v\nwant       %v", requests, want)
 	}
@@ -196,7 +239,7 @@ func fakeSiteHooks(t *testing.T) (*Client, *[]string) {
 		case r.Method == http.MethodDelete:
 			w.WriteHeader(http.StatusNoContent)
 		default:
-			io.WriteString(w, `{"id":3,"config":{"url":"https://h/x"},"events":["push"],"active":true}`)
+			io.WriteString(w, `{"id":3,"url":"https://h/x","events":["push"],"active":true}`)
 		}
 	})
 	return c, &writes
@@ -303,13 +346,99 @@ func TestSiteHooksForbidden(t *testing.T) {
 }
 
 func TestWebhookWildcard(t *testing.T) {
-	if got := toForgejoEvents([]gitoperationslib.HookEvent{gitoperationslib.HookEventAll}); !slices.Equal(got, allHookEvents) {
-		t.Errorf("toForgejoEvents(*) = %v", got)
+	got, err := (&Client{version: Version{15, 0, 11}}).toForgejoEvents([]gitoperationslib.HookEvent{gitoperationslib.HookEventAll}, "test")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range append([]string{"push", "issues", "release", "pull_request_sync"}, reviewHookEvents...) {
-		if !slices.Contains(allHookEvents, want) {
-			t.Errorf("allHookEvents lacks %s", want)
+	for _, want := range []string{"push", "issues", "release", "pull_request_sync", "pull_request_review"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("HookEventAll lacks %s", want)
 		}
+	}
+}
+
+func TestEditRefusesWhatForgejoIgnores(t *testing.T) {
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected request %s %s", r.Method, r.URL) })
+	hooks := c.UserWebhooks()
+	for name, opts := range map[string]gitoperationslib.EditWebhookOptions{
+		"secret":     {Secret: gitoperationslib.Ptr("new")},
+		"clear auth": {AuthorizationHeader: gitoperationslib.Ptr("")},
+	} {
+		if _, err := hooks.Edit(context.Background(), 7, opts); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}
+
+func TestCreateHookTypes(t *testing.T) {
+	var body map[string]any
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&body)
+		io.WriteString(w, `{"id":1,"type":"slack","url":"https://h","events":["push"],"active":true,"authorization_header":"Bearer x","metadata":{"channel":"#c","username":"u","icon_url":"","color":""}}`)
+	})
+	hooks := c.UserWebhooks()
+	ctx := context.Background()
+	push := []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}
+	hook, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{
+		Type: gitoperationslib.HookTypeSlack, URL: "https://h", Events: push,
+		Slack: &gitoperationslib.SlackHookSettings{Channel: "#c", Username: "u"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config := body["config"].(map[string]any); body["type"] != "slack" || config["channel"] != "#c" || config["username"] != "u" {
+		t.Errorf("body = %v", body)
+	}
+	if hook.Type != gitoperationslib.HookTypeSlack || hook.Slack == nil || hook.Slack.Channel != "#c" || !hook.HasAuthorizationHeader {
+		t.Errorf("hook = %+v", hook)
+	}
+	if out, _ := json.Marshal(hook); strings.Contains(string(out), "Bearer") {
+		t.Errorf("the header's value leaks: %s", out)
+	}
+	if _, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{Type: gitoperationslib.HookTypeTelegram, URL: "https://h", Events: push}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("Telegram: %v", err)
+	}
+	if _, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{Type: gitoperationslib.HookTypeSlack, URL: "https://h", Events: push}); err == nil {
+		t.Error("Slack without settings accepted")
+	}
+	if _, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{URL: "https://h", Events: push, Slack: &gitoperationslib.SlackHookSettings{Channel: "#c"}}); err == nil {
+		t.Error("Slack settings on a Forgejo hook accepted")
+	}
+}
+
+func TestSystemWebhookCreate(t *testing.T) {
+	listed, deleted := true, false
+	var config map[string]any
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			config = body["config"].(map[string]any)
+			io.WriteString(w, `{"id":3,"url":"https://h","events":["push"],"active":true}`)
+		case http.MethodDelete:
+			deleted = true
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			if listed {
+				hookPages(w, r, 3)
+			} else {
+				hookPages(w, r)
+			}
+		}
+	})
+	opts := gitoperationslib.CreateWebhookOptions{URL: "https://h", Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}}
+	hook, err := c.SystemWebhooks().Create(context.Background(), opts)
+	if err != nil || hook.ID != 3 || deleted {
+		t.Errorf("Create = %+v, %v, deleted %v", hook, err, deleted)
+	}
+	if config["is_system_webhook"] != "true" {
+		t.Errorf("config = %v", config)
+	}
+	// Should the flag stop working, no default hook is left behind.
+	listed = false
+	if hook, err = c.SystemWebhooks().Create(context.Background(), opts); err == nil || hook != nil || !deleted {
+		t.Errorf("Create = %+v, %v, deleted %v", hook, err, deleted)
 	}
 }
 
@@ -317,7 +446,7 @@ func TestWebhookWildcard(t *testing.T) {
 // wildcard is no error, but one the caller named still is.
 func TestWebhookWildcardDroppedEvents(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{"id":1,"active":true,"config":{"url":"https://h","content_type":"json"},"events":["push","issues"]}`)
+		io.WriteString(w, `{"id":1,"active":true,"url":"https://h","content_type":"json","events":["push","issues"]}`)
 	})
 	ctx := context.Background()
 	scope := gitoperationslib.RepoHooks("acme", "widget")
@@ -341,10 +470,10 @@ func TestWebhookWildcardDroppedEvents(t *testing.T) {
 
 func TestWebhookInsecureSSLNotSupported(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch {
+		if r.Method != http.MethodPatch && r.Method != http.MethodGet {
 			t.Errorf("request sent: %s %s", r.Method, r.URL)
 		}
-		io.WriteString(w, `{"id":1,"config":{"url":"https://h"},"events":["push"]}`)
+		io.WriteString(w, `{"id":1,"url":"https://h","events":["push"]}`)
 	})
 	ctx := context.Background()
 	scope := gitoperationslib.RepoHooks("acme", "widget")
@@ -365,7 +494,7 @@ func TestWebhookDroppedEvents(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
 		// Forgejo answers 201 but keeps only the events it knows.
 		w.WriteHeader(http.StatusCreated)
-		io.WriteString(w, `{"id":9,"config":{"url":"https://h/x","content_type":"json"},"events":["push"],"active":true}`)
+		io.WriteString(w, `{"id":9,"url":"https://h/x","content_type":"json","events":["push"],"active":true}`)
 	})
 	hook, err := c.Webhooks().Create(context.Background(), gitoperationslib.RepoHooks("acme", "widget"), gitoperationslib.CreateWebhookOptions{
 		URL: "https://h/x", Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush, "no_such_event"},

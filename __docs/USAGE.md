@@ -1668,17 +1668,21 @@ gol.OrgHooks("acme")            // HookScope{Owner: "acme"}
 ```go
 type Webhook struct {
 	ID           int64 // Bitbucket: derived from the webhook's UUID (stable)
+	Type         HookType // Forgejo only, e.g. HookTypeSlack
 	URL          string
 	ContentType  HookContentType
 	Events       []HookEvent
 	Active       bool
 	BranchFilter string // Forgejo only
+	HasAuthorizationHeader bool // Forgejo only; the value is a credential, so it is left out
+	Slack        *SlackHookSettings // HookTypeSlack only
 	InsecureSSL  bool   // GitHub and Bitbucket: deliveries skip the certificate check
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
 
 type CreateWebhookOptions struct {
+	Type                HookType        // Forgejo only; zero value: HookTypeForgejo
 	URL                 string          // required
 	ContentType         HookContentType // zero value: json
 	Secret              string          // signs deliveries; strongly recommended
@@ -1686,26 +1690,43 @@ type CreateWebhookOptions struct {
 	Active              *bool           // nil: active
 	BranchFilter        string          // Forgejo only, e.g. "{main,release/*}"
 	AuthorizationHeader string          // Forgejo only, sent with every delivery
+	Slack               *SlackHookSettings // required with HookTypeSlack, refused otherwise
 	InsecureSSL         bool            // GitHub and Bitbucket; true returns ErrNotSupported on Forgejo
 }
 
 type EditWebhookOptions struct {
 	URL                 *string
 	ContentType         *HookContentType
-	Secret              *string
+	Secret              *string // ErrNotSupported on Forgejo, see below
 	Events              []HookEvent // nil: unchanged; non-empty: replaces the list (empty non-nil is refused)
 	Active              *bool
 	BranchFilter        *string // Forgejo only
-	AuthorizationHeader *string // Forgejo only
+	AuthorizationHeader *string // Forgejo only; an empty value returns ErrNotSupported, see below
+	Slack               *SlackHookSettings // replaces all of them; Channel is required
 	InsecureSSL         *bool   // kept by edits that do not name it
 }
+
+type SlackHookSettings struct {
+	Channel  string // required
+	Username string
+	IconURL  string
+	Color    string
+}
 ```
+
+**Editing on Forgejo.** Its API has traps, which `Edit` handles:
+
+- A `PATCH` without events and a branch filter resets them to `push` and none. `Edit` reads the webhook first and sends back what you did not change, so it takes two requests and is not atomic: a change made between them is overwritten.
+- A `PATCH` ignores a new secret, and deliveries stay signed with the old one, so `Secret` returns `ErrNotSupported`. To rotate a secret, create a new webhook and delete the old one.
+- A `PATCH` cannot remove the authorization header, so an empty value returns `ErrNotSupported`. Replacing it works.
+
+**Webhook types (Forgejo).** `Type` picks the format of the deliveries. `HookTypeForgejo`, `HookTypeGitea`, `HookTypeGogs`, `HookTypeSlack` (also for Mattermost), `HookTypeDiscord`, `HookTypeDingTalk`, `HookTypeMSTeams`, `HookTypeFeishu` and `HookTypeWeChatWork` can be created. `HookTypeTelegram`, `HookTypeMatrix`, `HookTypePackagist` and `HookTypeSourceHutBuilds` can only be read, and creating one returns `ErrNotSupported`: Forgejo's API drops their settings, which would leave a webhook that cannot deliver. The other forges return `ErrNotSupported` for any `Type`.
 
 The secret is never returned by the server. Hook URLs can embed credentials, so avoid logging `Webhook.URL`. `InsecureSSL` lets a third party read or alter deliveries, so keep it for targets you control. On Forgejo, it is the instance's `SKIP_TLS_VERIFY` setting.
 
 ### 14.3 Events
 
-`gol.HookEventAll` subscribes to everything. Only GitHub has a wildcard: it also covers events added later, and is reported back as `*`. On Forgejo and Bitbucket the library sends the events it knows, and they come back one by one, so an event a later server version adds is not included.
+`gol.HookEventAll` subscribes to everything. Only GitHub has a wildcard: it also covers events added later, and is reported back as `*`. On Forgejo and Bitbucket the library sends the events it knows, and they come back one by one, so an event a later server version adds is not included. On Forgejo 17 and later that includes `workflow_*` and not `action_run_*`, which 17 deprecates and which would notify a second time for each run; below 17 it includes `action_run_*`.
 
 The constants use GitHub's names. The library translates them for the other forges:
 
@@ -1719,11 +1740,13 @@ The constants use GitHub's names. The library translates them for the other forg
 | `HookEventIssues` | `issues` | `issues` | ❌ |
 | `HookEventIssueComment` | `issue_comment` | `issue_comment` | ❌ |
 | `HookEventPullRequest` | `pull_request` | `pull_request` | `pullrequest:created`, `:updated`, `:fulfilled`, `:rejected` |
-| `HookEventPullRequestReview` | `pull_request_review_approved`, `_rejected`, `_comment` | `pull_request_review` | `pullrequest:approved`, `:unapproved`, `:changes_request_created`, `:changes_request_removed` |
+| `HookEventPullRequestReview` | `pull_request_review`, reported as `pull_request_review_approved`, `_rejected` | `pull_request_review` | `pullrequest:approved`, `:unapproved`, `:changes_request_created`, `:changes_request_removed` |
 | `HookEventRepository` | `repository` | `repository` | `repo:updated` |
 | `HookEventWiki` | `wiki` | `gollum` | ❌ |
+| `HookEventWorkflowRun` | Forgejo 17: `workflow_run_blocked`, `_cancelled`, `_failure`, `_running`, `_skipped`, `_success`, `_waiting`; older: ❌ | `workflow_run` | ❌ |
+| `HookEventWorkflowJob` | Forgejo 17: the same seven, as `workflow_job_*`; older: ❌ | `workflow_job` | ❌ |
 
-Any other value is passed to the server unchanged, so backend-specific events still work: for example Forgejo's `issue_assign`, GitHub's `workflow_run`, or any Bitbucket key containing `:`. When reading hooks back, groups of translated names are folded back into the constants. Names the library does not translate keep the forge's own spelling. For example, Forgejo may add finer-grained events implied by the ones you asked for, such as `issue_assign` with `issues`.
+Any other value is passed to the server unchanged, so backend-specific events still work: for example Forgejo's `issue_assign` or `workflow_run_failure`, or any Bitbucket key containing `:`. When reading hooks back, groups of translated names are folded back into the constants. Names the library does not translate keep the forge's own spelling. For example, Forgejo may add finer-grained events implied by the ones you asked for, such as `issue_assign` with `issues`.
 
 What happens with an unknown event name:
 - **Forgejo** silently drops it. `Create` and `Edit` then return the webhook **and** an error naming the dropped events.
@@ -1781,7 +1804,7 @@ Beyond repositories and organisations, Forgejo has three more kinds of webhook. 
 | Kind | Fires for | Access | List | Get, edit, delete | Create |
 |---|---|---|---|---|---|
 | User (`UserHooks`, `CapUserWebhooks`) | the user's repositories | your own only | ✅ | ✅ | ✅ |
-| System (`SiteHooks`, `CapSystemWebhooks`) | every repository of the instance | site admin | ✅ | ✅ | ❌ not in the library |
+| System (`SiteHooks`, `CapSystemWebhooks`) | every repository of the instance | site admin | ✅ | ✅ | ✅ |
 | Default (`SiteHooks`, `CapSystemWebhooks`) | nothing itself: it is copied into each new repository | site admin | ❌ no API | ✅ | ✅ |
 
 ```go
@@ -1798,9 +1821,10 @@ type UserWebhooks interface {
 	Edit(ctx, id int64, opts EditWebhookOptions) (*Webhook, error)
 	Delete(ctx, id int64) error
 }
-type SystemWebhooks interface { // no Create
+type SystemWebhooks interface {
 	List(ctx, opts ListOptions) (Page[Webhook], error)
 	Get(ctx, id int64) (*Webhook, error)
+	Create(ctx, opts CreateWebhookOptions) (*Webhook, error)
 	Edit(ctx, id int64, opts EditWebhookOptions) (*Webhook, error)
 	Delete(ctx, id int64) error
 }
@@ -1831,7 +1855,7 @@ for h, err := range gol.All(ctx, gol.ListOptions{}, site.SystemWebhooks().List) 
 ```
 
 Notes:
-- **The library does not create system webhooks.** Forgejo only offers it through an undocumented flag: `POST /admin/hooks` makes a default webhook unless `config` holds the string `"is_system_webhook": "true"`. Create them in the web interface: Site administration, Webhooks.
+- **Creating a system webhook relies on an undocumented flag:** `POST /admin/hooks` makes a default webhook unless `config` holds the string `"is_system_webhook": "true"`. The result was checked against a webhook made in the web interface, on 15.0.11 and 17.0.1. `Create` lists the system webhooks afterwards: should the flag stop working, it deletes the default webhook it got, which would otherwise be copied into each new repository, and returns an error.
 - **Default webhooks are copied once.** A new repository gets its own independent repository webhook. Existing repositories get nothing, and editing or deleting the default webhook leaves the copies as they are. Change those with `Webhooks()`.
 - **Each interface only reaches its own kind.** Forgejo's API addresses system and default webhooks at the same path, and its answers do not tell them apart. So get, edit and delete first list the system webhooks to check the kind, which costs one extra request per page of them. An ID of the other kind gives HTTP 404 and changes nothing.
 - **`Ping` has no equivalent here:** Forgejo offers no test delivery for these kinds.
@@ -2074,6 +2098,23 @@ The accessors for the other common events:
 | `ev.Review()` | `pull_request_review` | `*ReviewEvent` | ✅ | ✅ | ✅ |
 | `ev.ReviewComment()` | `pull_request_review_comment` | `*ReviewCommentEvent` | ❌ no such event | ✅ | ✅ |
 | `ev.Create()`, `ev.Delete()` | `create`, `delete` | `*RefEvent` | ✅ | ✅ | ❌ reported as a push |
+| `ev.WorkflowRun()` | `workflow_run` | `*WorkflowRunEvent` | ✅ from 17 | ✅ | ❌ |
+| `ev.WorkflowJob()` | `workflow_job` | `*WorkflowJobEvent` | ✅ from 17 | ✅ | ❌ |
+
+Forgejo names each workflow event after its status: `Name` is `workflow_run` or `workflow_job`, and `Key` keeps its name, such as `workflow_run_failure`. `Conclusion` says how a run or job ended on both forges, and is empty until then. `Status` and `Action` stay in each forge's own words. The older `action_run_*` events keep their names and have no accessor; `Repo` and `Sender` are set, and the rest is in `Payload`.
+
+```go
+type WorkflowRunEvent struct {
+	Action string // Forgejo: "new_run_attempt", "run_status_changed", "run_completed"; GitHub: "requested", "in_progress", "completed"
+	Run    WorkflowRun // ID, Number, Title, Workflow, Event, Branch, SHA, Status, Conclusion, Actor, HTMLURL, times
+}
+
+type WorkflowJobEvent struct {
+	Action string // Forgejo: "new_job_attempt", "job_status_changed", "job_completed"; GitHub: "queued", "in_progress", "waiting", "completed"
+	Job    WorkflowJob // ID, RunID, Attempt, Name, Status, Conclusion, Labels, HTMLURL, times (GitHub only)
+	Run    *WorkflowRun // Forgejo only; as it was at that moment, so its status can lag behind the job's
+}
+```
 
 ```go
 type IssuesEvent struct {

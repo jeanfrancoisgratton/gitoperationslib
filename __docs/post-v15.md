@@ -24,6 +24,13 @@ The swagger only describes the API: how these calls really behave is still to be
 - [ ] **103 →** **Filter pull requests by branch** (v16): `base` and `head` on `GET .../pulls`. `ListPROptions` only has `State` today. See what GitHub and Bitbucket offer before choosing the options' shape.
 - [ ] **104 →** **Lock and unlock an issue** (v17): `PUT` and `DELETE .../issues/{index}/lock`, type `IssueLockOption`. `Issue.Locked` can only be read today. GitHub also has this, Bitbucket has no issues.
 
+## Webhooks (done in 1.4.0)
+
+The swagger files do not show these, as they do not list event names. Checked on real servers.
+
+- [x] **112 →** **Workflow events** (v17): `workflow_run_*` and `workflow_job_*`, seven statuses each, and `action_run_*` deprecated, without `action_run_recover`. 15 and 16 drop them all. `HookEventWorkflowRun`, `HookEventWorkflowJob`, `HookEventAll` by version, `Event.WorkflowRun` and `Event.WorkflowJob`, tested with a runner against real deliveries. `workflow_run_skipped` was not seen delivered. Prod's `action_run_*` subscriptions are unchanged: migrating them is a separate decision, as receivers must handle the new format first.
+- [x] **113 →** `Hook.config` is marked deprecated (v17). The library reads the top-level `url` and `content_type`, present on 15, 16 and 17. Creating and editing still have to use `config`, as `CreateHookOption` has nothing else.
+
 ## Small additions
 
 - [ ] **105 →** New fields to report (v16): `AccessToken.created_at`, `Organization.created`, `PublicKey.updated_at` and `verified` (`SSHKey`). Zero on older servers, which needs no version check.

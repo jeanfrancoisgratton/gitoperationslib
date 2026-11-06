@@ -117,6 +117,9 @@ func (w webhooks) Create(ctx context.Context, scope gitoperationslib.HookScope, 
 	if opts.AuthorizationHeader != "" {
 		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "authorization headers")
 	}
+	if opts.Type != "" || opts.Slack != nil {
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "webhook types")
+	}
 	ct := opts.ContentType
 	if ct == "" {
 		ct = gitoperationslib.HookContentJSON
@@ -150,6 +153,9 @@ func (w webhooks) Edit(ctx context.Context, scope gitoperationslib.HookScope, id
 	}
 	if opts.AuthorizationHeader != nil {
 		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "authorization headers")
+	}
+	if opts.Slack != nil {
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "webhook types")
 	}
 	body := &gh.Hook{Active: opts.Active}
 	if opts.Events != nil {
