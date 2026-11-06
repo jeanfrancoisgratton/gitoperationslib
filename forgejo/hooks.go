@@ -166,6 +166,30 @@ func fromForgejoEvents(names []string) []gitoperationslib.HookEvent {
 	return out
 }
 
+// fixedEvent reports an event a PATCH cannot change: editHook never reads these,
+// and answers 200 all the same, so they stay as the hook was created (checked on
+// 15.0.11, 16.0.7 and 17.0.1).
+func fixedEvent(name string) bool {
+	return name == "package" || strings.HasPrefix(name, "action_run_") ||
+		strings.HasPrefix(name, "workflow_run_") || strings.HasPrefix(name, "workflow_job_")
+}
+
+// fixedEventChanges names what a PATCH to requested could not do to a hook on
+// current.
+func fixedEventChanges(current, requested []string) (added, removed []string) {
+	for _, e := range requested {
+		if fixedEvent(e) && !slices.Contains(current, e) && !slices.Contains(added, e) {
+			added = append(added, e)
+		}
+	}
+	for _, e := range current {
+		if fixedEvent(e) && !slices.Contains(requested, e) {
+			removed = append(removed, e)
+		}
+	}
+	return added, removed
+}
+
 // keepEvents turns the events a hook reports into what makes a PATCH leave them
 // as they are. Forgejo reports "issues" for the issue event alone, but takes that
 // name as all of them; likewise "pull_request". A verdict's name is dropped, and
@@ -342,6 +366,16 @@ func (s hookService) edit(ctx context.Context, id int64, opts gitoperationslib.E
 	}
 	if opts.Events == nil {
 		events = keepEvents(cur.Events)
+	} else if added, removed := fixedEventChanges(cur.Events, events); len(added)+len(removed) > 0 {
+		var changes []string
+		if len(added) > 0 {
+			changes = append(changes, "adding "+strings.Join(added, ", "))
+		}
+		if len(removed) > 0 {
+			changes = append(changes, "removing "+strings.Join(removed, ", "))
+		}
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op,
+			strings.Join(changes, " and ")+" on an existing webhook, which its API ignores: leave these as they are in Events, or create a new webhook and delete this one")
 	}
 	body := hookBody{
 		Active:              opts.Active,

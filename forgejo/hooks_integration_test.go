@@ -5,7 +5,9 @@ package forgejo
 import (
 	"context"
 	"errors"
+	"net/http"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -131,6 +133,10 @@ func TestIntegrationWorkflowHookEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// It already has every event an edit cannot change, so asking again is fine.
+	if _, err := hooks.Edit(ctx, all.ID, gitoperationslib.EditWebhookOptions{Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventAll}}); err != nil {
+		t.Errorf("Edit(everything) on a hook with everything: %v", err)
+	}
 	if c.Version().Compare(workflowEventsVersion) < 0 {
 		if _, err := create(gitoperationslib.HookEventWorkflowRun); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("before 17: %v", err)
@@ -211,5 +217,61 @@ func TestIntegrationSystemWebhookCreate(t *testing.T) {
 	}
 	if _, err := system.Get(ctx, hook.ID); err != nil {
 		t.Errorf("Get after the edit: %v", err)
+	}
+}
+
+// TestIntegrationHookEditFixedEvents checks both halves: the library refuses to
+// change these events, and the server really does ignore a PATCH that tries. If
+// the second part starts failing, Forgejo fixed it, and the refusal can go.
+func TestIntegrationHookEditFixedEvents(t *testing.T) {
+	ctx, c := adminEnv(t)
+	hooks := c.UserWebhooks()
+	hook, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{URL: "https://example.invalid/fixed", Events: []gitoperationslib.HookEvent{"push", "package"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = hooks.Delete(context.Background(), hook.ID) })
+
+	for name, events := range map[string][]gitoperationslib.HookEvent{
+		"removing": {"push"},
+		"adding":   {"push", "package", "action_run_failure"},
+	} {
+		if _, err := hooks.Edit(ctx, hook.ID, gitoperationslib.EditWebhookOptions{Events: events}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	got, err := hooks.Get(ctx, hook.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(sortedEvents(got), sortedEvents(hook)) {
+		t.Errorf("a refused edit changed the events to %v", got.Events)
+	}
+
+	// Everything else still changes.
+	edited, err := hooks.Edit(ctx, hook.ID, gitoperationslib.EditWebhookOptions{Events: []gitoperationslib.HookEvent{"release", "package"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(sortedEvents(edited), []gitoperationslib.HookEvent{"package", "release"}) {
+		t.Errorf("edited = %v", edited.Events)
+	}
+
+	// The server, without the library.
+	path := "user/hooks/" + strconv.FormatInt(hook.ID, 10)
+	var out struct {
+		Events []string `json:"events"`
+	}
+	if _, err := c.api.Do(ctx, http.MethodPatch, path, nil, map[string]any{"events": []string{"release"}}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(out.Events, "package") {
+		t.Errorf("a PATCH removed package: %v. Forgejo may have fixed this: see fixedEvent", out.Events)
+	}
+	if _, err := c.api.Do(ctx, http.MethodPatch, path, nil, map[string]any{"events": []string{"release", "package", "action_run_failure"}}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(out.Events, "action_run_failure") {
+		t.Errorf("a PATCH added action_run_failure: %v. Forgejo may have fixed this: see fixedEvent", out.Events)
 	}
 }

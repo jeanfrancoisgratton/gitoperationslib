@@ -206,7 +206,11 @@ type CreateWebhookOptions struct {
 }
 
 // EditWebhookOptions changes a webhook. Nil fields are left unchanged; a
-// non-nil Events replaces the subscription list.
+// non-nil Events replaces the subscription list. On Forgejo, its API cannot
+// change the package, action_run_*, workflow_run_* and workflow_job_* events of
+// an existing webhook: Events must keep those as they are, or Edit returns
+// ErrNotSupported and changes nothing. To change them, create a new webhook and
+// delete this one.
 //
 // On Forgejo, Edit reads the webhook first, as a PATCH without events and a
 // branch filter resets them to "push" and none. It is not atomic: a change made

@@ -6,6 +6,16 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [1.5.1] — 2026-11-06
+
+### Fixed
+- **`Edit` on Forgejo silently failed to change some events.** Forgejo's `PATCH` ignores `package`, `action_run_*`,
+  `workflow_run_*` and `workflow_job_*`, and answers 200, on 15, 16 and 17. Removing one reported success while it stayed
+  subscribed, and adding one reported a misleading "unknown event". If `Events` would add or remove any of them, `Edit`
+  now returns `ErrNotSupported` naming them, before changing anything. Code that replaces the list of a webhook holding
+  these events must keep them in `Events`. This also applies to `HookEventAll`, and to `UserWebhooks`, `SystemWebhooks`
+  and `DefaultWebhooks`. To change these events, create a new webhook and delete the old one.
+
 ## [1.5.0] — 2026-11-05
 
 What Forgejo's API gained after 15, from `__docs/post-v15.md`, except workflow runs, which are deferred (item 100).

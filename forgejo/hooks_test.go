@@ -463,9 +463,75 @@ func TestWebhookWildcardDroppedEvents(t *testing.T) {
 	if err := create(gitoperationslib.HookEventAll, "no_such_event"); err == nil {
 		t.Error("an unknown event named next to the wildcard went unreported")
 	}
-	if _, err := c.Webhooks().Edit(ctx, scope, 1, gitoperationslib.EditWebhookOptions{Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventAll}}); err != nil {
+	// The fake's hook is on "push" only, and "everything" includes events an edit
+	// cannot add.
+	_, err := c.Webhooks().Edit(ctx, scope, 1, gitoperationslib.EditWebhookOptions{Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventAll}})
+	if !errors.Is(err, gitoperationslib.ErrNotSupported) || !strings.Contains(err.Error(), "package") {
 		t.Errorf("Edit(everything): %v", err)
 	}
+}
+
+func TestEditFixedEvents(t *testing.T) {
+	stored := `["push","package","action_run_failure","workflow_run_success"]`
+	var patched []any
+	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch {
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			patched, _ = body["events"].([]any)
+			stored, _ = marshalString(patched)
+		}
+		fmt.Fprintf(w, `{"id":1,"url":"https://h","events":%s}`, stored)
+	})
+	c.version = Version{17, 0, 1}
+	ctx := context.Background()
+	scope := gitoperationslib.RepoHooks("acme", "widget")
+	edit := func(events ...gitoperationslib.HookEvent) error {
+		_, err := c.Webhooks().Edit(ctx, scope, 1, gitoperationslib.EditWebhookOptions{Events: events})
+		return err
+	}
+	for _, tc := range []struct {
+		name   string
+		events []gitoperationslib.HookEvent
+		want   []string
+	}{
+		{"removing one", []gitoperationslib.HookEvent{"push", "package", "action_run_failure"}, []string{"removing workflow_run_success"}},
+		{"adding one", []gitoperationslib.HookEvent{"push", "package", "action_run_failure", "workflow_run_success", "workflow_job_failure"}, []string{"adding workflow_job_failure"}},
+		{"both", []gitoperationslib.HookEvent{"push", "package", "workflow_run_success", "action_run_success"}, []string{"adding action_run_success", "removing action_run_failure"}},
+		{"replacing the list", []gitoperationslib.HookEvent{"issues"}, []string{"removing package, action_run_failure, workflow_run_success"}},
+		{"a whole group", []gitoperationslib.HookEvent{"push", "package", "action_run_failure", "workflow_run_success", gitoperationslib.HookEventWorkflowJob}, []string{"adding workflow_job_blocked"}},
+	} {
+		err := edit(tc.events...)
+		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("%s: err = %v", tc.name, err)
+			continue
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: %v lacks %q", tc.name, err, want)
+			}
+		}
+	}
+	if patched != nil {
+		t.Errorf("a refused edit sent %v", patched)
+	}
+
+	// The others change freely, with these kept as they are.
+	if err := edit("issues", "package", "action_run_failure", "workflow_run_success"); err != nil {
+		t.Errorf("changing the others: %v", err)
+	}
+	if len(patched) != 4 {
+		t.Errorf("sent %v", patched)
+	}
+	// Editing something else leaves them alone.
+	if _, err := c.Webhooks().Edit(ctx, scope, 1, gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(false)}); err != nil {
+		t.Errorf("no Events: %v", err)
+	}
+}
+
+func marshalString(v any) (string, error) {
+	out, err := json.Marshal(v)
+	return string(out), err
 }
 
 func TestWebhookInsecureSSLNotSupported(t *testing.T) {

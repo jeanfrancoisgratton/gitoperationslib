@@ -208,6 +208,7 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Branch filter | ✅ | ❌ | ❌ |
 | Authorization header | ⚠️ cannot be removed; reported as present or not | ❌ | ❌ |
 | Webhook types (`HookType`) | ⚠️ Slack, Discord, Teams and others; Telegram, Matrix, Packagist and SourceHut can only be read, as its API drops their settings | ❌ | ❌ |
+| Editing the events of an existing webhook | ⚠️ not `package`, `action_run_*`, `workflow_*`: its API ignores those, so `Edit` refuses | ✅ | ✅ |
 | Unknown event names | ⚠️ dropped by the server, reported as an error | ✅ rejected | ✅ rejected |
 | Target URL | any | any | must resolve in DNS |
 | User webhooks: list, get, create, edit, delete (`UserHooks`) | ✅ | ❌ | ❌ |

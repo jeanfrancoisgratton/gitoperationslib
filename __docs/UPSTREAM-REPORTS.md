@@ -106,6 +106,7 @@ curl -X PATCH -H "$AUTH" -H 'Content-Type: application/json' -d '{"active": fals
 | no `branch_filter` | the filter is erased |
 | `"config": {"secret": "s2"}` | answers 200, and deliveries stay signed with `s1` |
 | `"authorization_header": ""` | answers 200, and the header stays |
+| `events` adding or removing `package`, `action_run_*` or `workflow_*` | answers 200, and those stay as they were |
 
 The secret is the serious one: someone rotating a leaked secret sees success while the old one stays valid.
 

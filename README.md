@@ -171,7 +171,7 @@ Differences worth knowing before you start:
 - **GitHub rulesets** stand in for both branch and tag protection. On free plans they only work on public repositories, and only teams (not individual users) can be exempted.
 - **Bitbucket** has no public login names. User fields hold the account's **nickname**, and inputs accept a nickname, an account ID or a `{UUID}`.
 - **Merge methods:** Forgejo has six, GitHub three (merge, squash, rebase) and Bitbucket five.
-- **Webhooks:** Forgejo silently drops event names it does not know, and the library reports them as an error. Its API cannot change a webhook's secret, so `Edit` refuses to. Workflow events need Forgejo 17. Only Forgejo has branch filters, authorization headers and webhook types.
+- **Webhooks:** Forgejo silently drops event names it does not know, and the library reports them as an error. Its API cannot change a webhook's secret or its `package`, `action_run_*` and `workflow_*` events, so `Edit` refuses to. Workflow events need Forgejo 17. Only Forgejo has branch filters, authorization headers and webhook types.
 
 The full feature-by-feature comparison is in **[__docs/support_grid.md](__docs/support_grid.md)**. Per-call notes are in [__docs/USAGE.md](__docs/USAGE.md).
 
