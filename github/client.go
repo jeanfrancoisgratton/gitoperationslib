@@ -102,7 +102,7 @@ func (c *Client) Capabilities() gitoperationslib.Capability {
 		gitoperationslib.CapDirectory | gitoperationslib.CapAccount | gitoperationslib.CapSecrets | gitoperationslib.CapCommits |
 		gitoperationslib.CapCommitDiffs | gitoperationslib.CapPRContents | gitoperationslib.CapReviewComments |
 		gitoperationslib.CapCollaborators | gitoperationslib.CapHookDeliveries | gitoperationslib.CapCIEnvironments | gitoperationslib.CapOrgSecrets |
-		gitoperationslib.CapCollaboratorInvitations
+		gitoperationslib.CapCollaboratorInvitations | gitoperationslib.CapIssueLocks
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }

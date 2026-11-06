@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -138,7 +139,10 @@ func (b branches) commitsMissing(ctx context.Context, owner, repo, base, head st
 		TotalCommits int `json:"total_commits"`
 	}
 	path := forgejoapi.Path("repos", owner, repo, "compare", base+"..."+head)
-	if _, err := b.c.api.Do(ctx, http.MethodGet, path, nil, nil, &out); err != nil {
+	// Only the count is needed. These skip listing files and checking signatures,
+	// which older versions ignore or partly ignore.
+	q := url.Values{"files": {"false"}, "verification": {"false"}}
+	if _, err := b.c.api.Do(ctx, http.MethodGet, path, q, nil, &out); err != nil {
 		return 0, err
 	}
 	return out.TotalCommits, nil

@@ -489,18 +489,20 @@ func (e *Event) ReviewComment() (*ReviewCommentEvent, error) {
 		Action      string `json:"action"`
 		PullRequest prJSON `json:"pull_request"`
 		Comment     struct {
-			ID           int64      `json:"id"`
-			User         *userJSON  `json:"user"`
-			Body         string     `json:"body"`
-			Path         string     `json:"path"`
-			Line         int        `json:"line"`
-			OriginalLine int        `json:"original_line"`
-			Side         string     `json:"side"`
-			CommitID     string     `json:"commit_id"`
-			ReviewID     int64      `json:"pull_request_review_id"`
-			HTMLURL      string     `json:"html_url"`
-			CreatedAt    *time.Time `json:"created_at"`
-			UpdatedAt    *time.Time `json:"updated_at"`
+			ID            int64      `json:"id"`
+			User          *userJSON  `json:"user"`
+			Body          string     `json:"body"`
+			Path          string     `json:"path"`
+			Line          int        `json:"line"`
+			OriginalLine  int        `json:"original_line"`
+			StartLine     int        `json:"start_line"`
+			OriginalStart int        `json:"original_start_line"`
+			Side          string     `json:"side"`
+			CommitID      string     `json:"commit_id"`
+			ReviewID      int64      `json:"pull_request_review_id"`
+			HTMLURL       string     `json:"html_url"`
+			CreatedAt     *time.Time `json:"created_at"`
+			UpdatedAt     *time.Time `json:"updated_at"`
 		} `json:"comment"`
 	}
 	if err := e.decode("pull_request_review_comment", &p); err != nil {
@@ -515,6 +517,14 @@ func (e *Event) ReviewComment() (*ReviewCommentEvent, error) {
 	line := c.Line
 	if line == 0 {
 		line = c.OriginalLine
+	}
+	// A comment on several lines reports its last one here, and the first apart.
+	start := c.StartLine
+	if start == 0 {
+		start = c.OriginalStart
+	}
+	if start > 0 && start < line {
+		line, comment.ExtraLines = start, line-start
 	}
 	if c.Side == "LEFT" {
 		comment.OldLine = line

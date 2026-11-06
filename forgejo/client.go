@@ -175,7 +175,8 @@ func (c *Client) Capabilities() gitoperationslib.Capability {
 		gitoperationslib.CapDirectory | gitoperationslib.CapAccount | gitoperationslib.CapTokens | gitoperationslib.CapSecrets | gitoperationslib.CapCommits |
 		gitoperationslib.CapOrgAvatars | gitoperationslib.CapUserWebhooks | gitoperationslib.CapSystemWebhooks |
 		gitoperationslib.CapCommitDiffs | gitoperationslib.CapPRContents | gitoperationslib.CapReviewComments |
-		gitoperationslib.CapCollaborators | gitoperationslib.CapMirrors | gitoperationslib.CapGitHooks | gitoperationslib.CapUserFilters
+		gitoperationslib.CapCollaborators | gitoperationslib.CapMirrors | gitoperationslib.CapGitHooks | gitoperationslib.CapUserFilters |
+		gitoperationslib.CapIssueLocks | gitoperationslib.CapAdminTokens
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }

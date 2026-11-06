@@ -143,6 +143,14 @@ func toReviewComment(c *gh.PullRequestComment) gitoperationslib.ReviewComment {
 	if line == 0 {
 		line = c.GetOriginalLine()
 	}
+	// A comment on several lines reports its last one here, and the first apart.
+	start := c.GetStartLine()
+	if start == 0 {
+		start = c.GetOriginalStartLine()
+	}
+	if start > 0 && start < line {
+		line, rc.ExtraLines = start, line-start
+	}
 	if c.GetSide() == sideOld {
 		rc.OldLine = line
 	} else {
@@ -183,9 +191,13 @@ func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, nu
 	if opts.OldLine > 0 {
 		line, side = opts.OldLine, sideOld
 	}
-	created, _, err := c.gh.PullRequests.CreateComment(ctx, owner, repo, number, gh.CreatePullRequestCommentRequest{
-		Path: opts.Path, Body: opts.Body, CommitID: commit, Line: gh.Ptr(line), Side: gh.Ptr(side),
-	})
+	request := gh.CreatePullRequestCommentRequest{
+		Path: opts.Path, Body: opts.Body, CommitID: commit, Line: gh.Ptr(line + opts.ExtraLines), Side: gh.Ptr(side),
+	}
+	if opts.ExtraLines > 0 {
+		request.StartLine, request.StartSide = gh.Ptr(line), gh.Ptr(side)
+	}
+	created, _, err := c.gh.PullRequests.CreateComment(ctx, owner, repo, number, request)
 	if err != nil {
 		return nil, convertError(err)
 	}

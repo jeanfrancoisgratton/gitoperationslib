@@ -156,6 +156,17 @@ type Tokens interface {
 	DeleteByName(ctx context.Context, name string) error
 }
 
+// AdminTokens lets a site admin manage other users' access tokens with an ordinary
+// token, where Account.Tokens needs the user's password. The Forgejo backend
+// implements it (CapAdminTokens), from version 16 (ErrNotSupported on older
+// servers). Find it with a type assertion:
+//
+//	a, ok := client.(gitoperationslib.AdminTokens)
+type AdminTokens interface {
+	// TokensOf returns the tokens of the user called login.
+	TokensOf(login string) Tokens
+}
+
 // AccessToken is a personal access token.
 type AccessToken struct {
 	ID     int64    `json:"id"`

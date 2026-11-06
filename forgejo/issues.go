@@ -485,3 +485,32 @@ func (m milestones) Delete(ctx context.Context, owner, repo string, id int64) er
 	_, err := m.c.api.Do(ctx, http.MethodDelete, repoPath(owner, repo, "milestones", strconv.FormatInt(id, 10)), nil, nil, nil)
 	return err
 }
+
+var _ gitoperationslib.IssueLocks = (*Client)(nil)
+
+// issueLocksVersion is the first release with /issues/{index}/lock.
+var issueLocksVersion = Version{17, 0, 0}
+
+func (c *Client) issueLock(ctx context.Context, method, op, owner, repo string, number int, body any) error {
+	if c.version.Compare(issueLocksVersion) < 0 {
+		return gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op, "locking issues before Forgejo "+issueLocksVersion.String())
+	}
+	_, err := c.api.Do(ctx, method, forgejoapi.Path("repos", owner, repo, "issues", strconv.Itoa(number), "lock"), nil, body, nil)
+	// The server only answers 409 when the issue is already in that state.
+	var apiErr *gitoperationslib.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
+		return nil
+	}
+	return err
+}
+
+func (c *Client) LockIssue(ctx context.Context, owner, repo string, number int, reason gitoperationslib.LockReason) error {
+	if reason == "" {
+		return errors.New("forgejo: issues.lock: reason is required")
+	}
+	return c.issueLock(ctx, http.MethodPut, "issues.lock", owner, repo, number, map[string]string{"reason": string(reason)})
+}
+
+func (c *Client) UnlockIssue(ctx context.Context, owner, repo string, number int) error {
+	return c.issueLock(ctx, http.MethodDelete, "issues.unlock", owner, repo, number, nil)
+}

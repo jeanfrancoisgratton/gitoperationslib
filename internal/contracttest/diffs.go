@@ -197,6 +197,25 @@ func Diffs(t *testing.T, env Env) {
 		}
 	})
 
+	t.Run("comment on several lines", func(t *testing.T) {
+		c, err := rc.CreateReviewComment(ctx, owner, name, pr.Number, gitoperationslib.CreateReviewCommentOptions{Path: edited, Body: "on two lines", Line: 2, ExtraLines: 1})
+		if errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Skip(err)
+		}
+		check(err)
+		t.Cleanup(func() { _ = rc.DeleteReviewComment(context.Background(), owner, name, pr.Number, c.ID) })
+		if c.Line != 2 || c.ExtraLines != 1 {
+			t.Errorf("created = %+v", c)
+		}
+		page, err := rc.ListReviewComments(ctx, owner, name, pr.Number, gitoperationslib.ListOptions{})
+		check(err)
+		i := slices.IndexFunc(page.Items, func(l gitoperationslib.ReviewComment) bool { return l.ID == c.ID })
+		if i < 0 || page.Items[i].Line != 2 || page.Items[i].ExtraLines != 1 {
+			t.Errorf("listed = %+v", page.Items)
+		}
+		check(rc.DeleteReviewComment(ctx, owner, name, pr.Number, c.ID))
+	})
+
 	t.Run("review comments", func(t *testing.T) {
 		list := func() []gitoperationslib.ReviewComment {
 			t.Helper()

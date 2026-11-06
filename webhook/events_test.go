@@ -235,53 +235,66 @@ func TestBitbucketHasNoRefOrIssueEvents(t *testing.T) {
 	}
 }
 
-// Following GitHub's documentation; item 99 in TODO.md is to replace these with
-// captured deliveries.
-func TestGitHubDocumentedPayloads(t *testing.T) {
-	const pr = `"pull_request":{"number":5,"title":"T","state":"open","user":{"login":"alice"},"head":{"ref":"feat","sha":"abc"},"base":{"ref":"main"}},"repository":{"full_name":"acme/widget"},"sender":{"login":"bob"}`
-	decode := func(event, body string) *Event {
-		t.Helper()
-		ev, err := Decode(http.Header{"X-Github-Event": {event}}, []byte(body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return ev
-	}
-	review, err := decode("pull_request_review", `{"action":"submitted",`+pr+`,"review":{"id":9,"user":{"login":"bob"},"body":"ok","state":"approved","commit_id":"abc","html_url":"https://g/r","submitted_at":"2026-11-05T10:00:00Z"}}`).Review()
+func TestGitHubCapturedDeliveries(t *testing.T) {
+	review, err := parseFixture(t, "github-review-commented").Review()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if review.Action != "submitted" || review.Number != 5 || review.Review.State != gitoperationslib.ReviewApproved || review.Review.Reviewer != "bob" ||
-		review.Review.ID != 9 || review.Review.CommitID != "abc" || review.Review.SubmittedAt.IsZero() {
+	if review.Action != "submitted" || review.Number != 1 || review.Review.State != gitoperationslib.ReviewCommented || review.Review.Reviewer == "" ||
+		review.Review.Body != "a review" || review.Review.ID == 0 || review.Review.CommitID == "" || review.Review.SubmittedAt.IsZero() {
 		t.Errorf("review = %+v", review)
 	}
 
+	line, err := parseFixture(t, "github-review_comment").ReviewComment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := line.Comment; line.Action != "created" || line.Number != 1 || c.Line != 2 || c.OldLine != 0 || c.ExtraLines != 0 || c.Path != "a.txt" ||
+		c.Body != "on a line" || c.ReviewID == 0 || c.CommitID == "" || c.HTMLURL == "" || c.CreatedAt.IsZero() {
+		t.Errorf("comment = %+v", line)
+	}
+	lines, err := parseFixture(t, "github-review_comment-lines").ReviewComment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := lines.Comment; c.Line != 1 || c.ExtraLines != 1 {
+		t.Errorf("comment on two lines = %+v", c)
+	}
+
+	for _, kind := range []string{"branch", "tag"} {
+		name := map[string]string{"branch": "feature", "tag": "v0.0.1"}[kind]
+		made, err := parseFixture(t, "github-create-"+kind).Create()
+		if err != nil || made.Ref != name || made.RefType != kind || made.SHA != "" {
+			t.Errorf("create %s = %+v, %v", kind, made, err)
+		}
+		gone, err := parseFixture(t, "github-delete-"+kind).Delete()
+		if err != nil || gone.Ref != name || gone.RefType != kind {
+			t.Errorf("delete %s = %+v, %v", kind, gone, err)
+		}
+	}
+}
+
+// Not captured: these cases need a line the pull request later changed, or a
+// removed line. They follow GitHub's documentation.
+func TestGitHubDocumentedCommentSides(t *testing.T) {
 	line := func(side string, lineNo, original int) *ReviewCommentEvent {
 		t.Helper()
-		body := fmt.Sprintf(`{"action":"created",%s,"comment":{"id":3,"user":{"login":"bob"},"body":"b","path":"a.go","side":%q,"line":%d,"original_line":%d,"commit_id":"abc","pull_request_review_id":9}}`, pr, side, lineNo, original)
-		got, err := decode("pull_request_review_comment", body).ReviewComment()
+		body := fmt.Sprintf(`{"action":"created","pull_request":{"number":5},"comment":{"id":3,"body":"b","path":"a.go","side":%q,"line":%d,"original_line":%d}}`, side, lineNo, original)
+		ev, err := Decode(http.Header{"X-Github-Event": {"pull_request_review_comment"}}, []byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := ev.ReviewComment()
 		if err != nil {
 			t.Fatal(err)
 		}
 		return got
-	}
-	if got := line("RIGHT", 4, 2); got.Number != 5 || got.Comment.Line != 4 || got.Comment.OldLine != 0 || got.Comment.Path != "a.go" || got.Comment.ReviewID != 9 {
-		t.Errorf("new line = %+v", got)
 	}
 	if got := line("LEFT", 4, 2); got.Comment.OldLine != 4 || got.Comment.Line != 0 {
 		t.Errorf("old line = %+v", got)
 	}
 	if got := line("RIGHT", 0, 2); got.Comment.Line != 2 { // outdated: only the original line
 		t.Errorf("outdated = %+v", got)
-	}
-
-	made, err := decode("create", `{"ref":"feat","ref_type":"branch","master_branch":"main"}`).Create()
-	if err != nil || made.Ref != "feat" || made.RefType != "branch" || made.SHA != "" {
-		t.Errorf("create = %+v, %v", made, err)
-	}
-	gone, err := decode("delete", `{"ref":"v1","ref_type":"tag"}`).Delete()
-	if err != nil || gone.Ref != "v1" || gone.RefType != "tag" {
-		t.Errorf("delete = %+v, %v", gone, err)
 	}
 }
 

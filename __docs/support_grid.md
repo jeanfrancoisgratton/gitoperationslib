@@ -145,6 +145,7 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Feature | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|
 | List (open / closed / all), get | ✅ | ✅ | ✅ |
+| Filter by base and head branch | ⚠️ from 16; plain branch names | ✅ also `user:branch` | ⚠️ plain branch names |
 | Create | ✅ | ✅ | ✅ |
 | Create from a fork (`user:branch`) | ✅ | ✅ | ❌ |
 | Edit title, body, base | ✅ | ✅ | ✅ |
@@ -176,6 +177,7 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Changed files (`PRContents`) | ✅ | ✅ at most 3000 | ✅ |
 | Commits, newest first (`PRContents`) | ✅ | ✅ at most 250, one more request per page | ⚠️ all at once |
 | Comments on lines: list, create, delete (`ReviewComments`) | ⚠️ server checks neither path nor line; list all at once | ✅ | ⚠️ list all at once |
+| Comments on several lines (`ExtraLines`) | ⚠️ from 16; at most 50 lines | ✅ | ✅ |
 | Comment on a specific commit (`ReviewComments`) | ✅ | ✅ | ❌ |
 
 ## Issues, labels, milestones and comments
@@ -185,6 +187,7 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | List (pull requests excluded), get, create, edit | ✅ | ✅ | ❌ |
 | Close, reopen | ✅ | ✅ | ❌ |
 | Delete an issue | ✅ | ✅ GraphQL | ❌ |
+| Lock, unlock (`IssueLocks`) | ⚠️ from 17; a reason is required | ✅ | ❌ |
 | Labels and assignees on issues | ✅ also the organisation's labels, by name | ✅ | ❌ |
 | Labels on pull requests (shared numbering) | ✅ | ✅ | ❌ |
 | Comments: list, create, edit, delete | ⚠️ `ListComments` returns all at once | ✅ | ❌ |
@@ -301,6 +304,7 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | Set, delete avatar | ✅ | ❌ | ❌ |
 | Access tokens: list (any credentials), create, delete (password only) | ✅ | ❌ | ❌ |
 | Access token `CreatedAt` | ✅ from 16 | ❌ | ❌ |
+| Other users' access tokens, with an admin token (`AdminTokens`) | ✅ from 16 | ❌ | ❌ |
 
 ## CI secrets and variables (`CI`)
 

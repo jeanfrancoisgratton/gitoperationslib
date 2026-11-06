@@ -173,10 +173,29 @@ func (c *Client) PullRequests() gitoperationslib.PullRequests { return pulls{c} 
 
 type pulls struct{ c *Client }
 
+// pullFiltersVersion is the first release with base and head. Older ones ignore
+// them, and return everything.
+var pullFiltersVersion = Version{16, 0, 0}
+
 func (p pulls) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListPROptions) (gitoperationslib.Page[gitoperationslib.PullRequest], error) {
 	q := forgejoapi.ListQuery(opts.ListOptions)
 	if opts.State != "" {
 		q.Set("state", string(opts.State))
+	}
+	if opts.Base != "" || opts.Head != "" {
+		switch {
+		case p.c.version.Compare(pullFiltersVersion) < 0:
+			return gitoperationslib.Page[gitoperationslib.PullRequest]{}, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "pulls.list", "filtering by branch before Forgejo "+pullFiltersVersion.String())
+		case strings.Contains(opts.Head, ":"):
+			// The server would look for a branch of that name, and find nothing.
+			return gitoperationslib.Page[gitoperationslib.PullRequest]{}, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "pulls.list", "filtering by \"user:branch\"")
+		}
+		if opts.Base != "" {
+			q.Set("base", opts.Base)
+		}
+		if opts.Head != "" {
+			q.Set("head", opts.Head)
+		}
 	}
 	var out []pullJSON
 	resp, err := p.c.api.Do(ctx, http.MethodGet, pullsPath(owner, repo), q, nil, &out)

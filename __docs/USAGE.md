@@ -307,6 +307,8 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapGitHooks` | `git-hooks` (server-side git hooks: `gol.GitHooks`) | ✅ | | |
 | `CapHookDeliveries` | `hook-deliveries` (a webhook's delivery history: `gol.HookDeliveries`) | | ✅ | |
 | `CapUserFilters` | `user-filters` (listing users by criteria: `gol.UserFilters`) | ✅ | | |
+| `CapIssueLocks` | `issue-locks` (locking issues: `gol.IssueLocks`) | ✅ from 17 | ✅ | |
+| `CapAdminTokens` | `admin-tokens` (other users' access tokens: `gol.AdminTokens`) | ✅ from 16 | | |
 | `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
 | `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
 | `CapCollaboratorInvitations` | `collaborator-invitations` (invitations not yet accepted: `gol.CollaboratorInvitations`) | | ✅ | |
@@ -1235,6 +1237,8 @@ type CreatePROptions struct {
 type ListPROptions struct {
 	ListOptions
 	State PRState // zero value: open
+	Base  string  // the branch it merges into; Forgejo 16
+	Head  string  // the branch it merges from; Forgejo 16; "user:branch" on GitHub only
 }
 
 type EditPROptions struct {
@@ -1260,6 +1264,8 @@ fmt.Println(pr.Number, pr.State, pr.Draft, pr.Head.SHA, pr.HTMLURL)
 pr, err = prs.Get(ctx, "acme", "widget", pr.Number)
 open, err := prs.List(ctx, "acme", "widget", gol.ListPROptions{})                     // open
 all, err := prs.List(ctx, "acme", "widget", gol.ListPROptions{State: gol.PRStateAll}) // everything
+// By branch: what merges into main from feature. Forgejo needs version 16.
+some, err := prs.List(ctx, "acme", "widget", gol.ListPROptions{Base: "main", Head: "feature"})
 
 pr, err = prs.Edit(ctx, "acme", "widget", pr.Number, gol.EditPROptions{Draft: gol.Ptr(false)}) // ready for review
 pr, err = prs.Edit(ctx, "acme", "widget", pr.Number, gol.EditPROptions{Title: gol.Ptr("Add sign-in page"), Base: gol.Ptr("develop")})
@@ -1400,7 +1406,7 @@ commits, err := c.PullRequestCommits(ctx, "acme", "widget", pr.Number, gol.ListO
 | `PullRequestFiles` pages | ✅ | ✅ | ✅ |
 | `PullRequestCommits` pages | ✅ | ✅ with one more request per page, to read them newest first | ❌ all at once: page tokens cannot be expressed as a `NextPage` number |
 
-**Comments on lines** are another optional interface, `gol.ReviewComments` (`CapReviewComments`):
+**Comments on lines** are another optional interface, `gol.ReviewComments` (`CapReviewComments`). `ExtraLines` extends a comment to that many lines after `Line` or `OldLine`, on all three forges; Forgejo needs version 16, and takes at most 50:
 
 ```go
 rc, ok := client.(gol.ReviewComments)
@@ -1461,7 +1467,7 @@ Issues and pull requests share one number sequence. `List` never includes pull r
 | `Assignees []string` | Logins |
 | `Milestone *Milestone` | `nil` when there is none |
 | `Comments int` | Number of comments |
-| `Locked` | |
+| `Locked` | Change it with `gol.IssueLocks` |
 | `HTMLURL`, `CreatedAt`, `UpdatedAt`, `ClosedAt` | |
 
 ```go
@@ -1550,6 +1556,15 @@ _, err = issues.CreateComment(ctx, "acme", "widget", pr.Number, "CI is green, me
 **Forgejo:** `ListComments` returns every comment in one page and ignores `ListOptions`, because Forgejo does not paginate comments.
 
 ---
+
+
+**Locking an issue.** `gol.IssueLocks` (`CapIssueLocks`) locks and unlocks a conversation, on Forgejo 17 (`ErrNotSupported` on older servers) and GitHub. Locking a locked issue and unlocking an unlocked one succeed. Forgejo requires a reason and takes any text. GitHub accepts no reason, or one of `gol.LockReasonOffTopic`, `LockReasonTooHeated`, `LockReasonResolved` and `LockReasonSpam`.
+
+```go
+l, ok := client.(gol.IssueLocks)
+err := l.LockIssue(ctx, "acme", "widget", 7, gol.LockReasonResolved)
+err = l.UnlockIssue(ctx, "acme", "widget", 7)
+```
 
 ## 12. Labels
 
@@ -2527,7 +2542,14 @@ u, err := acct.Profile().Edit(ctx, gol.EditProfileOptions{
 })
 ```
 
-**Access tokens (Forgejo).** Forgejo lists tokens with any credentials, but creates and deletes them only with username and password: `forgejo.BasicAuth`, or `BasicAuthOTP`/`BasicAuthOTPFunc` with two-factor authentication. With a token, even an administrator's, `Create` and `Delete` fail with HTTP 401 "auth method not allowed", which matches `gol.ErrPasswordRequired`.
+**Other users' tokens (Forgejo 16).** `gol.AdminTokens` (`CapAdminTokens`) gives a site admin the same `Tokens` interface for any user, with an ordinary token and no password. Older servers return `ErrNotSupported`:
+
+```go
+a, ok := client.(gol.AdminTokens)
+tok, err := a.TokensOf("bob").Create(ctx, gol.CreateTokenOptions{Name: "ci", Scopes: []string{"read:repository"}})
+```
+
+**Access tokens (Forgejo).** Forgejo lists tokens with any credentials, but creates and deletes them only with username and password: `forgejo.BasicAuth`, or `BasicAuthOTP`/`BasicAuthOTPFunc` with two-factor authentication. With a token, even an administrator's, `Create` and `Delete` fail with HTTP 401 "auth method not allowed", which matches `gol.ErrPasswordRequired`. From Forgejo 16, a site admin can use `gol.AdminTokens` instead.
 
 ```go
 client, _ := forgejo.New(ctx, url, forgejo.BasicAuth(user, password))

@@ -78,6 +78,8 @@ type ReviewComment struct {
 	// one. Only one is usually set. Bitbucket may report both.
 	Line    int `json:"line,omitzero"`
 	OldLine int `json:"oldLine,omitzero"`
+	// ExtraLines is how many lines after that one the comment also covers.
+	ExtraLines int `json:"extraLines,omitzero"`
 	// CommitID is the commit commented on; Bitbucket does not report it.
 	CommitID string `json:"commitId,omitzero"`
 	// ReviewID is the review holding the comment; Bitbucket has none.
@@ -96,6 +98,10 @@ type CreateReviewCommentOptions struct {
 	// version (a removed line).
 	Line    int `json:"line,omitzero"`
 	OldLine int `json:"oldLine,omitzero"`
+	// ExtraLines extends the comment to that many lines after Line or OldLine.
+	// Forgejo needs version 16 (ErrNotSupported on older servers, which would
+	// ignore it), and takes at most 50.
+	ExtraLines int `json:"extraLines,omitzero"`
 	// CommitID is the commit to comment on; empty means the pull request's
 	// head. Not supported on Bitbucket.
 	CommitID string `json:"commitId,omitzero"`
@@ -108,6 +114,8 @@ func (o CreateReviewCommentOptions) Validate() error {
 		return errors.New("path is required")
 	case o.Body == "":
 		return errors.New("body is required")
+	case o.ExtraLines < 0:
+		return errors.New("extra lines must not be negative")
 	case (o.Line > 0) == (o.OldLine > 0):
 		return errors.New("exactly one of Line and OldLine is required")
 	}

@@ -82,6 +82,10 @@ type prCommentJSON struct {
 		Path string `json:"path"`
 		From *int   `json:"from"`
 		To   *int   `json:"to"`
+		// StartFrom and StartTo are the first line of a comment on several lines,
+		// and From and To the last.
+		StartFrom *int `json:"start_from"`
+		StartTo   *int `json:"start_to"`
 	} `json:"inline"`
 	CreatedOn time.Time `json:"created_on"`
 	UpdatedOn time.Time `json:"updated_on"`
@@ -102,6 +106,12 @@ func (j *prCommentJSON) toReviewComment() gitoperationslib.ReviewComment {
 		}
 		if j.Inline.From != nil {
 			rc.OldLine = *j.Inline.From
+		}
+		if s := j.Inline.StartTo; s != nil && *s > 0 && *s < rc.Line {
+			rc.Line, rc.ExtraLines = *s, rc.Line-*s
+		}
+		if s := j.Inline.StartFrom; s != nil && *s > 0 && *s < rc.OldLine {
+			rc.OldLine, rc.ExtraLines = *s, rc.OldLine-*s
 		}
 	}
 	return rc
@@ -134,9 +144,14 @@ func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, nu
 		return nil, notSupported("pulls.create_review_comment", "commenting on a specific commit")
 	}
 	inline := map[string]any{"path": opts.Path}
-	if opts.Line > 0 {
+	switch {
+	case opts.Line > 0 && opts.ExtraLines > 0:
+		inline["start_to"], inline["to"] = opts.Line, opts.Line+opts.ExtraLines
+	case opts.Line > 0:
 		inline["to"] = opts.Line
-	} else {
+	case opts.ExtraLines > 0:
+		inline["start_from"], inline["from"] = opts.OldLine, opts.OldLine+opts.ExtraLines
+	default:
 		inline["from"] = opts.OldLine
 	}
 	body := map[string]any{"content": map[string]string{"raw": opts.Body}, "inline": inline}

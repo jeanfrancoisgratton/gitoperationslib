@@ -16,7 +16,19 @@ What Forgejo's API gained after 15, from `__docs/post-v15.md`.
 - `Secrets().List` on `UserCI` works from Forgejo 17, and still returns `ErrNotSupported` below it.
 - New fields: `AccessToken.CreatedAt`, `Org.CreatedAt`, `SSHKey.UpdatedAt` and `SSHKey.Verified`, from Forgejo 16 and zero
   below it. `Org.CreatedAt` and `SSHKey.Verified` are also set on GitHub.
+- `ListPROptions.Base` and `Head` select pull requests by branch, on all three forges. Forgejo needs version 16, and
+  returns `ErrNotSupported` below it, as older servers ignore them and return every pull request. `"user:branch"`, for a
+  fork, works on GitHub only.
+- **`IssueLocks`** (`CapIssueLocks`, Forgejo 17 and GitHub): `LockIssue` and `UnlockIssue`, with `LockReason`. Locking a
+  locked issue and unlocking an unlocked one succeed on both.
+- `ExtraLines` on `CreateReviewCommentOptions` and `ReviewComment`: comments on several lines, on all three forges, and in
+  `Event.ReviewComment`. Forgejo needs version 16, and returns `ErrNotSupported` below it, as older servers ignore it.
+- **`AdminTokens`** (`CapAdminTokens`, Forgejo 16): `TokensOf(login)` manages another user's access tokens with an ordinary
+  admin token, where `Tokens()` needs that user's password.
 - `ErrInvitationPending`.
+
+### Changed
+- `Branches().Compare` on Forgejo asks the server not to list files and check signatures, as it only needs a count.
 
 ### Fixed
 - **`Teams().AddMember` reported success for a user who had only been invited.** From Forgejo 16, on an instance with

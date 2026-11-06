@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"os"
 	"slices"
 	"testing"
 
@@ -118,5 +119,54 @@ func TestIntegrationAdminAddMemberJoins(t *testing.T) {
 	}
 	if member, err := c.Teams().IsMember(ctx, team.ID, login); err != nil || !member {
 		t.Errorf("IsMember = %v, %v", member, err)
+	}
+}
+
+// TestIntegrationAdminTokensOf checks that an ordinary admin token manages another
+// user's tokens, where Account.Tokens needs that user's password.
+func TestIntegrationAdminTokensOf(t *testing.T) {
+	ctx, c := adminEnv(t)
+	login := testLogin(t)
+	cleanupUser(t, c, &login)
+	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{Login: login, Email: login + "@example.invalid", Password: "Passw0rd-long-1", MustChangePassword: gitoperationslib.Ptr(false)}); err != nil {
+		t.Fatal(err)
+	}
+	tokens := c.TokensOf(login)
+	if c.Version().Compare(adminTokensVersion) < 0 {
+		if _, err := tokens.List(ctx, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("before 16: %v", err)
+		}
+		return
+	}
+	tok, err := tokens.Create(ctx, gitoperationslib.CreateTokenOptions{Name: "ci", Scopes: []string{"read:user"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Secret == "" || tok.CreatedAt.IsZero() {
+		t.Errorf("created = %+v", tok)
+	}
+	asUser, err := New(ctx, os.Getenv("GITOPSLIB_TESTENV_URL"), Token(tok.Secret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if me, err := asUser.currentLogin(ctx); err != nil || me != login {
+		t.Errorf("the token belongs to %q, %v; want %q", me, err, login)
+	}
+	numeric, err := tokens.Create(ctx, gitoperationslib.CreateTokenOptions{Name: "123", Scopes: []string{"read:user"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tokens.DeleteByName(ctx, numeric.Name); err != nil {
+		t.Errorf("DeleteByName(numeric): %v", err)
+	}
+	if err := tokens.Delete(ctx, tok.ID); err != nil {
+		t.Error(err)
+	}
+	page, err := tokens.List(ctx, gitoperationslib.ListOptions{})
+	if err != nil || len(page.Items) != 0 {
+		t.Errorf("after deleting: %+v, %v", page, err)
+	}
+	if err := tokens.DeleteByName(ctx, "no-such"); err == nil {
+		t.Error("deleting a missing token succeeded")
 	}
 }

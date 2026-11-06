@@ -83,6 +83,7 @@ type reviewCommentJSON struct {
 	Path     string `json:"path"`
 	Position int    `json:"position"`
 	Original int    `json:"original_position"`
+	Extra    int    `json:"extra_lines_count"`
 	CommitID string `json:"commit_id"`
 	ReviewID int64  `json:"pull_request_review_id"`
 	HTMLURL  string `json:"html_url"`
@@ -95,7 +96,7 @@ type reviewCommentJSON struct {
 
 func (j *reviewCommentJSON) toReviewComment() gitoperationslib.ReviewComment {
 	rc := gitoperationslib.ReviewComment{
-		ID: j.ID, Body: j.Body, Path: j.Path, Line: j.Position, OldLine: j.Original, CommitID: j.CommitID,
+		ID: j.ID, Body: j.Body, Path: j.Path, Line: j.Position, OldLine: j.Original, ExtraLines: j.Extra, CommitID: j.CommitID,
 		ReviewID: j.ReviewID, HTMLURL: j.HTMLURL, CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt,
 	}
 	if j.User != nil {
@@ -141,23 +142,31 @@ func (c *Client) ListReviewComments(ctx context.Context, owner, repo string, num
 	return page, nil
 }
 
+// multiLineCommentsVersion is the first release with extra_lines_count. Older
+// ones ignore it.
+var multiLineCommentsVersion = Version{16, 0, 0}
+
 // CreateReviewComment implements gitoperationslib.ReviewComments: comments
 // only exist within a review, so it creates one.
 func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, number int, opts gitoperationslib.CreateReviewCommentOptions) (*gitoperationslib.ReviewComment, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("forgejo: pulls.create_review_comment: %w", err)
 	}
+	if opts.ExtraLines > 0 && c.version.Compare(multiLineCommentsVersion) < 0 {
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "pulls.create_review_comment", "comments on several lines before Forgejo "+multiLineCommentsVersion.String())
+	}
 	type comment struct {
 		Path        string `json:"path"`
 		Body        string `json:"body"`
 		NewPosition int    `json:"new_position,omitempty"`
 		OldPosition int    `json:"old_position,omitempty"`
+		ExtraLines  int    `json:"extra_lines_count,omitempty"`
 	}
 	body := struct {
 		Event    string    `json:"event"`
 		CommitID string    `json:"commit_id,omitempty"`
 		Comments []comment `json:"comments"`
-	}{"COMMENT", opts.CommitID, []comment{{opts.Path, opts.Body, opts.Line, opts.OldLine}}}
+	}{"COMMENT", opts.CommitID, []comment{{opts.Path, opts.Body, opts.Line, opts.OldLine, opts.ExtraLines}}}
 	var review struct {
 		ID int64 `json:"id"`
 	}

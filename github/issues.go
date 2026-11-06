@@ -303,3 +303,19 @@ func (m milestones) Delete(ctx context.Context, owner, repo string, id int64) er
 	_, err := m.c.gh.Issues.DeleteMilestone(ctx, owner, repo, int(id))
 	return convertError(err)
 }
+
+var _ gitoperationslib.IssueLocks = (*Client)(nil)
+
+func (c *Client) LockIssue(ctx context.Context, owner, repo string, number int, reason gitoperationslib.LockReason) error {
+	var body gh.LockIssueRequest
+	if reason != "" {
+		body.LockReason = gh.Ptr(string(reason))
+	}
+	_, err := c.gh.Issues.Lock(ctx, owner, repo, number, body)
+	return convertError(err)
+}
+
+func (c *Client) UnlockIssue(ctx context.Context, owner, repo string, number int) error {
+	_, err := c.gh.Issues.Unlock(ctx, owner, repo, number)
+	return convertError(err)
+}

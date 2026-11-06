@@ -298,6 +298,9 @@ type bbComment struct {
 		Path string `json:"path"`
 		From *int   `json:"from"`
 		To   *int   `json:"to"`
+		// The first line of a comment on several lines; From and To are the last.
+		StartFrom *int `json:"start_from"`
+		StartTo   *int `json:"start_to"`
 	} `json:"inline"`
 	CreatedOn time.Time `json:"created_on"`
 	UpdatedOn time.Time `json:"updated_on"`
@@ -358,6 +361,12 @@ func (e *Event) bitbucketReviewComment() (*ReviewCommentEvent, error) {
 	}
 	if c.Inline.From != nil {
 		comment.OldLine = *c.Inline.From
+	}
+	if s := c.Inline.StartTo; s != nil && *s > 0 && *s < comment.Line {
+		comment.Line, comment.ExtraLines = *s, comment.Line-*s
+	}
+	if s := c.Inline.StartFrom; s != nil && *s > 0 && *s < comment.OldLine {
+		comment.OldLine, comment.ExtraLines = *s, comment.OldLine-*s
 	}
 	return &ReviewCommentEvent{Action: e.Action, Number: pr.Number, PullRequest: pr.PullRequest, Comment: comment}, nil
 }

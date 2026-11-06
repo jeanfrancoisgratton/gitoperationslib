@@ -1,6 +1,9 @@
 package gitoperationslib
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // IssueState is the state of an issue. IssueStateAll is only meaningful as a
 // List filter.
@@ -121,3 +124,29 @@ type EditMilestoneOptions struct {
 	State       *MilestoneState `json:"state,omitzero"` // close or reopen
 	DueOn       *time.Time      `json:"dueOn,omitzero"`
 }
+
+// IssueLocks locks and unlocks an issue's conversation. The Forgejo backend
+// (version 17; ErrNotSupported on older servers) and the GitHub backend implement
+// it (CapIssueLocks). Find it with a type assertion:
+//
+//	l, ok := client.(gitoperationslib.IssueLocks)
+//
+// Issue.Locked reports the state. Locking a locked issue and unlocking an unlocked
+// one succeed, changing nothing.
+type IssueLocks interface {
+	// LockIssue locks the issue. Forgejo requires a reason, and takes any text;
+	// GitHub accepts no reason, or one of the LockReason constants. GitHub also
+	// locks pull requests by number, while Forgejo answers HTTP 422.
+	LockIssue(ctx context.Context, owner, repo string, number int, reason LockReason) error
+	UnlockIssue(ctx context.Context, owner, repo string, number int) error
+}
+
+// LockReason says why an issue was locked.
+type LockReason string
+
+const (
+	LockReasonOffTopic  LockReason = "off-topic"
+	LockReasonTooHeated LockReason = "too heated"
+	LockReasonResolved  LockReason = "resolved"
+	LockReasonSpam      LockReason = "spam"
+)

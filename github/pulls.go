@@ -76,8 +76,15 @@ func (c *Client) PullRequests() gitoperationslib.PullRequests { return pulls{c} 
 type pulls struct{ c *Client }
 
 func (p pulls) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListPROptions) (gitoperationslib.Page[gitoperationslib.PullRequest], error) {
+	head := opts.Head
+	if head != "" && !strings.Contains(head, ":") {
+		// GitHub ignores a head that is not "user:branch".
+		head = owner + ":" + head
+	}
 	list, resp, err := p.c.gh.PullRequests.List(ctx, owner, repo, &gh.PullRequestListOptions{
 		State:       string(opts.State),
+		Base:        opts.Base,
+		Head:        head,
 		ListOptions: gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage},
 	})
 	if err != nil {

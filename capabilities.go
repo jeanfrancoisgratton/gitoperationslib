@@ -43,6 +43,8 @@ const (
 	CapCollaboratorInvitations
 	// Added in 1.5.0.
 	CapUserFilters // listing users by criteria (UserFilters)
+	CapIssueLocks  // locking and unlocking issues (IssueLocks)
+	CapAdminTokens // managing other users' access tokens (AdminTokens)
 )
 
 var capabilityNames = []struct {
@@ -80,6 +82,8 @@ var capabilityNames = []struct {
 	{CapOrgSecrets, "org-secrets"},
 	{CapCollaboratorInvitations, "collaborator-invitations"},
 	{CapUserFilters, "user-filters"},
+	{CapIssueLocks, "issue-locks"},
+	{CapAdminTokens, "admin-tokens"},
 }
 
 // Has reports whether c includes every capability in want.

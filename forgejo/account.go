@@ -265,9 +265,23 @@ func leadingZeroBug(keyID string, err error) error {
 	return err
 }
 
-func (c *Client) Tokens() gitoperationslib.Tokens { return tokens{c} }
+func (c *Client) Tokens() gitoperationslib.Tokens { return tokens{c: c} }
 
-type tokens struct{ c *Client }
+var _ gitoperationslib.AdminTokens = (*Client)(nil)
+
+func (c *Client) TokensOf(login string) gitoperationslib.Tokens {
+	return tokens{c: c, admin: true, login: login}
+}
+
+// adminTokensVersion is the first release with /admin/users/{username}/tokens.
+var adminTokensVersion = Version{16, 0, 0}
+
+type tokens struct {
+	c *Client
+	// admin goes through the admin endpoints for login, which take a token.
+	admin bool
+	login string
+}
 
 type accessTokenJSON struct {
 	ID           int64     `json:"id"`
@@ -293,6 +307,15 @@ func (t *accessTokenJSON) toAccessToken() gitoperationslib.AccessToken {
 var passwordRequired = refusal.Rule{Status: http.StatusUnauthorized, Fragment: "auth method not allowed", Sentinel: gitoperationslib.ErrPasswordRequired}
 
 func (t tokens) path(ctx context.Context, rest ...string) (string, error) {
+	if t.admin {
+		switch {
+		case t.c.version.Compare(adminTokensVersion) < 0:
+			return "", gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, "tokens", "managing another user's tokens before Forgejo "+adminTokensVersion.String())
+		case t.login == "":
+			return "", errors.New("forgejo: tokens: login is required")
+		}
+		return forgejoapi.Path(append([]string{"admin", "users", t.login, "tokens"}, rest...)...), nil
+	}
 	login, err := t.c.currentLogin(ctx)
 	if err != nil {
 		return "", err

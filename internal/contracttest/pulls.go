@@ -2,6 +2,7 @@ package contracttest
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -66,6 +67,29 @@ func PullRequests(t *testing.T, env Env) {
 		return len(page.Items) == 1 && page.Items[0].Number == pr.Number
 	}) {
 		t.Error("List(open) did not return the pull request")
+	}
+	// Filters by branch: on Forgejo before 16, they are refused.
+	numbers := func(opts gitoperationslib.ListPROptions) []int {
+		t.Helper()
+		page, err := prs.List(ctx, owner, *repo, opts)
+		if errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Log("filters by branch are not supported here")
+			return nil
+		}
+		check(err)
+		out := []int{}
+		for _, p := range page.Items {
+			out = append(out, p.Number)
+		}
+		return out
+	}
+	if got := numbers(gitoperationslib.ListPROptions{Head: "feature-1", Base: base}); got != nil && !slices.Equal(got, []int{pr.Number}) {
+		t.Errorf("List(head, base) = %v, want %d", got, pr.Number)
+	}
+	for _, opts := range []gitoperationslib.ListPROptions{{Head: "no-such-branch"}, {Base: "no-such-branch"}} {
+		if got := numbers(opts); len(got) != 0 {
+			t.Errorf("List(%+v) = %v, want nothing", opts, got)
+		}
 	}
 	edited, err := prs.Edit(ctx, owner, *repo, pr.Number, gitoperationslib.EditPROptions{
 		Title: gitoperationslib.Ptr("Feature 1, edited"), Body: gitoperationslib.Ptr("Edited body"),

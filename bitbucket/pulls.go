@@ -116,6 +116,19 @@ func (p pulls) List(ctx context.Context, owner, repo string, opts gitoperationsl
 	default:
 		return gitoperationslib.Page[gitoperationslib.PullRequest]{}, fmt.Errorf("bitbucket: pulls.list: invalid state %q", opts.State)
 	}
+	var filters []string
+	if opts.Base != "" {
+		filters = append(filters, "destination.branch.name = "+strconv.Quote(opts.Base))
+	}
+	if opts.Head != "" {
+		if strings.Contains(opts.Head, ":") {
+			return gitoperationslib.Page[gitoperationslib.PullRequest]{}, notSupported("pulls.list", "filtering by \"user:branch\"")
+		}
+		filters = append(filters, "source.branch.name = "+strconv.Quote(opts.Head))
+	}
+	if len(filters) > 0 {
+		q["q"] = []string{strings.Join(filters, " AND ")}
+	}
 	values, next, err := bitbucketapi.ListPaged[pullJSON](ctx, p.c.api, pullsPath(owner, repo), q)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.PullRequest]{}, err

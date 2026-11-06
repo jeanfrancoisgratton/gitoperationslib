@@ -49,6 +49,13 @@ type PullRequest struct {
 type ListPROptions struct {
 	ListOptions
 	State PRState `json:"state,omitzero"` // zero value: open
+	// Base and Head select pull requests by the branch they merge into, and the
+	// branch they merge from. Forgejo needs version 16 (ErrNotSupported on older
+	// servers, which would ignore them and return everything). A plain branch
+	// name is looked up in the repository's owner on GitHub; "user:branch", for a
+	// fork, works on GitHub only.
+	Base string `json:"base,omitzero"`
+	Head string `json:"head,omitzero"`
 }
 
 // CreatePROptions describes a pull request to open.
