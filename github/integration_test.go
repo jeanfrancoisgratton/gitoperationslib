@@ -248,4 +248,11 @@ func TestIntegrationAccount(t *testing.T) { contracttest.Account(t, integrationE
 
 func TestIntegrationCI(t *testing.T) { contracttest.CI(t, integrationEnv(t)) }
 
+// TestIntegrationWorkflowRuns runs real workflows, which uses Actions minutes.
+func TestIntegrationWorkflowRuns(t *testing.T) {
+	env := integrationEnv(t)
+	env.Workflows = &contracttest.WorkflowEnv{RunsOn: "ubuntu-latest", Dir: ".github/workflows", UploadArtifact: "actions/upload-artifact@v4"}
+	contracttest.WorkflowRuns(t, env)
+}
+
 func TestIntegrationCommits(t *testing.T) { contracttest.Commits(t, integrationEnv(t)) }

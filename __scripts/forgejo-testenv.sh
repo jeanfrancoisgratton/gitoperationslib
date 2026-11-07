@@ -11,6 +11,11 @@
 # receive them on the Docker bridge gateway, and mirror local addresses, so
 # tests can mirror one of its repositories to another. Git hooks, which run as
 # scripts on the server, can be edited: never allow that on a shared instance.
+#
+# With GITOPSLIB_TESTENV_RUNNER=1, it also starts an Actions runner in host mode, on
+# the instance's network, and writes the label its workflows use. The runner needs
+# the internet for nodejs and the actions it fetches; the checks that use it take
+# some minutes.
 set -euo pipefail
 
 IMAGE="${GITOPSLIB_TESTENV_IMAGE:-codeberg.org/forgejo/forgejo:15}"
@@ -25,11 +30,15 @@ start() {
 		echo "container $NAME already exists; run '$0 stop' first" >&2
 		exit 1
 	fi
-	docker run -d --name "$NAME" -p "127.0.0.1:${PORT}:3000" \
+	# With a runner, the same port inside as out, so that it can reach the address it
+	# is told to use for artifacts. Tests mirroring the instance to itself use 3000.
+	local inner=3000
+	[ -z "${GITOPSLIB_TESTENV_RUNNER:-}" ] || inner="$PORT"
+	docker run -d --name "$NAME" -p "127.0.0.1:${PORT}:${inner}" \
 		-e FORGEJO__security__INSTALL_LOCK=true \
 		-e FORGEJO__database__DB_TYPE=sqlite3 \
 		-e FORGEJO__server__ROOT_URL="${URL}/" \
-		-e FORGEJO__server__HTTP_PORT=3000 \
+		-e FORGEJO__server__HTTP_PORT="${inner}" \
 		-e FORGEJO__server__DISABLE_SSH=true \
 		-e FORGEJO__service__DISABLE_REGISTRATION=true \
 		-e FORGEJO__mailer__ENABLED=false \
@@ -70,10 +79,22 @@ GITOPSLIB_TESTENV_URL=$URL
 GITOPSLIB_TESTENV_ADMIN_TOKEN=$token
 GITOPSLIB_TESTENV_HOOK_HOST=$hook_host
 EOF
+
+	if [ -n "${GITOPSLIB_TESTENV_RUNNER:-}" ]; then
+		local runner_token
+		runner_token="$(docker exec -u git "$NAME" forgejo actions generate-runner-token)"
+		docker run -d --name "${NAME}-runner" --network "container:${NAME}" --user 0 --entrypoint sh \
+			data.forgejo.org/forgejo/runner:12 -c "apk add --no-cache -q nodejs git >/dev/null 2>&1; cd /tmp && \
+				forgejo-runner register --no-interactive --instance http://127.0.0.1:${PORT} --token ${runner_token} --name testenv --labels self:host && \
+				forgejo-runner daemon" >/dev/null
+		echo "GITOPSLIB_TESTENV_RUNNER_LABEL=self" >>"$ENV_FILE"
+		echo "runner started"
+	fi
 	echo "admin user $ADMIN created; credentials written to $ENV_FILE"
 }
 
 stop() {
+	docker rm -f "${NAME}-runner" >/dev/null 2>&1 || true
 	docker rm -f "$NAME" >/dev/null 2>&1 && echo "removed $NAME" || echo "$NAME not running"
 	rm -f "$ENV_FILE"
 }

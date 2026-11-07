@@ -51,6 +51,17 @@ type Env struct {
 	// CreateEnvironment creates a repository environment; the library has no
 	// call for it. It is nil on a forge without environments.
 	CreateEnvironment func(ctx context.Context, owner, repo, name string) error
+	// Workflows describes what can run CI workflows; nil skips those checks.
+	Workflows *WorkflowEnv
+}
+
+// WorkflowEnv is what the WorkflowRuns checks need to run real workflows.
+type WorkflowEnv struct {
+	RunsOn         string // the runs-on label
+	Dir            string // the workflows' directory
+	UploadArtifact string // the action to use for storing an artifact
+	// Prepare enables workflows on a new repository, if it takes that.
+	Prepare func(ctx context.Context, owner, repo string) error
 }
 
 // isBitbucket reports whether env tests the Bitbucket backend, whose model

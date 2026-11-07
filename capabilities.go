@@ -46,8 +46,10 @@ const (
 	CapIssueLocks  // locking and unlocking issues (IssueLocks)
 	CapAdminTokens // managing other users' access tokens (AdminTokens)
 	// Added in 1.6.0.
-	CapOrgLabels  // an organisation's labels (OrgLabels)
-	CapLabelsByID // repository labels addressed by ID (LabelsByID)
+	CapOrgLabels         // an organisation's labels (OrgLabels)
+	CapLabelsByID        // repository labels addressed by ID (LabelsByID)
+	CapWorkflowRuns      // CI workflow runs, jobs and logs (WorkflowRuns)
+	CapWorkflowArtifacts // CI workflow artifacts (WorkflowArtifacts)
 )
 
 var capabilityNames = []struct {
@@ -89,6 +91,8 @@ var capabilityNames = []struct {
 	{CapAdminTokens, "admin-tokens"},
 	{CapOrgLabels, "org-labels"},
 	{CapLabelsByID, "labels-by-id"},
+	{CapWorkflowRuns, "workflow-runs"},
+	{CapWorkflowArtifacts, "workflow-artifacts"},
 }
 
 // Has reports whether c includes every capability in want.

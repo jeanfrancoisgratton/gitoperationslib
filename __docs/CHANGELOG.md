@@ -8,17 +8,24 @@ change the public API.
 
 ## [1.6.0] — 2026-11-06
 
-Organisation labels, and issue traps that were left to each consumer, found by gitclt's `issue` commands. Several of these
-change what existing calls do: see Changed.
+CI workflow runs, organisation labels, and issue traps that were left to each consumer, found by gitclt's `issue` commands.
+Several of these change what existing calls do: see Changed.
 
 ### Added
+- **`WorkflowRuns`** (`CapWorkflowRuns`, Forgejo and GitHub): list runs with filters, get, cancel, rerun and delete them;
+  list a run's jobs, get a job with its steps, rerun a job; read a job's log and a run's logs. On Forgejo, listing and
+  reading runs work from 15, cancel, delete, jobs and logs need 16, and a single job and reruns need 17, with
+  `ErrNotSupported` below. Bitbucket Pipelines is not implemented: the test token cannot enable pipelines, so nothing could
+  be run.
+- **`WorkflowArtifacts`** (`CapWorkflowArtifacts`, Forgejo 16 and GitHub): list, get, delete and download artifacts.
+- `webhook.WorkflowRun` and `webhook.WorkflowJob` are now aliases of the shared types, which adds `WorkflowJob.Steps`.
 - **`OrgLabels`** (`CapOrgLabels`, Forgejo only): list, get, create, edit and delete an organisation's labels, by ID.
   `ListOrgLabels` on a user returns an empty page, and a name that is neither is a 404.
 - **`LabelsByID`** (`CapLabelsByID`, Forgejo only): `EditLabelByID` and `DeleteLabelByID`, to repair names several labels
   share.
 - `Issue.IsPullRequest`, as a pull request's number answers as an issue.
 - `EditMilestoneOptions.ClearDueOn` removes a due date on GitHub. Forgejo's API cannot, and returns `ErrNotSupported`.
-- `ErrIsPullRequest`, `ErrNameTaken` and `ErrAmbiguousName`.
+- `ErrIsPullRequest`, `ErrNameTaken`, `ErrAmbiguousName` and `ErrWorkflowRunActive`.
 
 ### Changed
 - **`Issues().Delete`, and `Issues().Edit` with `State`, return `ErrIsPullRequest` on a pull request's number,** after one

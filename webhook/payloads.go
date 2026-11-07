@@ -566,27 +566,7 @@ type WorkflowRunEvent struct {
 }
 
 // WorkflowRun is a run of a CI workflow.
-type WorkflowRun struct {
-	ID       int64  `json:"id"`
-	Number   int64  `json:"number"`
-	Title    string `json:"title"`
-	Workflow string `json:"workflow"` // the workflow's file, e.g. "build.yaml"
-	Event    string `json:"event"`    // what started it, e.g. "push"
-	Branch   string `json:"branch"`
-	SHA      string `json:"sha"`
-	// Status is the forge's own word: on Forgejo "waiting", "blocked", "running",
-	// or the outcome; on GitHub "queued", "in_progress" or "completed", among others.
-	Status string `json:"status"`
-	// Conclusion is the outcome, such as "success", "failure", "cancelled" or
-	// "skipped", and is empty until the run ends.
-	Conclusion string    `json:"conclusion,omitzero"`
-	Actor      string    `json:"actor"`
-	HTMLURL    string    `json:"htmlUrl"`
-	CreatedAt  time.Time `json:"createdAt,omitzero"`
-	StartedAt  time.Time `json:"startedAt,omitzero"`
-	StoppedAt  time.Time `json:"stoppedAt,omitzero"` // Forgejo only
-	UpdatedAt  time.Time `json:"updatedAt,omitzero"`
-}
+type WorkflowRun = gitoperationslib.WorkflowRun
 
 // WorkflowJobEvent is a change to a job of a workflow run.
 type WorkflowJobEvent struct {
@@ -601,19 +581,7 @@ type WorkflowJobEvent struct {
 }
 
 // WorkflowJob is a job of a workflow run.
-type WorkflowJob struct {
-	ID      int64  `json:"id"`
-	RunID   int64  `json:"runId"`
-	Attempt int    `json:"attempt"`
-	Name    string `json:"name"`
-	// Status and Conclusion are as in WorkflowRun.
-	Status      string    `json:"status"`
-	Conclusion  string    `json:"conclusion,omitzero"`
-	Labels      []string  `json:"labels,omitzero"` // of the runners it asks for
-	HTMLURL     string    `json:"htmlUrl"`
-	StartedAt   time.Time `json:"startedAt,omitzero"`   // GitHub only
-	CompletedAt time.Time `json:"completedAt,omitzero"` // GitHub only
-}
+type WorkflowJob = gitoperationslib.WorkflowJob
 
 // forgejoConclusion is the outcome in a Forgejo status, which has both in one word.
 func forgejoConclusion(status string) string {

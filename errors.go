@@ -50,6 +50,9 @@ var (
 	// allows, so a name cannot say which is meant. The error lists their IDs, for
 	// LabelsByID and OrgLabels.
 	ErrAmbiguousName = errors.New("several labels have this name")
+	// ErrWorkflowRunActive: deleting a CI workflow run that has not finished. Cancel
+	// it first. Forgejo would answer HTTP 500, so the library checks.
+	ErrWorkflowRunActive = errors.New("the workflow run has not finished")
 	// ErrBranchProtected: deleting a branch a protection rule covers
 	// (Forgejo 403, GitHub 422, Bitbucket 500).
 	ErrBranchProtected = errors.New("the branch is protected")

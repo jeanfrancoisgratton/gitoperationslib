@@ -9,12 +9,12 @@ The swagger only describes the API: how these calls really behave is still to be
 - **The minimum stays Forgejo 15** (`forgejo.MinimumVersion`). A feature that needs a later version returns `ErrNotSupported` on an older server, with the version it needs in the reason, based on `Client.Version()`.
 - **The production server runs 17.0.1**, since 2026-11-05 (upgraded in place from 15.0.2). So 17 is what really gets used, and 15 is what must keep working.
 - **Test both:** run live checks on 15 and on 17 (`GITOPSLIB_TESTENV_IMAGE=codeberg.org/forgejo/forgejo:17`). The local mirror tests skip on 17, which refuses plain `http://` remotes.
-- **Capabilities:** a capability bit says a backend can do something, not that this server's version can. Decide how the two fit together with item 100, the first to need it.
+- **Capabilities:** a capability bit says a backend can do something, not that this server's version can: what a version lacks returns `ErrNotSupported`, naming the version it needs.
 - New areas land as optional interfaces, never as methods on existing ones (item 1 in `TODO.md`).
 
 ## Action items
 
-- [ ] **100 →** Deferred on 2026-11-05, to no particular version: no consumer needs it yet. **Workflow runs**, the biggest gap: `CI` only manages secrets and variables today, so this is a new optional interface. See what GitHub Actions and Bitbucket Pipelines offer for the shared shape.
+- [x] **100 →** (1.6.0: `WorkflowRuns` and `WorkflowArtifacts`, Forgejo and GitHub; Bitbucket Pipelines still to do, once a token can enable pipelines) **Workflow runs**, the biggest gap: `CI` only manages secrets and variables today, so this is a new optional interface. See what GitHub Actions and Bitbucket Pipelines offer for the shared shape.
   - v16: list a run's jobs (`GET .../actions/runs/{run_id}/jobs`), a job's logs (`GET .../actions/jobs/{job_id}/logs`), a run's logs as a ZIP (`GET .../actions/runs/{run_id}/logs`), cancel (`POST .../runs/{run_id}/cancel`), delete a completed run (`DELETE .../runs/{run_id}`).
   - v16: artifacts: of a repository (`GET .../actions/artifacts`), of a run (`GET .../runs/{run_id}/artifacts`), get, delete, download (`GET .../artifacts/{artifact_id}/zip`). Type `ActionArtifact`.
   - v17: a single job with its steps (`GET .../actions/jobs/{job_id}`, type `ActionRunJobStep`), rerun a job and its dependents (`POST .../jobs/{job_id}/rerun`), rerun a run (`POST .../runs/{run_id}/rerun`).

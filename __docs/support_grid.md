@@ -28,6 +28,7 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
 | CI secrets and variables (`CI`) | ✅ | ✅ | ✅ |
+| CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`) | ⚠️ grows by version, 15 to 17 | ✅ | ❌ not yet |
 | Commit history and changed files (`History`) | ⚠️ no per-file line counts, no renames, no date filter | ✅ | ⚠️ no date filter |
 | Own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`) | ✅ | ✅ no avatar, no tokens | ⚠️ e-mail addresses read-only, no profile, no tokens |
 | Collaborators (`Collaborators`) | ✅ | ⚠️ new collaborators are usually invited | ✅ |
@@ -313,6 +314,18 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 | Access tokens: list (any credentials), create, delete (password only) | ✅ | ❌ | ❌ |
 | Access token `CreatedAt` | ✅ from 16 | ❌ | ❌ |
 | Other users' access tokens, with an admin token (`AdminTokens`) | ✅ from 16 | ❌ | ❌ |
+
+## CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`)
+
+Checked against real runs on Forgejo 15.0.11, 16.0.7 and 17.0.1, and on GitHub. Bitbucket Pipelines is not implemented, so the type assertions fail: the test token cannot enable pipelines, so nothing could be run.
+
+| Feature | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| List and get runs, with filters | ✅ | ✅ not by `Number` | ❌ |
+| Cancel a run, delete a finished one | ⚠️ from 16 | ✅ | ❌ |
+| List a run's jobs, job and run logs | ⚠️ from 16; jobs all at once, without steps | ✅ | ❌ |
+| One job with its steps, rerun a run or a job | ⚠️ from 17 | ✅ | ❌ |
+| Artifacts: list, get, delete, download (`WorkflowArtifacts`) | ⚠️ from 16 | ✅ | ❌ |
 
 ## CI secrets and variables (`CI`)
 

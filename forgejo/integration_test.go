@@ -122,4 +122,23 @@ func TestIntegrationAccount(t *testing.T) { contracttest.Account(t, integrationE
 
 func TestIntegrationCI(t *testing.T) { contracttest.CI(t, integrationEnv(t)) }
 
+// TestIntegrationWorkflowRuns needs GITOPSLIB_TESTENV_RUNNER=1 on the disposable
+// instance, and that instance as GITOPSLIB_FORGEJO_URL.
+func TestIntegrationWorkflowRuns(t *testing.T) {
+	label := os.Getenv("GITOPSLIB_TESTENV_RUNNER_LABEL")
+	if label == "" {
+		t.Skip("GITOPSLIB_TESTENV_RUNNER_LABEL is not set: no runner")
+	}
+	env := integrationEnv(t)
+	c := env.Client.(*Client)
+	env.Workflows = &contracttest.WorkflowEnv{
+		RunsOn: label, Dir: ".forgejo/workflows", UploadArtifact: "https://data.forgejo.org/forgejo/upload-artifact@v3",
+		Prepare: func(ctx context.Context, owner, repo string) error {
+			_, err := c.api.Do(ctx, http.MethodPatch, repoPath(owner, repo), nil, map[string]bool{"has_actions": true}, nil)
+			return err
+		},
+	}
+	contracttest.WorkflowRuns(t, env)
+}
+
 func TestIntegrationCommits(t *testing.T) { contracttest.Commits(t, integrationEnv(t)) }

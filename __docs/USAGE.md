@@ -29,6 +29,7 @@ This guide covers every package, interface, type and option of the library, with
 20. [CI secrets and variables (`CI`)](#20-ci-secrets-and-variables-ci)
 21. [Commit history (`History`)](#21-commit-history-history)
 22. [Collaborators and mirrors](#22-collaborators-and-mirrors)
+23. [CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`)](#23-ci-workflow-runs-workflowruns-workflowartifacts)
 
 ---
 
@@ -311,6 +312,8 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapAdminTokens` | `admin-tokens` (other users' access tokens: `gol.AdminTokens`) | ✅ from 16 | | |
 | `CapOrgLabels` | `org-labels` (an organisation's labels: `gol.OrgLabels`) | ✅ | | |
 | `CapLabelsByID` | `labels-by-id` (repository labels addressed by ID: `gol.LabelsByID`) | ✅ | | |
+| `CapWorkflowRuns` | `workflow-runs` (CI runs, jobs and logs: `gol.WorkflowRuns`) | ✅ | ✅ | |
+| `CapWorkflowArtifacts` | `workflow-artifacts` (CI artifacts: `gol.WorkflowArtifacts`) | ✅ from 16 | ✅ | |
 | `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
 | `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
 | `CapCollaboratorInvitations` | `collaborator-invitations` (invitations not yet accepted: `gol.CollaboratorInvitations`) | | ✅ | |
@@ -403,6 +406,7 @@ Since 1.0.0, new areas arrive this way rather than as new `Client` methods, so c
 | `gol.ErrIsPullRequest` | `Issues().Delete`, `Issues().Edit` with `State` | The number is a pull request; refused by the library |
 | `gol.ErrNameTaken` | Creating or renaming a label or milestone | GitHub 422 `already_exists`; on Forgejo, which would accept it, the library's own check |
 | `gol.ErrAmbiguousName` | Anything naming a label that several share (Forgejo) | The library's own check; the error lists their IDs |
+| `gol.ErrWorkflowRunActive` | `DeleteWorkflowRun` | The run has not finished; refused by the library, as Forgejo would answer 500 |
 | `gol.ErrBranchProtected` | `Branches().Delete` | Forgejo 403 "branch protected"; GitHub 422 "Repository rule violations found"; Bitbucket 500 "Something went wrong", confirmed by checking the branch's delete restrictions |
 | `gol.ErrInvalidOTP` | any Forgejo call, `forgejo.New` included | 401 "invalid provided OTP": basic authentication of a 2FA account without a valid code |
 | `gol.ErrPasswordRequired` | `Tokens().Create`, `Delete`, `DeleteByName` (Forgejo) | 401 "auth method not allowed": token authentication is refused here |
@@ -3244,3 +3248,70 @@ Things to know, all checked on Forgejo 15.0.11:
 - `SyncMirror` only queues the fetch, and is HTTP 400 for a repository that is not a mirror.
 - A push mirror cannot be edited: delete it and create another. The server chooses `Name`, and rewrites an SSH address as `ssh://host/path`, without the user.
 - A remote address the server refuses is HTTP 400 here, with a message saying so. For a host that does not resolve, Forgejo answers 401 "Permission denied", which would look like a problem with your token. Since Forgejo 17, plain `http://` remotes are refused too.
+
+## 23. CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`)
+
+Forgejo Actions and GitHub Actions. These are optional interfaces, found with a type assertion. Bitbucket does not implement them yet, so the assertion fails there.
+
+```go
+type WorkflowRuns interface {
+	ListWorkflowRuns(ctx, owner, repo string, opts ListWorkflowRunsOptions) (Page[WorkflowRun], error)
+	GetWorkflowRun(ctx, owner, repo string, id int64) (*WorkflowRun, error)
+	CancelWorkflowRun(ctx, owner, repo string, id int64) error
+	RerunWorkflowRun(ctx, owner, repo string, id int64) error
+	DeleteWorkflowRun(ctx, owner, repo string, id int64) error
+
+	ListWorkflowJobs(ctx, owner, repo string, runID int64, opts ListOptions) (Page[WorkflowJob], error)
+	GetWorkflowJob(ctx, owner, repo string, jobID int64) (*WorkflowJob, error)
+	RerunWorkflowJob(ctx, owner, repo string, jobID int64) error
+	WorkflowJobLogs(ctx, owner, repo string, jobID int64) (io.ReadCloser, error) // text
+	WorkflowRunLogs(ctx, owner, repo string, runID int64) (io.ReadCloser, error) // ZIP
+}
+
+type WorkflowArtifacts interface {
+	ListWorkflowArtifacts(ctx, owner, repo string, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
+	ListWorkflowRunArtifacts(ctx, owner, repo string, runID int64, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
+	GetWorkflowArtifact(ctx, owner, repo string, id int64) (*WorkflowArtifact, error)
+	DeleteWorkflowArtifact(ctx, owner, repo string, id int64) error
+	DownloadWorkflowArtifact(ctx, owner, repo string, id int64) (io.ReadCloser, error) // ZIP
+}
+```
+
+A capability says the backend has the feature, not that this server's version does. On Forgejo, what a version lacks returns `ErrNotSupported`, naming the version it needs:
+
+| Feature | Forgejo | GitHub |
+|---|---|---|
+| List and get runs | ✅ | ✅ |
+| Cancel and delete a run; list jobs; job and run logs; artifacts | from 16 | ✅ |
+| Get one job, with its steps; rerun a run or a job | from 17 | ✅ |
+| Filter by `Number` | ✅ | ❌ `ErrNotSupported` |
+| Steps in `ListWorkflowJobs` | ❌ use `GetWorkflowJob` | ✅ |
+| `WorkflowRun.StoppedAt`; `WorkflowJob.StartedAt`, `CompletedAt` | run only | job only |
+
+```go
+r, ok := client.(gol.WorkflowRuns)
+
+failed, err := r.ListWorkflowRuns(ctx, "acme", "widget", gol.ListWorkflowRunsOptions{
+	Workflow: "build.yml", // the file name
+	Branch:   "main",      // a branch name, not a ref
+	Status:   "failure",
+})
+
+jobs, err := r.ListWorkflowJobs(ctx, "acme", "widget", failed.Items[0].ID, gol.ListOptions{})
+
+log, err := r.WorkflowJobLogs(ctx, "acme", "widget", jobs.Items[0].ID)
+defer log.Close()
+io.Copy(os.Stdout, log)
+```
+
+**Status and conclusion.** `Conclusion` tells how a run, job or step ended, on both forges, and is empty until then: test it to know whether something finished. `Status` stays in the forge's own words, and so does the `Status` filter: `waiting`, `blocked`, `running` and the outcomes on Forgejo, which answers HTTP 400 for an unknown word; `queued`, `in_progress`, `completed` and others on GitHub, which also takes a conclusion there.
+
+**Behaviour worth knowing:**
+- `CancelWorkflowRun` on a run already finished succeeds and changes nothing, on both forges.
+- `DeleteWorkflowRun` on a run still going returns `gol.ErrWorkflowRunActive`, after one more request. Cancel it first.
+- A rerun keeps the run's ID. `RerunWorkflowJob` also reruns the jobs depending on it.
+- A workflow file that does not exist selects nothing, on both forges.
+- Forgejo's `ListWorkflowJobs` returns all at once. Its `WorkflowRunLogs` archive holds an empty `.MISSING` entry for a job with no log yet.
+- GitHub can take a moment to have a finished job's log, and a new branch with a commit can be two pushes, so two runs.
+
+Starting a workflow by hand (a dispatch) is not offered yet.

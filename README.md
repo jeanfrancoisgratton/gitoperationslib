@@ -160,6 +160,7 @@ The library adapts where it can, and returns `ErrNotSupported` where it cannot. 
 | Releases and assets | ✅ plus external assets | ✅ | ❌ |
 | Pull requests and reviews | ✅ | ✅ drafts and auto-merge via GraphQL | ✅ no reopening, no auto-merge |
 | Issues, labels, milestones, comments | ✅ | ✅ | ❌ issue tracker retired |
+| CI workflow runs, jobs, logs, artifacts | ⚠️ grows by version, 15 to 17 | ✅ | ❌ not yet |
 | Webhooks (repository, organisation/workspace) | ✅ | ✅ | ✅ |
 | Receiving deliveries (`webhook`) | ✅ | ✅ | ⚠️ not yet checked against live deliveries |
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
@@ -172,6 +173,7 @@ Differences worth knowing before you start:
 - **Bitbucket** has no public login names. User fields hold the account's **nickname**, and inputs accept a nickname, an account ID or a `{UUID}`.
 - **Merge methods:** Forgejo has six, GitHub three (merge, squash, rebase) and Bitbucket five.
 - **Issues:** `Delete`, and `Edit` with `State`, refuse a pull request's number (`ErrIsPullRequest`). Names in use are refused for labels and milestones (`ErrNameTaken`); on Forgejo, which allows them, the library checks first, and existing duplicates are refused by name (`ErrAmbiguousName`). Only Forgejo has organisation labels (`OrgLabels`).
+- **CI workflow runs:** on Forgejo, cancel, delete, jobs, logs and artifacts need 16, and single jobs and reruns need 17 (`ErrNotSupported` below). Bitbucket Pipelines is not implemented yet.
 - **Webhooks:** Forgejo silently drops event names it does not know, and the library reports them as an error. Its API cannot change a webhook's secret or its `package`, `action_run_*` and `workflow_*` events, so `Edit` refuses to. Workflow events need Forgejo 17. Only Forgejo has branch filters, authorization headers and webhook types.
 
 The full feature-by-feature comparison is in **[__docs/support_grid.md](__docs/support_grid.md)**. Per-call notes are in [__docs/USAGE.md](__docs/USAGE.md).
@@ -199,6 +201,9 @@ set -a; source .env; source .env.testenv; set +a
 go test -tags integration ./...
 __scripts/forgejo-testenv.sh stop    # removes the container and .env.testenv
 ```
+
+`TestIntegrationWorkflowRuns` runs real CI workflows. On Forgejo it needs a runner, so start the instance with `GITOPSLIB_TESTENV_RUNNER=1`, and point `GITOPSLIB_FORGEJO_URL`, `GITOPSLIB_FORGEJO_TOKEN` and `GITOPSLIB_FORGEJO_ORG` at it. On GitHub it uses Actions minutes.
+
 
 The GitHub protection checks briefly create a **public** repository, because free plans only allow rulesets on public repositories. Running the GitHub suites many times in a row can trigger GitHub's secondary rate limit on repository creation, which blocks new repositories for up to an hour.
 
