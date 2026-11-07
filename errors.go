@@ -38,6 +38,18 @@ var (
 	// ADD_MEMBERS_BY_INVITATIONS (Forgejo 16 and later). The user is invited, and
 	// joins by accepting: they are not a member yet.
 	ErrInvitationPending = errors.New("the user was invited, and is not a member until they accept")
+	// ErrIsPullRequest: Issues.Delete, or Issues.Edit with State, on a number that
+	// is a pull request. Issues and pull requests share one sequence, and the
+	// servers would act on it: use PullRequests instead.
+	ErrIsPullRequest = errors.New("the number is a pull request, not an issue")
+	// ErrNameTaken: creating or renaming a label or milestone onto a name already
+	// in use there. GitHub answers HTTP 422; Forgejo would accept it and keep two,
+	// so the library checks first, which is not atomic.
+	ErrNameTaken = errors.New("the name is already in use")
+	// ErrAmbiguousName: a label name that several labels share, which Forgejo
+	// allows, so a name cannot say which is meant. The error lists their IDs, for
+	// LabelsByID and OrgLabels.
+	ErrAmbiguousName = errors.New("several labels have this name")
 	// ErrBranchProtected: deleting a branch a protection rule covers
 	// (Forgejo 403, GitHub 422, Bitbucket 500).
 	ErrBranchProtected = errors.New("the branch is protected")
@@ -131,6 +143,12 @@ func StatusCode(err error) int {
 	return 0
 }
 
-func IsNotFound(err error) bool     { return StatusCode(err) == http.StatusNotFound }
+// IsNotFound reports an HTTP 404, or a 410: GitHub answers that for a deleted
+// issue, and when a repository's issues are disabled.
+func IsNotFound(err error) bool {
+	status := StatusCode(err)
+	return status == http.StatusNotFound || status == http.StatusGone
+}
+
 func IsUnauthorized(err error) bool { return StatusCode(err) == http.StatusUnauthorized }
 func IsForbidden(err error) bool    { return StatusCode(err) == http.StatusForbidden }

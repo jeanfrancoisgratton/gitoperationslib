@@ -187,12 +187,19 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | List (pull requests excluded), get, create, edit | ✅ | ✅ | ❌ |
 | Close, reopen | ✅ | ✅ | ❌ |
 | Delete an issue | ✅ | ✅ GraphQL | ❌ |
+| Told apart from a pull request's number (`IsPullRequest`); `Delete` and `Edit` with `State` refuse those | ✅ | ✅ | ❌ |
+| Filter by labels: an unknown name selects nothing | ✅ checked by the library | ✅ | ❌ |
+| A missing label is refused on an issue | ✅ | ✅ checked by the library, which GitHub would create | ❌ |
 | Lock, unlock (`IssueLocks`) | ⚠️ from 17; a reason is required | ✅ | ❌ |
 | Labels and assignees on issues | ✅ also the organisation's labels, by name | ✅ | ❌ |
 | Labels on pull requests (shared numbering) | ✅ | ✅ | ❌ |
 | Comments: list, create, edit, delete | ⚠️ `ListComments` returns all at once | ✅ | ❌ |
 | Repository labels: list, get, create, edit, delete | ✅ | ✅ | ❌ |
+| A name in use is refused (`ErrNameTaken`), labels and milestones | ⚠️ checked by the library, not atomic | ✅ | ❌ |
+| Labels sharing a name: refused by name (`ErrAmbiguousName`), repaired by ID (`LabelsByID`) | ✅ | — no such labels | ❌ |
+| Organisation labels: list, get, create, edit, delete (`OrgLabels`) | ✅ | ❌ default labels only seed new repositories | ❌ |
 | Milestones: list, get, create, edit, close, delete | ✅ | ✅ | ❌ |
+| Removing a milestone's due date (`ClearDueOn`) | ❌ its API cannot | ✅ | ❌ |
 
 ## Webhooks
 

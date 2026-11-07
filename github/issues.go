@@ -4,12 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"slices"
 	"strings"
 
 	gh "github.com/google/go-github/v93/github"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 )
+
+// nameTaken recognises GitHub's refusal of a label or milestone name in use.
+var nameTaken = refusal.Rule{Status: http.StatusUnprocessableEntity, Fragment: "already_exists", Sentinel: gitoperationslib.ErrNameTaken}
 
 func toLabel(l *gh.Label) gitoperationslib.Label {
 	return gitoperationslib.Label{ID: l.GetID(), Name: l.GetName(), Color: strings.ToLower(l.GetColor()), Description: l.GetDescription()}
@@ -24,7 +30,7 @@ func toMilestone(m *gh.Milestone) gitoperationslib.Milestone {
 
 func toIssue(i *gh.Issue) gitoperationslib.Issue {
 	issue := gitoperationslib.Issue{
-		Number: i.GetNumber(), Title: i.GetTitle(), Body: i.GetBody(), State: gitoperationslib.IssueState(i.GetState()),
+		Number: i.GetNumber(), IsPullRequest: i.IsPullRequest(), Title: i.GetTitle(), Body: i.GetBody(), State: gitoperationslib.IssueState(i.GetState()),
 		Author: i.GetUser().GetLogin(), Labels: []string{}, Assignees: []string{}, Comments: i.GetComments(), Locked: i.GetLocked(),
 		HTMLURL: i.GetHTMLURL(), CreatedAt: i.GetCreatedAt().Time, UpdatedAt: i.GetUpdatedAt().Time, ClosedAt: i.GetClosedAt().Time,
 	}
@@ -89,6 +95,9 @@ func (s issues) Create(ctx context.Context, owner, repo string, opts gitoperatio
 	if opts.Title == "" {
 		return nil, errors.New("github: issues.create: title is required")
 	}
+	if err := s.checkLabels(ctx, owner, repo, opts.Labels); err != nil {
+		return nil, err
+	}
 	req := gh.CreateIssueRequest{Title: opts.Title, Body: nonEmpty(opts.Body), Labels: opts.Labels, Assignees: opts.Assignees}
 	if opts.Milestone != 0 {
 		req.Milestone = gh.Ptr(int(opts.Milestone))
@@ -102,9 +111,19 @@ func (s issues) Edit(ctx context.Context, owner, repo string, number int, opts g
 		if *opts.State != gitoperationslib.IssueStateOpen && *opts.State != gitoperationslib.IssueStateClosed {
 			return nil, fmt.Errorf("github: issues.edit: invalid state %q", *opts.State)
 		}
+		issue, _, err := s.c.gh.Issues.Get(ctx, owner, repo, number)
+		if err != nil {
+			return nil, convertError(err)
+		}
+		if issue.IsPullRequest() {
+			return nil, fmt.Errorf("github: issues.edit: %d: %w", number, gitoperationslib.ErrIsPullRequest)
+		}
 		req.State = (*string)(opts.State)
 	}
 	if opts.Labels != nil {
+		if err := s.checkLabels(ctx, owner, repo, *opts.Labels); err != nil {
+			return nil, err
+		}
 		req.Labels = nonNilStrings(*opts.Labels)
 	}
 	if opts.Assignees != nil {
@@ -122,6 +141,33 @@ func (s issues) Edit(ctx context.Context, owner, repo string, number int, opts g
 		}
 	}
 	return singleIssue(s.c.gh.Issues.Update(ctx, owner, repo, number, req))
+}
+
+// checkLabels refuses names that do not exist: GitHub would create them without a
+// word, leaving a junk label behind a typo. It compares like GitHub, ignoring case.
+func (s issues) checkLabels(ctx context.Context, owner, repo string, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	list := func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Label], error) {
+		return labels{s.c}.List(ctx, owner, repo, o)
+	}
+	var known []string
+	for l, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: 100}, list) {
+		if err != nil {
+			return err
+		}
+		known = append(known, strings.ToLower(l.Name))
+	}
+	for _, n := range names {
+		if !slices.Contains(known, strings.ToLower(n)) {
+			return &gitoperationslib.APIError{
+				Backend: gitoperationslib.BackendGitHub, StatusCode: http.StatusNotFound,
+				Message: fmt.Sprintf("label %q not found in %s/%s", n, owner, repo),
+			}
+		}
+	}
+	return nil
 }
 
 func (s issues) clearMilestone(ctx context.Context, owner, repo string, number int) error {
@@ -146,6 +192,9 @@ func (s issues) Delete(ctx context.Context, owner, repo string, number int) erro
 	if err != nil {
 		return convertError(err)
 	}
+	if issue.IsPullRequest() {
+		return fmt.Errorf("github: issues.delete: %d: %w", number, gitoperationslib.ErrIsPullRequest)
+	}
 	const mutation = `mutation($id: ID!) { deleteIssue(input: {issueId: $id}) { clientMutationId } }`
 	if err := s.c.graphql(ctx, mutation, map[string]any{"id": issue.GetNodeID()}, nil); err != nil {
 		return fmt.Errorf("issues.delete: %w", err)
@@ -154,6 +203,9 @@ func (s issues) Delete(ctx context.Context, owner, repo string, number int) erro
 }
 
 func (s issues) AddLabels(ctx context.Context, owner, repo string, number int, labels []string) error {
+	if err := s.checkLabels(ctx, owner, repo, labels); err != nil {
+		return err
+	}
 	_, _, err := s.c.gh.Issues.AddLabelsToIssue(ctx, owner, repo, number, labels)
 	return convertError(err)
 }
@@ -217,7 +269,7 @@ func (l labels) List(ctx context.Context, owner, repo string, opts gitoperations
 
 func singleLabel(lb *gh.Label, _ *gh.Response, err error) (*gitoperationslib.Label, error) {
 	if err != nil {
-		return nil, convertError(err)
+		return nil, refusal.Mark(convertError(err), nameTaken)
 	}
 	out := toLabel(lb)
 	return &out, nil
@@ -270,7 +322,7 @@ func (m milestones) List(ctx context.Context, owner, repo string, state gitopera
 
 func singleMilestone(ms *gh.Milestone, _ *gh.Response, err error) (*gitoperationslib.Milestone, error) {
 	if err != nil {
-		return nil, convertError(err)
+		return nil, refusal.Mark(convertError(err), nameTaken)
 	}
 	out := toMilestone(ms)
 	return &out, nil
@@ -292,11 +344,38 @@ func (m milestones) Create(ctx context.Context, owner, repo string, opts gitoper
 }
 
 func (m milestones) Edit(ctx context.Context, owner, repo string, id int64, opts gitoperationslib.EditMilestoneOptions) (*gitoperationslib.Milestone, error) {
+	if opts.ClearDueOn {
+		return m.clearDueOn(ctx, owner, repo, id, opts)
+	}
 	req := gh.UpdateMilestoneRequest{Title: opts.Title, Description: opts.Description, State: (*string)(opts.State)}
 	if opts.DueOn != nil {
 		req.DueOn = &gh.Timestamp{Time: *opts.DueOn}
 	}
 	return singleMilestone(m.c.gh.Issues.UpdateMilestone(ctx, owner, repo, int(id), req))
+}
+
+// clearDueOn sends a raw request: UpdateMilestoneRequest cannot send "due_on": null.
+func (m milestones) clearDueOn(ctx context.Context, owner, repo string, id int64, opts gitoperationslib.EditMilestoneOptions) (*gitoperationslib.Milestone, error) {
+	if opts.DueOn != nil {
+		return nil, errors.New("github: milestones.edit: ClearDueOn and DueOn cannot go together")
+	}
+	body := map[string]any{"due_on": nil}
+	if opts.Title != nil {
+		body["title"] = *opts.Title
+	}
+	if opts.Description != nil {
+		body["description"] = *opts.Description
+	}
+	if opts.State != nil {
+		body["state"] = string(*opts.State)
+	}
+	req, err := m.c.gh.NewRequest(ctx, "PATCH", fmt.Sprintf("repos/%s/%s/milestones/%d", owner, repo, id), body)
+	if err != nil {
+		return nil, fmt.Errorf("github: milestones.edit: %w", err)
+	}
+	var out gh.Milestone
+	resp, err := m.c.gh.Do(req, &out)
+	return singleMilestone(&out, resp, err)
 }
 
 func (m milestones) Delete(ctx context.Context, owner, repo string, id int64) error {

@@ -148,10 +148,10 @@ func TestMilestonesForgejo(t *testing.T) {
 		t.Errorf("Get = %+v, %v", got, err)
 	}
 
-	if _, err := ms.Create(ctx, "acme", "widget", gitoperationslib.CreateMilestoneOptions{Title: "v1", Description: "d", DueOn: due}); err != nil {
+	if _, err := ms.Create(ctx, "acme", "widget", gitoperationslib.CreateMilestoneOptions{Title: "new", Description: "d", DueOn: due}); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]any{"title": "v1", "description": "d", "due_on": "2026-12-01T00:00:00Z"}
+	want := map[string]any{"title": "new", "description": "d", "due_on": "2026-12-01T00:00:00Z"}
 	if !reflect.DeepEqual((*writes)[0].body, want) {
 		t.Errorf("Create body = %v", (*writes)[0].body)
 	}

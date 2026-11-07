@@ -10,7 +10,7 @@ import (
 )
 
 // Rule tags an *APIError with Sentinel when its status is Status and its
-// message contains Fragment (case-insensitively). Status 0 matches any
+// message or details contain Fragment (case-insensitively). Status 0 matches any
 // status; an empty Fragment matches any message.
 type Rule struct {
 	Status   int
@@ -25,7 +25,7 @@ func Mark(err error, rules ...Rule) error {
 	if !errors.As(err, &apiErr) || apiErr.Err != nil {
 		return err
 	}
-	msg := strings.ToLower(apiErr.Message)
+	msg := strings.ToLower(apiErr.Message + " " + strings.Join(apiErr.Details, " "))
 	for _, r := range rules {
 		if (r.Status == 0 || r.Status == apiErr.StatusCode) && strings.Contains(msg, strings.ToLower(r.Fragment)) {
 			apiErr.Err = r.Sentinel

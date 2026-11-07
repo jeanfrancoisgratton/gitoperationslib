@@ -44,6 +44,9 @@ func issueServer(t *testing.T) (*Client, *[]issueWrite, *[]string) {
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && path == "/labels" && r.URL.Query().Get("per_page") == "100":
+			// The library checking that labels exist.
+			io.WriteString(w, `[`+label+`,{"id":2,"name":"ui"}]`)
 		case r.Method == http.MethodGet && path == "/labels":
 			w.Header().Set("Link", `<https://x/?page=2>; rel="next"`)
 			io.WriteString(w, "["+label+"]")

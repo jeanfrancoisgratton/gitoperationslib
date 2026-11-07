@@ -6,6 +6,41 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [1.6.0] — 2026-11-06
+
+Organisation labels, and issue traps that were left to each consumer, found by gitclt's `issue` commands. Several of these
+change what existing calls do: see Changed.
+
+### Added
+- **`OrgLabels`** (`CapOrgLabels`, Forgejo only): list, get, create, edit and delete an organisation's labels, by ID.
+  `ListOrgLabels` on a user returns an empty page, and a name that is neither is a 404.
+- **`LabelsByID`** (`CapLabelsByID`, Forgejo only): `EditLabelByID` and `DeleteLabelByID`, to repair names several labels
+  share.
+- `Issue.IsPullRequest`, as a pull request's number answers as an issue.
+- `EditMilestoneOptions.ClearDueOn` removes a due date on GitHub. Forgejo's API cannot, and returns `ErrNotSupported`.
+- `ErrIsPullRequest`, `ErrNameTaken` and `ErrAmbiguousName`.
+
+### Changed
+- **`Issues().Delete`, and `Issues().Edit` with `State`, return `ErrIsPullRequest` on a pull request's number,** after one
+  more request. `Delete` used to remove the pull request for good. Labels, assignees, milestones, comments and other
+  `Edit` fields keep working on pull requests.
+- **Creating or renaming a label or milestone onto a name in use returns `ErrNameTaken`.** Forgejo would accept it and keep
+  both, so the library checks first, with one more listing, which is not atomic. GitHub's 422 is recognised.
+- **A label name several labels share returns `ErrAmbiguousName`** on Forgejo, from `Labels` and from issue methods naming
+  it, instead of acting on whichever came first.
+- `gol.IsNotFound` also matches HTTP 410, which GitHub answers for a deleted issue, and when a repository's issues are
+  disabled.
+
+### Fixed
+- `ListIssuesOptions.Labels` with a name the server does not know listed issues without that label on Forgejo. It now
+  selects nothing, as on GitHub, at the cost of one or two label listings.
+- `CreateIssueOptions.Labels`, `EditIssueOptions.Labels` and `AddLabels` silently created a missing label on GitHub, despite
+  their documentation. They now answer a 404 `*APIError`, as on Forgejo, at the cost of listing the labels.
+- `refusal.Mark` now also looks at an error's details, where GitHub puts `already_exists`.
+
+### Documentation
+- `Milestone.DueOn` on GitHub is a date rather than a time. GitHub's issue lists can lag for some seconds.
+
 ## [1.5.1] — 2026-11-06
 
 ### Fixed

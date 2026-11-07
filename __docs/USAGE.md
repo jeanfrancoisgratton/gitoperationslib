@@ -309,6 +309,8 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapUserFilters` | `user-filters` (listing users by criteria: `gol.UserFilters`) | ✅ | | |
 | `CapIssueLocks` | `issue-locks` (locking issues: `gol.IssueLocks`) | ✅ from 17 | ✅ | |
 | `CapAdminTokens` | `admin-tokens` (other users' access tokens: `gol.AdminTokens`) | ✅ from 16 | | |
+| `CapOrgLabels` | `org-labels` (an organisation's labels: `gol.OrgLabels`) | ✅ | | |
+| `CapLabelsByID` | `labels-by-id` (repository labels addressed by ID: `gol.LabelsByID`) | ✅ | | |
 | `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
 | `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
 | `CapCollaboratorInvitations` | `collaborator-invitations` (invitations not yet accepted: `gol.CollaboratorInvitations`) | | ✅ | |
@@ -398,6 +400,9 @@ Since 1.0.0, new areas arrive this way rather than as new `Client` methods, so c
 | `gol.ErrOrgMember` | `Users().Delete` without `Purge` (Forgejo) | 422 "user still has membership of organizations" |
 | `gol.ErrLastOwner` | `Orgs().RemoveMember`, `Teams().RemoveMember` (Forgejo) | 500 "user is the last member of owner team" |
 | `gol.ErrInvitationPending` | `Teams().AddMember` (Forgejo 16+ with `ADD_MEMBERS_BY_INVITATIONS`) | 204 and not a member yet, or 409 "team invite already exists" |
+| `gol.ErrIsPullRequest` | `Issues().Delete`, `Issues().Edit` with `State` | The number is a pull request; refused by the library |
+| `gol.ErrNameTaken` | Creating or renaming a label or milestone | GitHub 422 `already_exists`; on Forgejo, which would accept it, the library's own check |
+| `gol.ErrAmbiguousName` | Anything naming a label that several share (Forgejo) | The library's own check; the error lists their IDs |
 | `gol.ErrBranchProtected` | `Branches().Delete` | Forgejo 403 "branch protected"; GitHub 422 "Repository rule violations found"; Bitbucket 500 "Something went wrong", confirmed by checking the branch's delete restrictions |
 | `gol.ErrInvalidOTP` | any Forgejo call, `forgejo.New` included | 401 "invalid provided OTP": basic authentication of a 2FA account without a valid code |
 | `gol.ErrPasswordRequired` | `Tokens().Create`, `Delete`, `DeleteByName` (Forgejo) | 401 "auth method not allowed": token authentication is refused here |
@@ -1462,6 +1467,7 @@ Issues and pull requests share one number sequence. `List` never includes pull r
 | `Issue` field | Notes |
 |---|---|
 | `Number`, `Title`, `Body`, `State` | |
+| `IsPullRequest` | The number is a pull request's, as `Get` and `Edit` can find them; `List` never returns them |
 | `Author` | Login |
 | `Labels []string` | Names |
 | `Assignees []string` | Logins |
@@ -1493,6 +1499,14 @@ type EditIssueOptions struct {
 	Milestone   *int64      // 0 removes it
 }
 ```
+
+**Pull requests under an issue's number.** The servers act on them through the issue API, so `Delete` would remove a pull request for good. `Delete` and `Edit` with `State` return `gol.ErrIsPullRequest` instead, after one extra request. Labels, assignees, milestones and comments keep working on pull requests, as do other `Edit` fields.
+
+**Labels must exist.** `ListIssuesOptions.Labels` with a name that does not exist selects nothing, on both forges: Forgejo would ignore the name and list everything, so the library looks the names up first, at the cost of one label listing, or two when a name is not the repository's. `CreateIssueOptions.Labels`, `EditIssueOptions.Labels` and `AddLabels` answer a 404 `*APIError` for a missing label. GitHub would create it silently with a default colour, so the library checks first, at the cost of listing the labels.
+
+**GitHub's issue lists lag.** Right after a create or a close they can be stale for some seconds. That is the server's: `Get` is up to date.
+
+`gol.IsNotFound` also matches HTTP 410, which GitHub answers for a deleted issue, and when a repository's issues are disabled.
 
 ### 11.2 Examples
 
@@ -1591,7 +1605,29 @@ type EditLabelOptions struct {
 }
 ```
 
-Labels are addressed by **name**.
+Labels are addressed by **name**. Creating a label or renaming onto a name in use returns `gol.ErrNameTaken`. Forgejo would accept it and keep both, so the library checks first with one more listing, which is not atomic. A repository's label may share a name with its organisation's: it wins.
+
+A name several labels already share returns `gol.ErrAmbiguousName`, from `Get`, `Edit` and `Delete`, and from issue methods naming it, and the error lists their IDs. Repair them on Forgejo with `gol.LabelsByID` (`CapLabelsByID`):
+
+```go
+l, ok := client.(gol.LabelsByID)
+_, err := l.EditLabelByID(ctx, "acme", "widget", 12, gol.EditLabelOptions{Name: gol.Ptr("bug-old")})
+err = l.DeleteLabelByID(ctx, "acme", "widget", 13)
+```
+
+**Organisation labels (Forgejo).** `gol.OrgLabels` (`CapOrgLabels`) manages the labels all of an organisation's repositories can use by name. They are addressed by `Label.ID`. GitHub's organisation default labels only seed new repositories and Bitbucket has no issues, so the type assertion fails on both.
+
+```go
+type OrgLabels interface {
+	ListOrgLabels(ctx, org string, opts ListOptions) (Page[Label], error)
+	GetOrgLabel(ctx, org string, id int64) (*Label, error)
+	CreateOrgLabel(ctx, org string, label Label) (*Label, error)
+	EditOrgLabel(ctx, org string, id int64, opts EditLabelOptions) (*Label, error)
+	DeleteOrgLabel(ctx, org string, id int64) error
+}
+```
+
+`ListOrgLabels` on a user returns an empty page, so a repository's owner can be passed as it is; a name that is neither is a 404. Deleting a label that does not exist is a 404, where the server alone would answer 204. `CreateOrgLabel` and renames return `gol.ErrNameTaken` as above.
 
 ```go
 labels := client.Labels()
@@ -1637,10 +1673,13 @@ type EditMilestoneOptions struct {
 	Title, Description *string
 	State              *MilestoneState // close or reopen
 	DueOn              *time.Time
+	ClearDueOn         bool // removes the due date; GitHub only
 }
 ```
 
-Milestones are addressed by `Milestone.ID`. Use the value the library returns; do not build IDs yourself.
+Milestones are addressed by `Milestone.ID`. Use the value the library returns; do not build IDs yourself. A title in use returns `gol.ErrNameTaken`, with the same check on Forgejo as for labels.
+
+`ClearDueOn` returns `ErrNotSupported` on Forgejo, whose API cannot remove a due date: null and the zero time keep it. GitHub stores a date rather than a time: whatever was sent, `DueOn` comes back as midnight UTC of the day as written in the request, which local time west of Greenwich shows as the day before.
 
 ```go
 m := client.Milestones()

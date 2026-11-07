@@ -3,7 +3,6 @@ package contracttest
 import (
 	"context"
 	"errors"
-	"net/http"
 	"slices"
 	"testing"
 	"time"
@@ -165,10 +164,100 @@ func Issues(t *testing.T, env Env) {
 		t.Errorf("closed milestones = %+v, %v", page, err)
 	}
 
-	// Delete everything (GitHub answers 410 Gone for a deleted issue).
+	// A pull request found under an issue's number: told apart, and protected.
+	t.Run("pull request number", func(t *testing.T) {
+		got, err := issues.Get(ctx, owner, *repo, pr.Number)
+		check(err)
+		if !got.IsPullRequest {
+			t.Errorf("Get(pull request) = %+v", got)
+		}
+		plain, err := issues.Get(ctx, owner, *repo, issue.Number)
+		check(err)
+		if plain.IsPullRequest {
+			t.Errorf("Get(issue) = %+v", plain)
+		}
+		if err := issues.Delete(ctx, owner, *repo, pr.Number); !errors.Is(err, gitoperationslib.ErrIsPullRequest) {
+			t.Errorf("Delete: err = %v, want ErrIsPullRequest", err)
+		}
+		if _, err := issues.Edit(ctx, owner, *repo, pr.Number, gitoperationslib.EditIssueOptions{State: gitoperationslib.Ptr(gitoperationslib.IssueStateClosed)}); !errors.Is(err, gitoperationslib.ErrIsPullRequest) {
+			t.Errorf("Edit(State): err = %v, want ErrIsPullRequest", err)
+		}
+		still, err := env.Client.PullRequests().Get(ctx, owner, *repo, pr.Number)
+		check(err)
+		if still.State != gitoperationslib.PRStateOpen {
+			t.Errorf("pull request after the refusals = %+v", still)
+		}
+		// What is legitimate on a pull request keeps working.
+		if _, err := issues.Edit(ctx, owner, *repo, pr.Number, gitoperationslib.EditIssueOptions{Labels: &[]string{"bug"}}); err != nil {
+			t.Errorf("Edit(Labels): %v", err)
+		}
+	})
+
+	t.Run("names", func(t *testing.T) {
+		if _, err := labels.Create(ctx, owner, *repo, gitoperationslib.Label{Name: "bug", Color: "ededed"}); !errors.Is(err, gitoperationslib.ErrNameTaken) {
+			t.Errorf("Create(label in use): err = %v, want ErrNameTaken", err)
+		}
+		if _, err := labels.Edit(ctx, owner, *repo, "needs-triage", gitoperationslib.EditLabelOptions{Name: gitoperationslib.Ptr("bug")}); !errors.Is(err, gitoperationslib.ErrNameTaken) {
+			t.Errorf("rename a label onto one in use: err = %v, want ErrNameTaken", err)
+		}
+		if _, err := milestones.Create(ctx, owner, *repo, gitoperationslib.CreateMilestoneOptions{Title: "v1.0"}); !errors.Is(err, gitoperationslib.ErrNameTaken) {
+			t.Errorf("Create(milestone in use): err = %v, want ErrNameTaken", err)
+		}
+		other, err := milestones.Create(ctx, owner, *repo, gitoperationslib.CreateMilestoneOptions{Title: "v2.0"})
+		check(err)
+		if _, err := milestones.Edit(ctx, owner, *repo, other.ID, gitoperationslib.EditMilestoneOptions{Title: gitoperationslib.Ptr("v1.0")}); !errors.Is(err, gitoperationslib.ErrNameTaken) {
+			t.Errorf("rename a milestone onto one in use: err = %v, want ErrNameTaken", err)
+		}
+		check(milestones.Delete(ctx, owner, *repo, other.ID))
+	})
+
+	t.Run("unknown labels", func(t *testing.T) {
+		for _, names := range [][]string{{"no-such-label"}, {"bug", "no-such-label"}} {
+			page, err := issues.List(ctx, owner, *repo, gitoperationslib.ListIssuesOptions{State: gitoperationslib.IssueStateAll, Labels: names})
+			check(err)
+			if len(page.Items) != 0 {
+				t.Errorf("List(%v) = %+v, want nothing", names, page.Items)
+			}
+		}
+		if _, err := issues.Create(ctx, owner, *repo, gitoperationslib.CreateIssueOptions{Title: "x", Labels: []string{"no-such-label"}}); !gitoperationslib.IsNotFound(err) {
+			t.Errorf("Create: err = %v, want 404", err)
+		}
+		if err := issues.AddLabels(ctx, owner, *repo, issue.Number, []string{"no-such-label"}); !gitoperationslib.IsNotFound(err) {
+			t.Errorf("AddLabels: err = %v, want 404", err)
+		}
+		if _, err := issues.Edit(ctx, owner, *repo, issue.Number, gitoperationslib.EditIssueOptions{Labels: &[]string{"no-such-label"}}); !gitoperationslib.IsNotFound(err) {
+			t.Errorf("Edit: err = %v, want 404", err)
+		}
+		if _, err := labels.Get(ctx, owner, *repo, "no-such-label"); !gitoperationslib.IsNotFound(err) {
+			t.Errorf("the refusals left a label behind: err = %v", err)
+		}
+	})
+
+	t.Run("clearing a due date", func(t *testing.T) {
+		due, err := milestones.Create(ctx, owner, *repo, gitoperationslib.CreateMilestoneOptions{Title: "due", DueOn: time.Now().Add(240 * time.Hour)})
+		check(err)
+		now := time.Now()
+		if _, err := milestones.Edit(ctx, owner, *repo, due.ID, gitoperationslib.EditMilestoneOptions{ClearDueOn: true, DueOn: &now}); err == nil {
+			t.Error("ClearDueOn and DueOn together accepted")
+		}
+		cleared, err := milestones.Edit(ctx, owner, *repo, due.ID, gitoperationslib.EditMilestoneOptions{ClearDueOn: true})
+		if env.Client.Backend() == gitoperationslib.BackendForgejo {
+			if !errors.Is(err, gitoperationslib.ErrNotSupported) {
+				t.Errorf("Forgejo: err = %v, want ErrNotSupported", err)
+			}
+		} else {
+			check(err)
+			if !cleared.DueOn.IsZero() {
+				t.Errorf("cleared = %+v", cleared)
+			}
+		}
+		check(milestones.Delete(ctx, owner, *repo, due.ID))
+	})
+
+	// Delete everything. GitHub answers 410 for a deleted issue, which counts.
 	check(issues.Delete(ctx, owner, *repo, issue.Number))
-	if _, err := issues.Get(ctx, owner, *repo, issue.Number); !gitoperationslib.IsNotFound(err) && gitoperationslib.StatusCode(err) != http.StatusGone {
-		t.Errorf("Get after delete: err = %v, want 404 or 410", err)
+	if _, err := issues.Get(ctx, owner, *repo, issue.Number); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get after delete: err = %v, want not found", err)
 	}
 	check(milestones.Delete(ctx, owner, *repo, ms.ID))
 	check(labels.Delete(ctx, owner, *repo, "bug"))

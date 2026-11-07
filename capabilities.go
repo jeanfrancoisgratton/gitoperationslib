@@ -45,6 +45,9 @@ const (
 	CapUserFilters // listing users by criteria (UserFilters)
 	CapIssueLocks  // locking and unlocking issues (IssueLocks)
 	CapAdminTokens // managing other users' access tokens (AdminTokens)
+	// Added in 1.6.0.
+	CapOrgLabels  // an organisation's labels (OrgLabels)
+	CapLabelsByID // repository labels addressed by ID (LabelsByID)
 )
 
 var capabilityNames = []struct {
@@ -84,6 +87,8 @@ var capabilityNames = []struct {
 	{CapUserFilters, "user-filters"},
 	{CapIssueLocks, "issue-locks"},
 	{CapAdminTokens, "admin-tokens"},
+	{CapOrgLabels, "org-labels"},
+	{CapLabelsByID, "labels-by-id"},
 }
 
 // Has reports whether c includes every capability in want.

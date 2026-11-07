@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -67,5 +68,52 @@ func TestIssueLocks(t *testing.T) {
 	}
 	if len(requests) != 3 || requests[2] != "DELETE /api/v3/repos/acme/widget/issues/3/lock" {
 		t.Errorf("requests = %v", requests)
+	}
+}
+
+func TestMissingLabelNotCreated(t *testing.T) {
+	var writes []string
+	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writes = append(writes, r.Method+" "+r.URL.Path)
+		}
+		fmt.Fprint(w, `[{"id":1,"name":"Bug"}]`)
+	})
+	ctx := context.Background()
+	if err := c.Issues().AddLabels(ctx, "acme", "widget", 1, []string{"bug", "typo"}); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("AddLabels: %v", err)
+	}
+	if _, err := c.Issues().Create(ctx, "acme", "widget", gitoperationslib.CreateIssueOptions{Title: "t", Labels: []string{"typo"}}); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Create: %v", err)
+	}
+	if len(writes) != 0 {
+		t.Errorf("wrote %v", writes)
+	}
+	// GitHub's label names ignore case.
+	if err := c.Issues().AddLabels(ctx, "acme", "widget", 1, []string{"BUG"}); err != nil || len(writes) != 1 {
+		t.Errorf("AddLabels(BUG): %v, %v", err, writes)
+	}
+}
+
+func TestClearDueOnGitHub(t *testing.T) {
+	var sent string
+	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		sent = strings.TrimSpace(string(data))
+		fmt.Fprint(w, `{"number":3,"title":"v","state":"open"}`)
+	})
+	got, err := c.Milestones().Edit(context.Background(), "acme", "widget", 3, gitoperationslib.EditMilestoneOptions{ClearDueOn: true})
+	if err != nil || !got.DueOn.IsZero() || sent != `{"due_on":null}` {
+		t.Errorf("Edit = %+v, %v, sent %s", got, err, sent)
+	}
+}
+
+func TestDeletedIssueIsNotFound(t *testing.T) {
+	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGone)
+		fmt.Fprint(w, `{"message":"This issue was deleted"}`)
+	})
+	if _, err := c.Issues().Get(context.Background(), "acme", "widget", 1); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("err = %v", err)
 	}
 }

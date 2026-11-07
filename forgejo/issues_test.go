@@ -100,6 +100,7 @@ func TestIssuesRequests(t *testing.T) {
 	check(err)
 
 	want := []string{
+		"GET /api/v1/repos/acme/widget/labels?limit=50&page=1 ", // the filter's names
 		"GET /api/v1/repos/acme/widget/issues?labels=bug%2Ctriage&state=all&type=issues ",
 		"GET /api/v1/repos/acme/widget/labels?limit=50&page=1 ",
 		`POST /api/v1/repos/acme/widget/issues? {"title":"Bug","labels":[2,1],"assignees":["bob"],"milestone":3}`,
@@ -115,7 +116,9 @@ func TestIssuesRequests(t *testing.T) {
 		`POST /api/v1/repos/acme/widget/issues/5/comments? {"body":"hi"}`,
 		`PATCH /api/v1/repos/acme/widget/issues/comments/9? {"body":"hello"}`,
 		"DELETE /api/v1/repos/acme/widget/issues/comments/9? ",
+		"GET /api/v1/repos/acme/widget/issues/5? ", // not a pull request?
 		"DELETE /api/v1/repos/acme/widget/issues/5? ",
+		"GET /api/v1/repos/acme/widget/labels?limit=50&page=1 ", // the name is free?
 		`POST /api/v1/repos/acme/widget/labels? {"color":"#ededed","description":"","name":"x"}`,
 		"GET /api/v1/repos/acme/widget/labels?limit=50&page=1 ",
 		`PATCH /api/v1/repos/acme/widget/labels/2? {"color":"#fbca04"}`,
