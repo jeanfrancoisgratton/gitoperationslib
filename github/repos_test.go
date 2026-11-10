@@ -198,7 +198,7 @@ func TestGetEditDeleteRepo(t *testing.T) {
 	if err := c.Repos().Delete(ctx, "acme", "widget"); err != nil {
 		t.Fatal(err)
 	}
-	want := "[GET /api/v3/repos/acme/widget GET /api/v3/repos/acme/widget/actions/permissions PATCH /api/v3/repos/acme/widget DELETE /api/v3/repos/acme/widget]"
+	want := "[GET /api/v3/repos/acme/widget GET /api/v3/repos/acme/widget/actions/permissions GET /api/v3/repos/acme/widget/actions/permissions/workflow PATCH /api/v3/repos/acme/widget DELETE /api/v3/repos/acme/widget]"
 	if fmt.Sprint(requests) != want {
 		t.Errorf("requests = %v\nwant       %v", requests, want)
 	}

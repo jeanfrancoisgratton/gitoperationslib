@@ -695,6 +695,10 @@ type EditRepoOptions struct {
 	Archived      *bool
 	Template      *bool
 	Features      RepoFeatures // see below
+	Merge         MergeSettings
+	IssueTracker  IssueTrackerSettings // Forgejo only
+	Wiki          WikiSettings         // Forgejo only
+	Actions       ActionsSettings      // GitHub only
 }
 ```
 
@@ -728,6 +732,32 @@ In a `Repo`, a nil field is a feature the forge does not have, or does not repor
 - **Refused before any change:** setting one the forge does not have returns `ErrNotSupported`. Bitbucket's API reports none of them, and the test token cannot enable Pipelines.
 - **Read back:** a server can answer success and keep its own value, for example Forgejo with Actions turned off for the whole instance (`[actions] ENABLED=false`), or GitHub's wiki on a private repository of a free account. `Create` and `Edit` read the result, and then return the repository with an error matching `ErrNotSupported` that names what was not applied.
 - **On create:** Forgejo's create endpoint takes no features, and GitHub's takes some. The library sets the rest with an edit afterwards, only for those that differ from the server's default. If that fails, `Create` returns the new repository together with the error.
+
+**Settings.** `Repo` reports, and `EditRepoOptions` changes, four more groups, with the same rules: nil is unchanged in options and unknown in a `Repo`, a setting the forge lacks returns `ErrNotSupported` before any change, and the result is read back.
+
+| Setting | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| `Merge.MergeCommit`, `Rebase`, `Squash`, `DeleteBranch` | ✅ | ✅ reported by `Get` only | ❌ |
+| `Merge.RebaseMerge`, `FastForwardOnly`, `DefaultMethod`, `RebaseUpdate` | ✅ | ❌ | ❌ |
+| `Merge.AutoMerge`, `UpdateBranch` | ❌ (Forgejo always allows auto-merge) | ✅ | ❌ |
+| `IssueTracker`: time tracking, dependencies, external tracker | ✅ | ❌ | ❌ |
+| `Wiki`: external wiki, editable by all | ✅ | ❌ | ❌ |
+| `Actions`: allowed actions, workflow token permission, approving pull requests | ❌ | ✅ reported by `Get` only | ❌ |
+
+```go
+repo, err := client.Repos().Edit(ctx, "acme", "widget", gol.EditRepoOptions{
+	Merge: gol.MergeSettings{MergeCommit: gol.Ptr(false), Squash: gol.Ptr(true), DeleteBranch: gol.Ptr(true)},
+})
+```
+
+What Forgejo's API does, which the library handles or refuses:
+- It ignores merge settings while pull requests are off, so `Edit` returns an error for that.
+- Setting one tracker setting resets the others, and `has_issues` or `has_wiki` set to true goes back to the built-in tracker or wiki with their defaults. `Edit` reads the repository first and sends back what was not asked to change.
+- Tracker settings need issues on, and an external wiki needs the wiki on: `Edit` refuses them otherwise.
+- `IssueTracker.External` with a zero URL goes back to the built-in tracker, and `Wiki.ExternalURL` set to `""` to the built-in wiki. Forgejo does not keep the built-in tracker's settings meanwhile, so they come back as its defaults.
+- `Merge.DefaultMethod` can name a method the repository does not allow; Forgejo accepts it.
+
+On GitHub, turning every merge method off is refused (HTTP 422), and auto-merge or a wiki may need a paid plan on a private repository: the read-back then returns `ErrNotSupported`. Only allowing *which* selected actions is left to the web interface.
 
 
 ```go

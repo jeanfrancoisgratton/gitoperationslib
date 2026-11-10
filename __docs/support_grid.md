@@ -72,6 +72,9 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | `Repo.Empty` | ✅ | ❌ always false | ❌ always false |
 | `Repo.ID` | ✅ | ✅ | ❌ always 0 (Bitbucket uses UUIDs) |
 | Features: report, set on create and edit (`RepoFeatures`) | ✅ Actions, issues, wiki, pull requests, projects, releases, packages | ✅ Actions, issues, wiki, pull requests, projects, discussions; Actions reported by `Get` only | ❌ |
+| Merge settings: allowed methods, delete branch after merge (`MergeSettings`) | ✅ also the default method, rebase-merge, fast-forward only, rebase update | ✅ also auto-merge, update branch; reported by `Get` only | ❌ |
+| Issue tracker and wiki settings (`IssueTrackerSettings`, `WikiSettings`) | ✅ time tracking, dependencies, external tracker and wiki, editable by all | ❌ | ❌ |
+| Actions settings (`ActionsSettings`) | ❌ | ✅ allowed actions, token permission, approving pull requests; reported by `Get` only | ❌ |
 
 ## Branches and tags
 

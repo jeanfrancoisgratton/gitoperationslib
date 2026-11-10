@@ -8,7 +8,8 @@ change the public API.
 
 ## [1.7.0] — 2026-11-10
 
-Repository features, such as whether Actions is enabled, wanted by gitclt and stubber (item 114).
+Repository features, such as whether Actions is enabled, wanted by gitclt and stubber (item 114), and repository settings:
+merge methods, issue tracker, wiki and Actions.
 
 ### Added
 - **`RepoFeatures`**, reported in `Repo.Features` and set through `CreateRepoOptions.Features` and
@@ -16,9 +17,17 @@ Repository features, such as whether Actions is enabled, wanted by gitclt and st
   on Forgejo, discussions on GitHub. A feature the forge does not have returns `ErrNotSupported` before any change, and
   Bitbucket supports none. `Create` and `Edit` read the result back: a server that answers success and keeps its own
   value gives the repository with an error matching `ErrNotSupported` that names what was not applied.
+- Repository settings, reported in `Repo` and set through `EditRepoOptions`, read back in the same way:
+  - `MergeSettings`: allowed merge methods and deleting the branch after a merge, on Forgejo and GitHub; the default
+    method, rebase-merge, fast-forward only and rebase updates on Forgejo; auto-merge and branch updates on GitHub.
+  - `IssueTrackerSettings` and `WikiSettings` (Forgejo): time tracking, dependencies, an external tracker or wiki, a wiki
+    every user can edit. The library sends back what Forgejo would otherwise reset, as one tracker setting resets the
+    others, and turning issues or the wiki on drops an external tracker or wiki.
+  - `ActionsSettings` (GitHub): which actions are allowed, the workflow token's default permission, and whether workflows
+    may approve pull requests.
 
 ### Changed
-- `Repos().Get` on GitHub takes one more request, to report whether Actions is enabled.
+- `Repos().Get` on GitHub takes three more requests, to report Actions and its settings.
 
 ## [1.6.0] — 2026-11-06
 

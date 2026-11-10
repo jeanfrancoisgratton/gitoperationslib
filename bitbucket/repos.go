@@ -208,7 +208,7 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 	if opts.Archived != nil {
 		return nil, notSupported(op, "archiving")
 	}
-	if features.Requested(opts.Features) {
+	if features.Requested(opts.Features, opts.Merge, opts.IssueTracker, opts.Wiki, opts.Actions) {
 		return nil, notSupported(op, "repository features: the API does not report them, and the test token cannot enable Pipelines")
 	}
 	if opts.Template != nil {

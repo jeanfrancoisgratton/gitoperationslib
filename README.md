@@ -173,7 +173,7 @@ Differences worth knowing before you start:
 - **Bitbucket** has no public login names. User fields hold the account's **nickname**, and inputs accept a nickname, an account ID or a `{UUID}`.
 - **Merge methods:** Forgejo has six, GitHub three (merge, squash, rebase) and Bitbucket five.
 - **Issues:** `Delete`, and `Edit` with `State`, refuse a pull request's number (`ErrIsPullRequest`). Names in use are refused for labels and milestones (`ErrNameTaken`); on Forgejo, which allows them, the library checks first, and existing duplicates are refused by name (`ErrAmbiguousName`). Only Forgejo has organisation labels (`OrgLabels`).
-- **Repository features:** `Repo.Features` reports Actions, issues, wiki, pull requests and more, and `Create` and `Edit` set them, on Forgejo and GitHub. The result is read back, as servers can answer success and keep their own value.
+- **Repository features and settings:** `Repo.Features` reports Actions, issues, wiki, pull requests and more, and `Create` and `Edit` set them, on Forgejo and GitHub, as `Edit` does merge methods and more settings. The result is read back, as servers can answer success and keep their own value.
 - **CI workflow runs:** on Forgejo, cancel, delete, jobs, logs and artifacts need 16, and single jobs and reruns need 17 (`ErrNotSupported` below). Bitbucket Pipelines is not implemented yet.
 - **Webhooks:** Forgejo silently drops event names it does not know, and the library reports them as an error. Its API cannot change a webhook's secret or its `package`, `action_run_*` and `workflow_*` events, so `Edit` refuses to. Workflow events need Forgejo 17. Only Forgejo has branch filters, authorization headers and webhook types.
 

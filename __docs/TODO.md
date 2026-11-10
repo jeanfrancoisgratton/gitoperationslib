@@ -24,6 +24,7 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 ## Repository units
 
 - [x] **114 →** (1.7.0: `RepoFeatures` on Forgejo and GitHub; Bitbucket refused, as its API reports none of these and the test token cannot enable Pipelines) (found 2026-11-10, setting up Forgejo Actions for stubber; blocks that work, gitclt syncs right after) **Repository units**: `EditRepoOptions` cannot turn a repository's units on or off, and `Repo` does not report them, so nothing can tell whether Actions is enabled on a repository, let alone enable it.
+- [ ] **116 →** Tabled by the user on 2026-11-10: Bitbucket Pipelines (enabling it, and runs). The user is less and less inclined to add Bitbucket features; `ErrNotSupported` is fine there for now. It would need a token that can enable pipelines, which the test token cannot (403).
   - Forgejo: `has_actions`, `has_issues`, `has_wiki`, `has_pull_requests`, `has_projects`, `has_releases`, `has_packages` on `PATCH /repos/{owner}/{repo}` and in the `Repository` response. In both the 15.0.2 and 17.0.1 swaggers, so no version gate. Check on a disposable 15 and 17 that a `PATCH` without them leaves them alone (the hooks `PATCH` does not, item 111).
   - GitHub: Actions is a separate endpoint (`GET`/`PUT /repos/{owner}/{repo}/actions/permissions`, `enabled`); issues, wiki and projects are `has_*` on `PATCH /repos`.
   - Bitbucket: Pipelines through `GET`/`PUT /repositories/{workspace}/{repo}/pipelines_config` (`enabled`), possibly what the test token could not do in item 100; otherwise `ErrNotSupported`.
@@ -140,6 +141,8 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
 - [x] ~~**81 →** Exact set of "Other" areas beyond the five priorities.~~
 
 ## Testing
+
+- [ ] **115 →** `TestIntegrationPullRequests` fails now and then on a fresh Forgejo 17.0.1, within the full suite only (twice in four runs on 2026-11-10; it passed every time on its own). The failing message was not captured: rerun the full suite with `-v` and keep the output.
 
 - [x] **82 →** Integration tests: `-tags integration` + `GITOPSLIB_FORGEJO_{URL,TOKEN,ORG}` (token scopes: repository, organization, user, issue — read and write); repos prefixed `gitopslib-it-`, cleanup deletes only those. Added in increment 3.
 - [x] **83 →** Shared contract checks in `internal/contracttest`, run by both backends' integration tests. Added in increment 4.

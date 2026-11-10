@@ -36,6 +36,10 @@ func toRepo(r *gh.Repository) gitoperationslib.Repo {
 		Features: gitoperationslib.RepoFeatures{
 			Issues: r.HasIssues, Wiki: r.HasWiki, PullRequests: r.HasPullRequests, Projects: r.HasProjects, Discussions: r.HasDiscussions,
 		},
+		Merge: gitoperationslib.MergeSettings{
+			MergeCommit: r.AllowMergeCommit, Rebase: r.AllowRebaseMerge, Squash: r.AllowSquashMerge,
+			DeleteBranch: r.DeleteBranchOnMerge, AutoMerge: r.AllowAutoMerge, UpdateBranch: r.AllowUpdateBranch,
+		},
 		HTMLURL:   r.GetHTMLURL(),
 		CloneURL:  r.GetCloneURL(),
 		SSHURL:    r.GetSSHURL(),
@@ -82,18 +86,77 @@ func (r repos) Get(ctx context.Context, owner, name string) (*gitoperationslib.R
 	out := toRepo(repo)
 	if perms, _, err := r.c.gh.Repositories.GetActionsPermissions(ctx, owner, name); err == nil {
 		out.Features.Actions = gh.Ptr(perms.Enabled)
+		if perms.AllowedActions != nil {
+			out.Actions.Allowed = (*gitoperationslib.ActionsAllowed)(perms.AllowedActions)
+		}
+	}
+	if token, err := r.workflowToken(ctx, owner, name); err == nil {
+		out.Actions.TokenPermission = (*gitoperationslib.ActionsTokenPermission)(&token.Default)
+		out.Actions.ApprovePullRequests = &token.Approve
 	}
 	return &out, nil
 }
 
+type workflowTokenJSON struct {
+	Default string `json:"default_workflow_permissions"`
+	Approve bool   `json:"can_approve_pull_request_reviews"`
+}
+
+func (r repos) workflowToken(ctx context.Context, owner, name string) (*workflowTokenJSON, error) {
+	req, err := r.c.gh.NewRequest(ctx, "GET", fmt.Sprintf("repos/%s/%s/actions/permissions/workflow", owner, name), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out workflowTokenJSON
+	if _, err := r.c.gh.Do(req, &out); err != nil {
+		return nil, convertError(err)
+	}
+	return &out, nil
+}
+
+// setActionsSettings applies what Actions settings ask, keeping the rest as it is:
+// both endpoints take their whole state.
+func (r repos) setActionsSettings(ctx context.Context, owner, name string, enabled *bool, a gitoperationslib.ActionsSettings) error {
+	if enabled != nil || a.Allowed != nil {
+		cur, _, err := r.c.gh.Repositories.GetActionsPermissions(ctx, owner, name)
+		if err != nil {
+			return convertError(err)
+		}
+		next := gh.ActionsPermissionsRepository{Enabled: cur.Enabled}
+		if enabled != nil {
+			next.Enabled = *enabled
+		}
+		if a.Allowed != nil {
+			next.AllowedActions = (*string)(a.Allowed)
+		}
+		if _, _, err := r.c.gh.Repositories.UpdateActionsPermissions(ctx, owner, name, next); err != nil {
+			return convertError(err)
+		}
+	}
+	if a.TokenPermission != nil || a.ApprovePullRequests != nil {
+		cur, err := r.workflowToken(ctx, owner, name)
+		if err != nil {
+			return err
+		}
+		if a.TokenPermission != nil {
+			cur.Default = string(*a.TokenPermission)
+		}
+		if a.ApprovePullRequests != nil {
+			cur.Approve = *a.ApprovePullRequests
+		}
+		req, err := r.c.gh.NewRequest(ctx, "PUT", fmt.Sprintf("repos/%s/%s/actions/permissions/workflow", owner, name), cur)
+		if err != nil {
+			return err
+		}
+		if _, err := r.c.gh.Do(req, nil); err != nil {
+			return convertError(err)
+		}
+	}
+	return nil
+}
+
 // githubFeaturesWhy is what may keep GitHub from applying a feature.
 const githubFeaturesWhy = "the account's plan or the organisation's policy may not allow it"
-
-// setActions enables or disables Actions, which is not a repository field.
-func (r repos) setActions(ctx context.Context, owner, name string, enabled bool) error {
-	_, _, err := r.c.gh.Repositories.UpdateActionsPermissions(ctx, owner, name, gh.ActionsPermissionsRepository{Enabled: enabled})
-	return convertError(err)
-}
 
 func (r repos) List(ctx context.Context, owner string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
 	list, resp, err := r.list(ctx, owner, gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage})
@@ -219,7 +282,13 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 	if err := features.Refuse(gitoperationslib.BackendGitHub, op, opts.Features, "releases", "packages"); err != nil {
 		return nil, err
 	}
-	f := opts.Features
+	if err := features.Refuse(gitoperationslib.BackendGitHub, op, opts.Merge, "rebaseMerge", "fastForwardOnly", "defaultMethod", "rebaseUpdate"); err != nil {
+		return nil, err
+	}
+	if features.Requested(opts.IssueTracker, opts.Wiki) {
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "issue tracker and wiki settings")
+	}
+	f, m := opts.Features, opts.Merge
 	body := &gh.Repository{
 		Name:            opts.Name,
 		Description:     opts.Description,
@@ -232,6 +301,13 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 		HasPullRequests: f.PullRequests,
 		HasProjects:     f.Projects,
 		HasDiscussions:  f.Discussions,
+
+		AllowMergeCommit:    m.MergeCommit,
+		AllowRebaseMerge:    m.Rebase,
+		AllowSquashMerge:    m.Squash,
+		DeleteBranchOnMerge: m.DeleteBranch,
+		AllowAutoMerge:      m.AutoMerge,
+		AllowUpdateBranch:   m.UpdateBranch,
 	}
 	if opts.Visibility != nil {
 		if *opts.Visibility == "" {
@@ -248,10 +324,10 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 		return nil, convertError(err)
 	}
 	out := toRepo(repo)
-	if f.Actions == nil {
-		return features.Check(gitoperationslib.BackendGitHub, op, &out, f, githubFeaturesWhy)
+	if f.Actions == nil && !features.Requested(opts.Actions) {
+		return features.Check(gitoperationslib.BackendGitHub, op, &out, githubFeaturesWhy, f, out.Features, m, out.Merge)
 	}
-	if err := r.setActions(ctx, out.Owner, out.Name, *f.Actions); err != nil {
+	if err := r.setActionsSettings(ctx, out.Owner, out.Name, f.Actions, opts.Actions); err != nil {
 		return &out, fmt.Errorf("github: %s: %w", op, err)
 	}
 	// Read the result back, Actions included.
@@ -259,7 +335,7 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 	if err != nil {
 		return &out, err
 	}
-	return features.Check(gitoperationslib.BackendGitHub, op, got, f, githubFeaturesWhy)
+	return features.Check(gitoperationslib.BackendGitHub, op, got, githubFeaturesWhy, f, got.Features, m, got.Merge, opts.Actions, got.Actions)
 }
 
 func (r repos) Delete(ctx context.Context, owner, name string) error {

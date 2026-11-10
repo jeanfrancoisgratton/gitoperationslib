@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -256,3 +257,43 @@ func TestIntegrationWorkflowRuns(t *testing.T) {
 }
 
 func TestIntegrationCommits(t *testing.T) { contracttest.Commits(t, integrationEnv(t)) }
+
+// TestIntegrationRepoActionsSettings checks GitHub's Actions settings, which take
+// their whole state: one change keeps the rest.
+func TestIntegrationRepoActionsSettings(t *testing.T) {
+	env := integrationEnv(t)
+	c := env.Client.(*Client)
+	ctx := context.Background()
+	repos := c.Repos()
+	created, err := repos.Create(ctx, gitoperationslib.CreateRepoOptions{Owner: env.Org, Name: contracttest.RepoPrefix + "actions-" + strconv.FormatInt(time.Now().UnixNano()%100000, 10), AutoInit: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repos.Delete(context.Background(), created.Owner, created.Name) })
+	got, err := repos.Get(ctx, created.Owner, created.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := got.Actions; a.Allowed == nil || a.TokenPermission == nil || a.ApprovePullRequests == nil {
+		t.Fatalf("Actions settings = %+v", a)
+	}
+	write, local := gitoperationslib.ActionsTokenWrite, gitoperationslib.ActionsAllowedLocalOnly
+	edited, err := repos.Edit(ctx, created.Owner, created.Name, gitoperationslib.EditRepoOptions{Actions: gitoperationslib.ActionsSettings{TokenPermission: &write, Allowed: &local}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := edited.Actions; *a.TokenPermission != write || *a.Allowed != local || *a.ApprovePullRequests != *got.Actions.ApprovePullRequests || !*edited.Features.Actions {
+		t.Errorf("edited = %+v, features %+v", a, edited.Features)
+	}
+	// Turning Actions off and on keeps them.
+	if _, err := repos.Edit(ctx, created.Owner, created.Name, gitoperationslib.EditRepoOptions{Features: gitoperationslib.RepoFeatures{Actions: gitoperationslib.Ptr(false)}}); err != nil {
+		t.Fatal(err)
+	}
+	back, err := repos.Edit(ctx, created.Owner, created.Name, gitoperationslib.EditRepoOptions{Features: gitoperationslib.RepoFeatures{Actions: gitoperationslib.Ptr(true)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := back.Actions; *a.Allowed != local || *a.TokenPermission != write {
+		t.Errorf("after off and on = %+v", a)
+	}
+}

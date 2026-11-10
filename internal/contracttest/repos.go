@@ -318,6 +318,10 @@ func repoFeatures(t *testing.T, env Env) {
 		if _, err := repos.Create(ctx, gitoperationslib.CreateRepoOptions{Owner: env.Org, Name: repoName(t), Features: off}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("Create with features: err = %v, want ErrNotSupported", err)
 		}
+		_, name := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org})
+		if _, err := repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{Merge: gitoperationslib.MergeSettings{Squash: gitoperationslib.Ptr(true)}}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("Edit with merge settings: err = %v, want ErrNotSupported", err)
+		}
 		return
 	}
 	created, name := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org, AutoInit: true, Features: off})
@@ -348,10 +352,45 @@ func repoFeatures(t *testing.T, env Env) {
 	if !is(again.Features.Issues, true) || !is(again.Features.PullRequests, false) {
 		t.Errorf("after another edit = %+v", again.Features)
 	}
+	// Merge settings both forges have; Forgejo ignores them while pull requests are
+	// off, so the library refuses that.
+	merge := gitoperationslib.MergeSettings{MergeCommit: gitoperationslib.Ptr(false), Squash: gitoperationslib.Ptr(true), DeleteBranch: gitoperationslib.Ptr(true)}
+	if env.Client.Backend() == gitoperationslib.BackendForgejo {
+		if _, err := repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{Merge: merge}); err == nil {
+			t.Error("merge settings with pull requests off accepted")
+		}
+	}
+	merged, err := repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{Merge: merge, Features: gitoperationslib.RepoFeatures{PullRequests: gitoperationslib.Ptr(true)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := merged.Merge; !is(m.MergeCommit, false) || !is(m.Squash, true) || !is(m.DeleteBranch, true) || !is(m.Rebase, true) {
+		t.Errorf("merge = %+v", m)
+	}
+	if got, err := repos.Get(ctx, env.Org, *name); err != nil || !is(got.Merge.Squash, true) || !is(got.Merge.DeleteBranch, true) {
+		t.Errorf("Get merge = %+v, %v", got.Merge, err)
+	}
+
 	// A feature the forge does not have is refused before any change.
 	other := gitoperationslib.RepoFeatures{Discussions: gitoperationslib.Ptr(true)}
 	if env.Client.Backend() == gitoperationslib.BackendGitHub {
 		other = gitoperationslib.RepoFeatures{Packages: gitoperationslib.Ptr(true)}
+	}
+	for label, opts := range map[string]gitoperationslib.EditRepoOptions{
+		"merge":    {Merge: gitoperationslib.MergeSettings{FastForwardOnly: gitoperationslib.Ptr(true)}},
+		"settings": {IssueTracker: gitoperationslib.IssueTrackerSettings{TimeTracking: gitoperationslib.Ptr(false)}},
+	} {
+		if env.Client.Backend() == gitoperationslib.BackendForgejo {
+			if label == "merge" {
+				opts = gitoperationslib.EditRepoOptions{Merge: gitoperationslib.MergeSettings{AutoMerge: gitoperationslib.Ptr(true)}}
+			} else {
+				opts = gitoperationslib.EditRepoOptions{Actions: gitoperationslib.ActionsSettings{ApprovePullRequests: gitoperationslib.Ptr(true)}}
+			}
+		}
+		opts.Description = gitoperationslib.Ptr("refused")
+		if _, err := repos.Edit(ctx, env.Org, *name, opts); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("%s the forge lacks: err = %v, want ErrNotSupported", label, err)
+		}
 	}
 	if _, err := repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{Features: other, Description: gitoperationslib.Ptr("refused")}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("a feature the forge lacks: err = %v, want ErrNotSupported", err)
