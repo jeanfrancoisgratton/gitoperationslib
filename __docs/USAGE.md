@@ -694,8 +694,41 @@ type EditRepoOptions struct {
 	DefaultBranch *string
 	Archived      *bool
 	Template      *bool
+	Features      RepoFeatures // see below
 }
 ```
+
+**Features.** `Repo.Features` says which optional features are on, and `CreateRepoOptions.Features` and `EditRepoOptions.Features` turn them on or off:
+
+```go
+type RepoFeatures struct {
+	Actions, Issues, Wiki, PullRequests, Projects *bool
+	Releases, Packages *bool // Forgejo only
+	Discussions        *bool // GitHub only
+}
+
+repo, err := client.Repos().Create(ctx, gol.CreateRepoOptions{
+	Name:     "widget",
+	Features: gol.RepoFeatures{Actions: gol.Ptr(false)},
+})
+repo, err = client.Repos().Edit(ctx, "acme", "widget", gol.EditRepoOptions{
+	Features: gol.RepoFeatures{Actions: gol.Ptr(true), Wiki: gol.Ptr(false)},
+})
+```
+
+In a `Repo`, a nil field is a feature the forge does not have, or does not report there. In options, nil leaves it as it is.
+
+| Feature | Forgejo | GitHub | Bitbucket |
+|---|---|---|---|
+| `Actions` | ✅ on by default | ✅ reported by `Get` only, as it takes one more request; nil in lists | ❌ |
+| `Issues`, `Wiki`, `PullRequests`, `Projects` | ✅ | ✅ | ❌ |
+| `Releases`, `Packages` | ✅ | ❌ | ❌ |
+| `Discussions` | ❌ | ✅ | ❌ |
+
+- **Refused before any change:** setting one the forge does not have returns `ErrNotSupported`. Bitbucket's API reports none of them, and the test token cannot enable Pipelines.
+- **Read back:** a server can answer success and keep its own value, for example Forgejo with Actions turned off for the whole instance (`[actions] ENABLED=false`), or GitHub's wiki on a private repository of a free account. `Create` and `Edit` read the result, and then return the repository with an error matching `ErrNotSupported` that names what was not applied.
+- **On create:** Forgejo's create endpoint takes no features, and GitHub's takes some. The library sets the rest with an edit afterwards, only for those that differ from the server's default. If that fails, `Create` returns the new repository together with the error.
+
 
 ```go
 repo, err := client.Repos().Edit(ctx, "acme", "widget", gol.EditRepoOptions{

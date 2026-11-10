@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/features"
 )
 
 type linkJSON struct {
@@ -150,6 +151,9 @@ func (r repos) Create(ctx context.Context, opts gitoperationslib.CreateRepoOptio
 	if opts.Name == "" {
 		return nil, errNoName
 	}
+	if features.Requested(opts.Features) {
+		return nil, notSupported(op, "repository features: the API does not report them, and the test token cannot enable Pipelines")
+	}
 	switch {
 	case len(opts.Gitignores) > 0:
 		return nil, notSupported(op, "gitignore templates")
@@ -203,6 +207,9 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 	const op = "repos.edit"
 	if opts.Archived != nil {
 		return nil, notSupported(op, "archiving")
+	}
+	if features.Requested(opts.Features) {
+		return nil, notSupported(op, "repository features: the API does not report them, and the test token cannot enable Pipelines")
 	}
 	if opts.Template != nil {
 		return nil, notSupported(op, "template repositories")

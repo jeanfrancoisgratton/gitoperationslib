@@ -6,6 +6,20 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [1.7.0] — 2026-11-10
+
+Repository features, such as whether Actions is enabled, wanted by gitclt and stubber (item 114).
+
+### Added
+- **`RepoFeatures`**, reported in `Repo.Features` and set through `CreateRepoOptions.Features` and
+  `EditRepoOptions.Features`: Actions, issues, wiki, pull requests and projects on Forgejo and GitHub, releases and packages
+  on Forgejo, discussions on GitHub. A feature the forge does not have returns `ErrNotSupported` before any change, and
+  Bitbucket supports none. `Create` and `Edit` read the result back: a server that answers success and keeps its own
+  value gives the repository with an error matching `ErrNotSupported` that names what was not applied.
+
+### Changed
+- `Repos().Get` on GitHub takes one more request, to report whether Actions is enabled.
+
 ## [1.6.0] — 2026-11-06
 
 CI workflow runs, organisation labels, and issue traps that were left to each consumer, found by gitclt's `issue` commands.

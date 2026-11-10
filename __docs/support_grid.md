@@ -71,6 +71,7 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Archive | ✅ | ✅ | ❌ |
 | `Repo.Empty` | ✅ | ❌ always false | ❌ always false |
 | `Repo.ID` | ✅ | ✅ | ❌ always 0 (Bitbucket uses UUIDs) |
+| Features: report, set on create and edit (`RepoFeatures`) | ✅ Actions, issues, wiki, pull requests, projects, releases, packages | ✅ Actions, issues, wiki, pull requests, projects, discussions; Actions reported by `Get` only | ❌ |
 
 ## Branches and tags
 

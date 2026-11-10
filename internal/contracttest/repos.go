@@ -86,6 +86,7 @@ func unsupported(t *testing.T, env Env, c gitoperationslib.Capability, call func
 // Repos runs the repository checks.
 func Repos(t *testing.T, env Env) {
 	t.Run("OrgLifecycle", func(t *testing.T) { orgRepoLifecycle(t, env) })
+	t.Run("Features", func(t *testing.T) { repoFeatures(t, env) })
 	t.Run("UserRepos", func(t *testing.T) {
 		if !env.UserRepos {
 			t.Skip("user namespace checks disabled for this backend")
@@ -305,4 +306,57 @@ func listAccessible(t *testing.T, env Env) {
 		}
 	}
 	t.Errorf("List(\"\") did not include %s/%s", env.Org, *name)
+}
+
+// repoFeatures turns Actions and issues off at creation, then on again. Bitbucket
+// has none of these.
+func repoFeatures(t *testing.T, env Env) {
+	ctx := testContext(t)
+	repos := env.Client.Repos()
+	off := gitoperationslib.RepoFeatures{Actions: gitoperationslib.Ptr(false), Issues: gitoperationslib.Ptr(false)}
+	if isBitbucket(env) {
+		if _, err := repos.Create(ctx, gitoperationslib.CreateRepoOptions{Owner: env.Org, Name: repoName(t), Features: off}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Errorf("Create with features: err = %v, want ErrNotSupported", err)
+		}
+		return
+	}
+	created, name := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org, AutoInit: true, Features: off})
+	is := func(p *bool, want bool) bool { return p != nil && *p == want }
+	if !is(created.Features.Actions, false) || !is(created.Features.Issues, false) || !is(created.Features.PullRequests, true) {
+		t.Errorf("created = %+v", created.Features)
+	}
+	got, err := repos.Get(ctx, env.Org, *name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !is(got.Features.Actions, false) || !is(got.Features.Issues, false) {
+		t.Errorf("Get = %+v", got.Features)
+	}
+	on := gitoperationslib.RepoFeatures{Actions: gitoperationslib.Ptr(true), Issues: gitoperationslib.Ptr(true), PullRequests: gitoperationslib.Ptr(false)}
+	edited, err := repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{Features: on})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !is(edited.Features.Actions, true) || !is(edited.Features.Issues, true) || !is(edited.Features.PullRequests, false) {
+		t.Errorf("edited = %+v", edited.Features)
+	}
+	// Editing something else leaves them as they are.
+	again, err := repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{Description: gitoperationslib.Ptr("features")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !is(again.Features.Issues, true) || !is(again.Features.PullRequests, false) {
+		t.Errorf("after another edit = %+v", again.Features)
+	}
+	// A feature the forge does not have is refused before any change.
+	other := gitoperationslib.RepoFeatures{Discussions: gitoperationslib.Ptr(true)}
+	if env.Client.Backend() == gitoperationslib.BackendGitHub {
+		other = gitoperationslib.RepoFeatures{Packages: gitoperationslib.Ptr(true)}
+	}
+	if _, err := repos.Edit(ctx, env.Org, *name, gitoperationslib.EditRepoOptions{Features: other, Description: gitoperationslib.Ptr("refused")}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("a feature the forge lacks: err = %v, want ErrNotSupported", err)
+	}
+	if after, err := repos.Get(ctx, env.Org, *name); err != nil || after.Description != "features" {
+		t.Errorf("a refused edit changed the repository: %+v, %v", after, err)
+	}
 }

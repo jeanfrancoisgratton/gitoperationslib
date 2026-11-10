@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/features"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
 )
 
@@ -17,23 +18,30 @@ type repoJSON struct {
 	Owner struct {
 		Login string `json:"login"`
 	} `json:"owner"`
-	Name          string    `json:"name"`
-	FullName      string    `json:"full_name"`
-	Description   string    `json:"description"`
-	Website       string    `json:"website"`
-	Private       bool      `json:"private"`
-	Internal      bool      `json:"internal"`
-	DefaultBranch string    `json:"default_branch"`
-	Fork          bool      `json:"fork"`
-	Mirror        bool      `json:"mirror"`
-	Archived      bool      `json:"archived"`
-	Template      bool      `json:"template"`
-	Empty         bool      `json:"empty"`
-	HTMLURL       string    `json:"html_url"`
-	CloneURL      string    `json:"clone_url"`
-	SSHURL        string    `json:"ssh_url"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	Name            string    `json:"name"`
+	FullName        string    `json:"full_name"`
+	Description     string    `json:"description"`
+	Website         string    `json:"website"`
+	Private         bool      `json:"private"`
+	Internal        bool      `json:"internal"`
+	DefaultBranch   string    `json:"default_branch"`
+	Fork            bool      `json:"fork"`
+	Mirror          bool      `json:"mirror"`
+	Archived        bool      `json:"archived"`
+	Template        bool      `json:"template"`
+	Empty           bool      `json:"empty"`
+	HasActions      *bool     `json:"has_actions"`
+	HasIssues       *bool     `json:"has_issues"`
+	HasWiki         *bool     `json:"has_wiki"`
+	HasPullRequests *bool     `json:"has_pull_requests"`
+	HasProjects     *bool     `json:"has_projects"`
+	HasReleases     *bool     `json:"has_releases"`
+	HasPackages     *bool     `json:"has_packages"`
+	HTMLURL         string    `json:"html_url"`
+	CloneURL        string    `json:"clone_url"`
+	SSHURL          string    `json:"ssh_url"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 func (r *repoJSON) toRepo() gitoperationslib.Repo {
@@ -58,11 +66,15 @@ func (r *repoJSON) toRepo() gitoperationslib.Repo {
 		Archived:      r.Archived,
 		Template:      r.Template,
 		Empty:         r.Empty,
-		HTMLURL:       r.HTMLURL,
-		CloneURL:      r.CloneURL,
-		SSHURL:        r.SSHURL,
-		CreatedAt:     r.CreatedAt,
-		UpdatedAt:     r.UpdatedAt,
+		Features: gitoperationslib.RepoFeatures{
+			Actions: r.HasActions, Issues: r.HasIssues, Wiki: r.HasWiki, PullRequests: r.HasPullRequests,
+			Projects: r.HasProjects, Releases: r.HasReleases, Packages: r.HasPackages,
+		},
+		HTMLURL:   r.HTMLURL,
+		CloneURL:  r.CloneURL,
+		SSHURL:    r.SSHURL,
+		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
 	}
 }
 
@@ -78,14 +90,24 @@ type createRepoBody struct {
 }
 
 type editRepoBody struct {
-	Name          *string `json:"name,omitempty"`
-	Description   *string `json:"description,omitempty"`
-	Website       *string `json:"website,omitempty"`
-	Private       *bool   `json:"private,omitempty"`
-	DefaultBranch *string `json:"default_branch,omitempty"`
-	Archived      *bool   `json:"archived,omitempty"`
-	Template      *bool   `json:"template,omitempty"`
+	Name            *string `json:"name,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	Website         *string `json:"website,omitempty"`
+	Private         *bool   `json:"private,omitempty"`
+	DefaultBranch   *string `json:"default_branch,omitempty"`
+	Archived        *bool   `json:"archived,omitempty"`
+	Template        *bool   `json:"template,omitempty"`
+	HasActions      *bool   `json:"has_actions,omitempty"`
+	HasIssues       *bool   `json:"has_issues,omitempty"`
+	HasWiki         *bool   `json:"has_wiki,omitempty"`
+	HasPullRequests *bool   `json:"has_pull_requests,omitempty"`
+	HasProjects     *bool   `json:"has_projects,omitempty"`
+	HasReleases     *bool   `json:"has_releases,omitempty"`
+	HasPackages     *bool   `json:"has_packages,omitempty"`
 }
+
+// featuresWhy is what may keep a Forgejo server from applying a feature.
+const featuresWhy = "the instance may have it turned off, as Actions with [actions] ENABLED=false"
 
 // privateFlag maps a Visibility to Forgejo's private flag; nil means
 // "server default". Forgejo cannot set internal visibility on a repository.
@@ -140,6 +162,9 @@ func (r repos) Create(ctx context.Context, opts gitoperationslib.CreateRepoOptio
 	if opts.Name == "" {
 		return nil, errors.New("forgejo: repos.create: name is required")
 	}
+	if err := features.Refuse(gitoperationslib.BackendForgejo, "repos.create", opts.Features, "discussions"); err != nil {
+		return nil, err
+	}
 	private, err := privateFlag(opts.Visibility, "repos.create")
 	if err != nil {
 		return nil, err
@@ -163,7 +188,15 @@ func (r repos) Create(ctx context.Context, opts gitoperationslib.CreateRepoOptio
 		return nil, err
 	}
 	repo := out.toRepo()
-	return &repo, nil
+	// The create endpoint takes no features: set those that differ afterwards.
+	if len(features.Unapplied(opts.Features, repo.Features)) == 0 {
+		return &repo, nil
+	}
+	edited, err := r.Edit(ctx, repo.Owner, repo.Name, gitoperationslib.EditRepoOptions{Features: opts.Features})
+	if edited == nil {
+		return &repo, fmt.Errorf("forgejo: repos.create: %s created, but setting its features failed: %w", repo.FullName, err)
+	}
+	return edited, err
 }
 
 // createPath picks the create endpoint for owner: the authenticated user, an
@@ -190,6 +223,10 @@ func (r repos) createPath(ctx context.Context, owner string) (string, error) {
 }
 
 func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationslib.EditRepoOptions) (*gitoperationslib.Repo, error) {
+	if err := features.Refuse(gitoperationslib.BackendForgejo, "repos.edit", opts.Features, "discussions"); err != nil {
+		return nil, err
+	}
+	f := opts.Features
 	body := editRepoBody{
 		Name:          opts.Name,
 		Description:   opts.Description,
@@ -197,6 +234,8 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 		DefaultBranch: opts.DefaultBranch,
 		Archived:      opts.Archived,
 		Template:      opts.Template,
+		HasActions:    f.Actions, HasIssues: f.Issues, HasWiki: f.Wiki, HasPullRequests: f.PullRequests,
+		HasProjects: f.Projects, HasReleases: f.Releases, HasPackages: f.Packages,
 	}
 	if opts.Visibility != nil {
 		private, err := privateFlag(*opts.Visibility, "repos.edit")
@@ -210,7 +249,7 @@ func (r repos) Edit(ctx context.Context, owner, name string, opts gitoperationsl
 		return nil, err
 	}
 	repo := out.toRepo()
-	return &repo, nil
+	return features.Check(gitoperationslib.BackendForgejo, "repos.edit", &repo, opts.Features, featuresWhy)
 }
 
 func (r repos) Delete(ctx context.Context, owner, name string) error {
