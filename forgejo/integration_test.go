@@ -142,3 +142,5 @@ func TestIntegrationWorkflowRuns(t *testing.T) {
 }
 
 func TestIntegrationCommits(t *testing.T) { contracttest.Commits(t, integrationEnv(t)) }
+
+func TestIntegrationRunners(t *testing.T) { contracttest.Runners(t, integrationEnv(t)) }

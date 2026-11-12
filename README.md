@@ -161,6 +161,7 @@ The library adapts where it can, and returns `ErrNotSupported` where it cannot. 
 | Pull requests and reviews | ✅ | ✅ drafts and auto-merge via GraphQL | ✅ no reopening, no auto-merge |
 | Issues, labels, milestones, comments | ✅ | ✅ | ❌ issue tracker retired |
 | CI workflow runs, jobs, logs, artifacts | ⚠️ grows by version, 15 to 17 | ✅ | ❌ not yet |
+| CI runners: register, list, delete; following a job's log | ✅ | ✅ | ❌ |
 | Webhooks (repository, organisation/workspace) | ✅ | ✅ | ✅ |
 | Receiving deliveries (`webhook`) | ✅ | ✅ | ⚠️ not yet checked against live deliveries |
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |

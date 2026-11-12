@@ -5,6 +5,8 @@ package forgejo
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
@@ -107,5 +109,64 @@ func TestIntegrationAdminRepoSettings(t *testing.T) {
 	}
 	if _, err := repos.Edit(ctx, admin, name, gitoperationslib.EditRepoOptions{Actions: gitoperationslib.ActionsSettings{Allowed: gitoperationslib.Ptr(gitoperationslib.ActionsAllowedAll)}}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Actions settings: %v", err)
+	}
+}
+
+// TestIntegrationAdminRunnerScopes registers a runner's record at each level, and
+// checks each list holds only its own, and what Inherited adds.
+func TestIntegrationAdminRunnerScopes(t *testing.T) {
+	ctx, c := adminEnv(t)
+	org := contracttest.RepoPrefix + "runners"
+	if _, err := c.Orgs().Create(ctx, gitoperationslib.CreateOrgOptions{Name: org}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Orgs().Delete(context.Background(), org) })
+	repo := "widget"
+	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Owner: org, Name: repo}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Repos().Delete(context.Background(), org, repo) })
+	scopes := map[string]gitoperationslib.RunnerScope{
+		"repo": gitoperationslib.RepoRunners(org, repo), "org": gitoperationslib.OrgRunners(org),
+		"user": gitoperationslib.UserRunners(), "instance": gitoperationslib.InstanceRunners(),
+	}
+	ids := map[string]int64{}
+	for name, scope := range scopes {
+		reg, err := c.RegisterRunner(ctx, scope, gitoperationslib.RegisterRunnerOptions{Name: "scope-" + name})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		ids[name] = reg.ID
+		t.Cleanup(func() { _ = c.DeleteRunner(context.Background(), scope, reg.ID) })
+		if _, err := c.RunnerRegistrationToken(ctx, scope); err != nil {
+			t.Errorf("%s token: %v", name, err)
+		}
+	}
+	names := func(scope gitoperationslib.RunnerScope, inherited bool) []string {
+		t.Helper()
+		page, err := c.ListRunners(ctx, scope, gitoperationslib.ListRunnersOptions{Inherited: inherited})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, r := range page.Items {
+			if strings.HasPrefix(r.Name, "scope-") {
+				out = append(out, r.Name)
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	for name, scope := range scopes {
+		if got := names(scope, false); !slices.Equal(got, []string{"scope-" + name}) {
+			t.Errorf("%s lists %v", name, got)
+		}
+	}
+	if got := names(scopes["repo"], true); !slices.Contains(got, "scope-org") {
+		t.Errorf("a repository's inherited runners = %v", got)
+	}
+	// Each level only reaches its own.
+	if err := c.DeleteRunner(ctx, scopes["repo"], ids["org"]); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("deleting the organisation's runner through the repository: %v", err)
 	}
 }

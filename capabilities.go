@@ -50,6 +50,9 @@ const (
 	CapLabelsByID        // repository labels addressed by ID (LabelsByID)
 	CapWorkflowRuns      // CI workflow runs, jobs and logs (WorkflowRuns)
 	CapWorkflowArtifacts // CI workflow artifacts (WorkflowArtifacts)
+	// Added in 1.8.0.
+	CapRunners           // CI runners' records (Runners)
+	CapWorkflowLogFollow // following a job's log (WorkflowLogFollower)
 )
 
 var capabilityNames = []struct {
@@ -93,6 +96,8 @@ var capabilityNames = []struct {
 	{CapLabelsByID, "labels-by-id"},
 	{CapWorkflowRuns, "workflow-runs"},
 	{CapWorkflowArtifacts, "workflow-artifacts"},
+	{CapRunners, "runners"},
+	{CapWorkflowLogFollow, "workflow-log-follow"},
 }
 
 // Has reports whether c includes every capability in want.

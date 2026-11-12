@@ -160,8 +160,14 @@ func (c *Client) RerunWorkflowJob(ctx context.Context, owner, repo string, jobID
 
 // fetchRedirected downloads what GitHub redirects a log or artifact to. The address
 // is signed, and on another host, so it goes without the token.
-func (c *Client) fetchRedirected(ctx context.Context, target *url.URL, _ *gh.Response, err error) (io.ReadCloser, error) {
+func (c *Client) fetchRedirected(ctx context.Context, target *url.URL, resp *gh.Response, err error) (io.ReadCloser, error) {
 	if err != nil {
+		// The SDK reports a status other than a redirect as a plain error, with the
+		// response: a 404 must still read as one.
+		var respErr *gh.ErrorResponse
+		if resp != nil && resp.Response != nil && !errors.As(err, &respErr) {
+			return nil, &gitoperationslib.APIError{Backend: gitoperationslib.BackendGitHub, StatusCode: resp.StatusCode, Message: err.Error()}
+		}
 		return nil, convertError(err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)

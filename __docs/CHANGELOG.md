@@ -6,6 +6,22 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
+## [1.8.0] — 2026-11-11
+
+CI runners' records, and following a job's log (item 118).
+
+### Added
+- **`Runners`** (`CapRunners`, Forgejo and GitHub): list, get, register and delete runners, and get a registration
+  token, for a repository, an organisation, and on Forgejo the authenticated user or the whole instance. GitHub's API only
+  registers single-use runners, and returns `ErrNotSupported` for a lasting one. Installing and starting a runner's
+  program stays outside the library.
+- **`WorkflowLogFollower`** (`CapWorkflowLogFollow`): `FollowWorkflowJobLog` writes a job's log to an `io.Writer` as it
+  grows, until the job ends. Forgejo needs 17, and sends the log as it is written; GitHub only stores it at the end.
+
+### Fixed
+- On GitHub, `WorkflowJobLogs`, `WorkflowRunLogs` and `DownloadWorkflowArtifact` reported a 404 from the API as a plain
+  error, which `IsNotFound` did not recognise.
+
 ## [1.7.0] — 2026-11-10
 
 Repository features, such as whether Actions is enabled, wanted by gitclt and stubber (item 114), and repository settings:

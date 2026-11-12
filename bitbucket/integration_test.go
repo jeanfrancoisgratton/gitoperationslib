@@ -193,3 +193,5 @@ func TestIntegrationAccount(t *testing.T) { contracttest.Account(t, integrationE
 func TestIntegrationCI(t *testing.T) { contracttest.CI(t, integrationEnv(t)) }
 
 func TestIntegrationCommits(t *testing.T) { contracttest.Commits(t, integrationEnv(t)) }
+
+func TestIntegrationRunners(t *testing.T) { contracttest.Runners(t, integrationEnv(t)) }

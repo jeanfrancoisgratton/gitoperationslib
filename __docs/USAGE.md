@@ -30,6 +30,7 @@ This guide covers every package, interface, type and option of the library, with
 21. [Commit history (`History`)](#21-commit-history-history)
 22. [Collaborators and mirrors](#22-collaborators-and-mirrors)
 23. [CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`)](#23-ci-workflow-runs-workflowruns-workflowartifacts)
+24. [CI runners (`Runners`)](#24-ci-runners-runners)
 
 ---
 
@@ -314,6 +315,8 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapLabelsByID` | `labels-by-id` (repository labels addressed by ID: `gol.LabelsByID`) | ✅ | | |
 | `CapWorkflowRuns` | `workflow-runs` (CI runs, jobs and logs: `gol.WorkflowRuns`) | ✅ | ✅ | |
 | `CapWorkflowArtifacts` | `workflow-artifacts` (CI artifacts: `gol.WorkflowArtifacts`) | ✅ from 16 | ✅ | |
+| `CapRunners` | `runners` (CI runners' records: `gol.Runners`) | ✅ | ✅ | |
+| `CapWorkflowLogFollow` | `workflow-log-follow` (following a job's log: `gol.WorkflowLogFollower`) | ✅ from 17 | ✅ at the end | |
 | `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
 | `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
 | `CapCollaboratorInvitations` | `collaborator-invitations` (invitations not yet accepted: `gol.CollaboratorInvitations`) | | ✅ | |
@@ -3378,3 +3381,54 @@ io.Copy(os.Stdout, log)
 - GitHub can take a moment to have a finished job's log, and a new branch with a commit can be two pushes, so two runs.
 
 Starting a workflow by hand (a dispatch) is not offered yet.
+
+**Following a job's log.** `gol.WorkflowLogFollower` (`CapWorkflowLogFollow`) writes a job's log to an `io.Writer` as it grows, and returns once the job ended and all of it is written, or when the context is done:
+
+```go
+f, ok := client.(gol.WorkflowLogFollower)
+err := f.FollowWorkflowJobLog(ctx, "acme", "widget", jobID, os.Stdout, gol.FollowLogOptions{}) // polls every 2 s
+```
+
+On Forgejo it needs version 17, and the log comes as it is written: the library asks only for what follows what it already has, with HTTP range requests. GitHub stores a job's log only once the job ended, so the call waits, then writes it all. To page a finished log instead, read `WorkflowJobLogs` into a pager.
+
+## 24. CI runners (`Runners`)
+
+The forge's records of CI runners: Forgejo Actions runners and GitHub's self-hosted runners. Installing and starting a runner's program is left to other tools, which take what `RegisterRunner` returns, or a registration token. Bitbucket does not implement it.
+
+```go
+type Runners interface {
+	ListRunners(ctx, scope RunnerScope, opts ListRunnersOptions) (Page[Runner], error)
+	GetRunner(ctx, scope RunnerScope, id int64) (*Runner, error)
+	RegisterRunner(ctx, scope RunnerScope, opts RegisterRunnerOptions) (*RegisteredRunner, error)
+	DeleteRunner(ctx, scope RunnerScope, id int64) error
+	RunnerRegistrationToken(ctx, scope RunnerScope) (*RunnerToken, error)
+}
+```
+
+| Scope | Forgejo | GitHub |
+|---|---|---|
+| `gol.RepoRunners(owner, repo)` | ✅ | ✅ |
+| `gol.OrgRunners(org)` | ✅ | ✅ |
+| `gol.UserRunners()`, the authenticated user's | ✅ | ❌ `ErrNotSupported` |
+| `gol.InstanceRunners()`, for every repository | ✅ site admins | ❌ `ErrNotSupported` |
+
+```go
+r, ok := client.(gol.Runners)
+scope := gol.RepoRunners("acme", "widget")
+
+reg, err := r.RegisterRunner(ctx, scope, gol.RegisterRunnerOptions{Name: "builder-1"})
+// Forgejo: reg.ID, reg.UUID and reg.Token go in the runner's ".runner" file.
+// GitHub: reg.JITConfig goes to the runner's run.sh --jitconfig.
+
+tok, err := r.RunnerRegistrationToken(ctx, scope) // for forgejo-runner register, or GitHub's config.sh
+
+page, err := r.ListRunners(ctx, scope, gol.ListRunnersOptions{Inherited: true}) // with the organisation's, on Forgejo
+err = r.DeleteRunner(ctx, scope, reg.ID)
+```
+
+- `Runner.Online` and `Busy` read the same on both forges. `Status` keeps the forge's word: `offline`, `idle` or `active` on Forgejo, `online` or `offline` on GitHub.
+- Names need not be unique: registering the same name twice gives two runners.
+- **GitHub only registers single-use runners** through its API (a just-in-time configuration), so `RegisterRunner` there needs `Ephemeral`, and returns `ErrNotSupported` otherwise: a lasting runner registers itself with `RunnerRegistrationToken`. Its labels default to `self-hosted`. A GitHub registration token expires within the hour (`ExpiresAt`); Forgejo's does not.
+- A Forgejo runner declares its own labels, so `Labels` there returns `ErrNotSupported`.
+- Each scope only reaches its own runners: deleting the organisation's through a repository is a 404. `DeleteRunner` on a runner that does not exist is a 404 on both forges, where GitHub alone answers 204.
+- `RegisteredRunner` and `RunnerToken` hold secrets and are never serialised.

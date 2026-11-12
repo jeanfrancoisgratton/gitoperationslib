@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -161,6 +162,23 @@ func (c *Client) Stream(ctx context.Context, path string) (io.ReadCloser, error)
 		return nil, err
 	}
 	return resp.Body, nil
+}
+
+// StreamFrom GETs path from byte offset on, through a Range request, and returns
+// the body with the status: 206 for part of it, 200 if the server sent it all.
+// The caller must close it.
+func (c *Client) StreamFrom(ctx context.Context, path string, offset int64) (io.ReadCloser, int, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, c.apiURL(path, nil), nil, "")
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Accept", "text/plain")
+	req.Header.Set("Range", "bytes="+strconv.FormatInt(offset, 10)+"-")
+	resp, err := c.send(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	return resp.Body, resp.StatusCode, nil
 }
 
 // Text GETs path (relative to /api/v1, already escaped) and returns the

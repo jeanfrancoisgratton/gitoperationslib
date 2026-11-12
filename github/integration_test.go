@@ -297,3 +297,5 @@ func TestIntegrationRepoActionsSettings(t *testing.T) {
 		t.Errorf("after off and on = %+v", a)
 	}
 }
+
+func TestIntegrationRunners(t *testing.T) { contracttest.Runners(t, integrationEnv(t)) }

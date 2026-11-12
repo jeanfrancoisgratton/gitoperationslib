@@ -29,6 +29,19 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
   - GitHub: Actions is a separate endpoint (`GET`/`PUT /repos/{owner}/{repo}/actions/permissions`, `enabled`); issues, wiki and projects are `has_*` on `PATCH /repos`.
   - Bitbucket: Pipelines through `GET`/`PUT /repositories/{workspace}/{repo}/pipelines_config` (`enabled`), possibly what the test token could not do in item 100; otherwise `ErrNotSupported`.
   - Shape to decide: fields on `EditRepoOptions`/`Repo`, or an optional interface (item 1), since Actions is not a repository field on GitHub and Bitbucket.
+- [ ] **117 →** (found 2026-11-11, syncing gitclt to 1.7.0; the user wants it looked at later) **`Repos().Get` costs more on GitHub since 1.7.0**: it now also reads Actions and its settings (`GET …/actions/permissions`, `GET …/actions/permissions/workflow`, `github/repos.go` `Get`). Consumers often call `Get` only to check that a repository exists, before an issue, pull request, tag, release, history, CI secret, workflow run, collaborator or branch protection call: gitclt does it in nine places, and each one now pays those extra requests for nothing.
+  - Options: a light existence check (e.g. `Repos().Exists`, or a `GetOptions` that skips the extras), or reading Actions lazily, only when asked for. Whichever it is, `Get` keeps reporting everything by default, as gitclt's `repo info` relies on it.
+  - Check whether Forgejo's `Get` makes more than one request too (it should not: everything is on `GET /repos/{owner}/{repo}`).
+
+## Runners
+
+- [x] **118 →** (1.8.0: `Runners`, and `WorkflowLogFollower` for following a job's log, which the user asked for too. Checked: the token `POST` returns is the one forgejo-runner takes in its `.runner` file, and names may repeat) (asked 2026-11-11, not scheduled; not needed on famillegratton, whose gitrelay runner is instance-wide, but handy on other instances) **Runner registration and management**, a new optional interface (item 1). Scope, the user's decision of 2026-11-07: only what the forge API exposes (register, registration token, list, get, delete); installing and starting the runner process stays out of the library and of gitclt.
+  - Forgejo, in both the 15.0.2 and 17.0.1 swaggers, so no version gate, at `{scope}` = `repos/{owner}/{repo}`, `orgs/{org}`, `user`, `admin`: register (`POST /{scope}/actions/runners`, body `name` (required), `description`, `ephemeral`; answers `id`, `uuid`, `token`), `GET /{scope}/actions/runners/registration-token`, list, get and delete (`/{scope}/actions/runners[/{runner_id}]`), and `/{scope}/actions/runners/jobs`.
+  - `user` is the authenticated user only: another user's runners need an admin through Sudo (1.1.0).
+  - GitHub: self-hosted runners at repo and org level (no user level): list, get, delete, registration and remove tokens, labels. Enterprise level out of scope.
+  - Bitbucket: `ErrNotSupported`.
+  - Check on a disposable 15 and 17 what registering the same name twice does, and whether the `token` from `POST` is the one forgejo-runner takes (`forgejo-cli actions register --secret` uses its own 40-hex secret).
+  - gitclt follows with `gitclt runner ls|register|rm` (owner, org or `--instance`).
 
 ## Access tokens (Forgejo)
 

@@ -255,6 +255,45 @@ func WorkflowRuns(t *testing.T, env Env) {
 		}
 	})
 
+	t.Run("follow a log", func(t *testing.T) {
+		f, ok := env.Client.(gitoperationslib.WorkflowLogFollower)
+		if !ok {
+			t.Skip("WorkflowLogFollower is not implemented")
+		}
+		workflow("follow.yml", "run-follow", "      - run: for i in 1 2 3 4 5 6; do echo follow-line-$i; sleep 3; done\n")
+		check(retryConflict(ctx, t, func() error { return env.CreateBranch(ctx, owner, *repo, "run-follow", "follow.txt", "x\n") }))
+		r := await("run-follow", started)
+		var jobs gitoperationslib.Page[gitoperationslib.WorkflowJob]
+		for len(jobs.Items) == 0 {
+			var err error
+			jobs, err = runs.ListWorkflowJobs(ctx, owner, *repo, r.ID, gitoperationslib.ListOptions{})
+			if errors.Is(err, gitoperationslib.ErrNotSupported) {
+				t.Skip(err)
+			}
+			check(err)
+			time.Sleep(time.Second)
+		}
+		var out strings.Builder
+		err := f.FollowWorkflowJobLog(ctx, owner, *repo, jobs.Items[0].ID, &out, gitoperationslib.FollowLogOptions{Interval: time.Second})
+		if errors.Is(err, gitoperationslib.ErrNotSupported) {
+			t.Skip(err)
+		}
+		check(err)
+		job, err := runs.GetWorkflowJob(ctx, owner, *repo, jobs.Items[0].ID)
+		check(err)
+		if job.Conclusion == "" {
+			t.Errorf("returned before the job ended: %+v", job)
+		}
+		text, last := out.String(), -1
+		for i := 1; i <= 6; i++ {
+			at := strings.Index(text, fmt.Sprintf("follow-line-%d", i))
+			if at <= last {
+				t.Fatalf("line %d missing or out of order in %q", i, text)
+			}
+			last = at
+		}
+	})
+
 	t.Run("rerun", func(t *testing.T) {
 		err := runs.RerunWorkflowRun(ctx, owner, *repo, run.ID)
 		if errors.Is(err, gitoperationslib.ErrNotSupported) {
