@@ -103,7 +103,8 @@ func (c *Client) Capabilities() gitoperationslib.Capability {
 		gitoperationslib.CapCommitDiffs | gitoperationslib.CapPRContents | gitoperationslib.CapReviewComments |
 		gitoperationslib.CapCollaborators | gitoperationslib.CapHookDeliveries | gitoperationslib.CapCIEnvironments | gitoperationslib.CapOrgSecrets |
 		gitoperationslib.CapCollaboratorInvitations | gitoperationslib.CapIssueLocks | gitoperationslib.CapWorkflowRuns | gitoperationslib.CapWorkflowArtifacts |
-		gitoperationslib.CapRunners | gitoperationslib.CapWorkflowLogFollow
+		gitoperationslib.CapRunners | gitoperationslib.CapWorkflowLogFollow |
+		gitoperationslib.CapCommitStatuses
 }
 
 func (c *Client) Repos() gitoperationslib.Repos { return repos{c} }

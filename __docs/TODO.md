@@ -43,6 +43,12 @@ From the 1.1.0 review of gitclt; nothing decided. 1.2.0 holds only the fixes and
   - Check on a disposable 15 and 17 what registering the same name twice does, and whether the `token` from `POST` is the one forgejo-runner takes (`forgejo-cli actions register --secret` uses its own 40-hex secret).
   - gitclt follows with `gitclt runner ls|register|rm` (owner, org or `--instance`).
 
+## Branch details
+
+- [x] **119 →** (1.9.0: package `local`, `CommitStatuses`, package `branchinfo`. The user asked for the parent branch, then for everything a detailed branch list could show, in the library, local reads included.)
+- [ ] **120 →** `local`: read the commit-graph file when there is one (generation numbers make walks exact and faster), and `~`/`^` expressions in `Resolve`.
+- [ ] **121 →** `branchinfo`: run the server requests concurrently; a repository with many branches makes them add up.
+
 ## Access tokens (Forgejo)
 
 - [x] **10 →** **Forgejo access tokens**: `Account.Tokens()` (list, create with scopes and repository restriction, delete by ID or name), 1.1.0 increment 5. Findings on 15.0.11: listing accepts tokens (and a site admin lists anyone's), creating and deleting need basic auth (401 "auth method not allowed" → `ErrPasswordRequired`, even for an admin with Sudo); a numeric name is taken for an ID on delete, so `DeleteByName` lists first; 2FA accounts work with `BasicAuthOTP`.

@@ -30,6 +30,7 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | CI secrets and variables (`CI`) | ✅ | ✅ | ✅ |
 | CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`) | ⚠️ grows by version, 15 to 17 | ✅ | ❌ not yet |
 | CI runners (`Runners`) | ✅ | ✅ single-use registration | ❌ |
+| A commit's CI state (`CommitStatuses`) | ✅ | ✅ statuses and check runs | ✅ |
 | Commit history and changed files (`History`) | ⚠️ no per-file line counts, no renames, no date filter | ✅ | ⚠️ no date filter |
 | Own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`) | ✅ | ✅ no avatar, no tokens | ⚠️ e-mail addresses read-only, no profile, no tokens |
 | Collaborators (`Collaborators`) | ✅ | ⚠️ new collaborators are usually invited | ✅ |
@@ -94,6 +95,13 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Tag annotation in `List` | ✅ | ⚠️ `Get` only | ✅ |
 | Tag archive URLs | ✅ | ✅ | ✅ |
 | Change the default branch | ✅ `Repos().Edit` | ✅ `Repos().Edit` | ✅ `Repos().Edit` |
+| A commit's CI state (`CommitStatuses`) | ✅ Forgejo Actions reports statuses; warnings | ✅ commit statuses and check runs (Actions) | ✅ build statuses (Pipelines) |
+| Set a commit status | ✅ | ✅ not check runs | ✅ target URL required |
+| Detailed branch list (`branchinfo`): ahead/behind and merged, last commit, open pull requests, CI state | ✅ | ✅ last commit one request per branch | ✅ |
+| Branch it was created from | the clone's reflogs (`local`), or a guess from either side's history | same | same |
+
+The `local` package reads any clone, whatever its forge: branches, upstreams, worktrees, remotes, commits, ahead/behind,
+merge bases, and reflogs. Checked against the git client on clones of up to 72,000 commits.
 
 ## Branch protection
 

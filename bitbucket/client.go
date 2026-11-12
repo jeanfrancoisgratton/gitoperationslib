@@ -106,7 +106,7 @@ func (c *Client) Capabilities() gitoperationslib.Capability {
 		gitoperationslib.CapBranchProtection | gitoperationslib.CapPullRequests | gitoperationslib.CapWebhooks |
 		gitoperationslib.CapAccount | gitoperationslib.CapSecrets | gitoperationslib.CapCommits |
 		gitoperationslib.CapCommitDiffs | gitoperationslib.CapPRContents | gitoperationslib.CapReviewComments |
-		gitoperationslib.CapCollaborators | gitoperationslib.CapCIEnvironments
+		gitoperationslib.CapCollaborators | gitoperationslib.CapCIEnvironments | gitoperationslib.CapCommitStatuses
 }
 
 // userJSON is a Bitbucket account. There is no public login name: Nickname is

@@ -106,6 +106,8 @@ gitoperationslib/             interfaces, domain types, errors, pagination  (no 
 ├── github/                   GitHub backend       → google/go-github v93 + a small GraphQL client (+ x/crypto for secrets)
 ├── bitbucket/                Bitbucket backend    → internal/bitbucketapi  (net/http)
 ├── webhook/                  receiving deliveries (depends on the root package only)
+├── local/                    reading a clone's .git: branches, upstreams, worktrees, commits, reflogs (no git client)
+├── branchinfo/               a detailed branch list, from a clone, the server, or both
 └── internal/
     ├── forgejoapi/           Forgejo transport: base URL, auth, pagination, errors, uploads
     ├── bitbucketapi/         Bitbucket transport: REST 2.0, pagination, errors
@@ -162,6 +164,8 @@ The library adapts where it can, and returns `ErrNotSupported` where it cannot. 
 | Issues, labels, milestones, comments | ✅ | ✅ | ❌ issue tracker retired |
 | CI workflow runs, jobs, logs, artifacts | ⚠️ grows by version, 15 to 17 | ✅ | ❌ not yet |
 | CI runners: register, list, delete; following a job's log | ✅ | ✅ | ❌ |
+| A commit's CI state (`CommitStatuses`) | ✅ | ✅ statuses and check runs | ✅ |
+| Detailed branch lists, local and on the server (`local`, `branchinfo`) | ✅ | ✅ | ✅ |
 | Webhooks (repository, organisation/workspace) | ✅ | ✅ | ✅ |
 | Receiving deliveries (`webhook`) | ✅ | ✅ | ⚠️ not yet checked against live deliveries |
 | Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |

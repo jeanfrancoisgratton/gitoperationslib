@@ -31,6 +31,9 @@ This guide covers every package, interface, type and option of the library, with
 22. [Collaborators and mirrors](#22-collaborators-and-mirrors)
 23. [CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`)](#23-ci-workflow-runs-workflowruns-workflowartifacts)
 24. [CI runners (`Runners`)](#24-ci-runners-runners)
+25. [A commit's CI state (`CommitStatuses`)](#25-a-commits-ci-state-commitstatuses)
+26. [Reading a clone (`local`)](#26-reading-a-clone-local)
+27. [Detailed branch lists (`branchinfo`)](#27-detailed-branch-lists-branchinfo)
 
 ---
 
@@ -317,6 +320,7 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapWorkflowArtifacts` | `workflow-artifacts` (CI artifacts: `gol.WorkflowArtifacts`) | ✅ from 16 | ✅ | |
 | `CapRunners` | `runners` (CI runners' records: `gol.Runners`) | ✅ | ✅ | |
 | `CapWorkflowLogFollow` | `workflow-log-follow` (following a job's log: `gol.WorkflowLogFollower`) | ✅ from 17 | ✅ at the end | |
+| `CapCommitStatuses` | `commit-statuses` (a commit's CI state: `gol.CommitStatuses`) | ✅ | ✅ | ✅ |
 | `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
 | `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
 | `CapCollaboratorInvitations` | `collaborator-invitations` (invitations not yet accepted: `gol.CollaboratorInvitations`) | | ✅ | |
@@ -3432,3 +3436,105 @@ err = r.DeleteRunner(ctx, scope, reg.ID)
 - A Forgejo runner declares its own labels, so `Labels` there returns `ErrNotSupported`.
 - Each scope only reaches its own runners: deleting the organisation's through a repository is a 404. `DeleteRunner` on a runner that does not exist is a 404 on both forges, where GitHub alone answers 204.
 - `RegisteredRunner` and `RunnerToken` hold secrets and are never serialised.
+
+## 25. A commit's CI state (`CommitStatuses`)
+
+What CI systems reported on a commit, combined into one state. Optional (`CapCommitStatuses`), on all three forges.
+
+```go
+s, ok := client.(gol.CommitStatuses)
+cs, err := s.CommitStatus(ctx, "acme", "widget", "main") // a branch, tag or SHA
+fmt.Println(cs.State)                                     // "" when nothing reported
+for _, st := range cs.Statuses {
+	fmt.Println(st.Context, st.State, st.TargetURL)
+}
+
+err = s.SetCommitStatus(ctx, "acme", "widget", sha, gol.CommitStatus{
+	Context: "ci/build", State: gol.StatusPending, TargetURL: "https://ci.example.com/run/12",
+})
+```
+
+- States: `pending`, `success`, `failure`, `error`, and `warning` on Forgejo. The combined state is a failure or an error
+  if any status is one, pending if any is still running, else a success (`gol.CombineStates`). Forgejo combines it itself.
+- **Forgejo:** Forgejo Actions reports each job as a status. A ref without statuses costs one more request, as Forgejo
+  answers those, and missing refs, with an empty success.
+- **GitHub** keeps two kinds, and both are read: commit statuses, and check runs, which is how GitHub Actions reports
+  (`CommitStatus.Check`). A check run still queued or running is pending; cancelled is an error. Its combined status
+  can lag a second behind a write. `SetCommitStatus` sets a commit status: check runs belong to GitHub Apps.
+- **Bitbucket:** build statuses, as Pipelines and other CI systems report them, keyed by `Context`. `SetCommitStatus`
+  needs a `TargetURL` there; stopped builds read as errors.
+- Setting a status with an existing `Context` replaces it.
+
+## 26. Reading a clone (`local`)
+
+Package `local` reads a clone straight from its `.git` directory: no git client, no server, nothing written. It works on
+any clone, whatever its forge.
+
+```go
+repo, err := local.Open(".") // this directory or a parent; worktrees and submodules too
+defer repo.Close()           // the pack files stay open between calls
+
+branches, err := repo.Branches() // name, head, current, worktree, upstream and its last fetched commit
+cmp, err := repo.Compare("main", "feature") // like Branches().Compare: Ahead, Behind
+merged, err := repo.IsAncestor("feature", "main")
+c, err := repo.Commit("feature") // message, author, dates, parents
+origin, err := repo.CreatedFrom("feature")
+```
+
+| Call | Gives |
+|---|---|
+| `Branches`, `Current`, `RemoteBranches`, `DefaultBranch(remote)` | the branches, the one checked out, what the last fetch saw, the remote's default branch |
+| `Remotes`, `RepoOn(serverURL)`, `MatchesRepo(owner, repo)` | the remotes, and which repository a server has this clone of |
+| `Resolve`, `Commit`, `Compare`, `IsAncestor`, `MergeBase` | commits: refs are full SHAs, branches, `remote/branch`, tags or `HEAD` (no `~` or `^` expressions) |
+| `CreatedFrom(branch)` | where a branch was created from, read in the reflogs |
+| `GuessParent(branch, candidates)` | the same, guessed from the history |
+
+**Where a branch came from.** Git records no parent branch. `CreatedFrom` reads it in the reflogs: `git switch -c` and
+`git checkout -b` log "Created from HEAD", and HEAD's reflog says which branch HEAD was on; renames since are followed.
+`Origin.Exact` is set when the reflogs name it. It returns nil when they say nothing: the branch is older than the
+reflog's expiry (90 days by default), or comes from another clone. `Origin.Clone` marks the branch `git clone` made.
+
+`GuessParent` guesses from the history: the candidate the branch forked from last, leaving out those that contain it with
+more commits (its children). Branches at one commit cannot be told apart: the others are in `Origin.Others`.
+
+- Commits are read from loose objects and pack files; SHA-256 repositories return `ErrNotSupported`. Shallow clones
+  stop at their boundary. A commit the clone lacks gives `local.ErrObjectNotFound`.
+- Comparisons walk the history down to the fork point: about a second for 45,000 commits. As for git without a
+  commit-graph, a commit dated well before its parents can skew a count.
+- Git config includes (`[include]`, `[includeIf]`) are not read.
+
+## 27. Detailed branch lists (`branchinfo`)
+
+Package `branchinfo` gathers, per branch, what a detailed list can show, from a clone, from the server, or both: a tool
+can offer a plain list, and an extended one. Each part is asked for, and costs nothing otherwise.
+
+```go
+res, err := branchinfo.Collect(ctx, branchinfo.Options{
+	Local: repo, Client: client, Owner: "acme", Repo: "widget", // either side may be left out
+	AheadBehind:  branchinfo.Both,   // against the default branch; also tells merged
+	LastCommit:   branchinfo.Local,
+	Parent:       branchinfo.Local,  // Local, Server or Both
+	PullRequests: true,
+	Statuses:     true,
+})
+for _, b := range res.Branches {
+	// b.Local, b.Server: nil when the branch is not on that side
+	// b.LocalAhead, b.LocalMerged, b.ServerAhead, b.ServerMerged
+	// b.LocalCommit, b.Server.LastCommit, b.Origin, b.ServerParent, b.PullRequests, b.Status
+}
+```
+
+| Part | Local | Server |
+|---|---|---|
+| Ahead/behind the default branch, merged | free | one request per branch |
+| Last commit | free | free on Forgejo and Bitbucket; one request per branch on GitHub |
+| Branch it was created from | reflogs, else a guess | a guess: one request per pair of branches |
+| Open pull requests from the branch | — | one list for the repository (forks left out) |
+| CI state of the head | — | `CommitStatuses`: one to three requests per branch |
+
+- A local branch is paired with the server branch it tracks on `Options.Remote` (default `origin`), else with the one
+  of the same name. `Default` defaults to the server's default branch, else the remote's as the clone recorded it.
+- A part the server refuses (401, 403, 404) or the forge lacks, or the clone lacks (shallow), is left nil and listed in
+  `Result.Missing` (`Result.Incomplete` as an error); anything else fails the call.
+- The server's parent guess keeps the candidate the branch has the fewest commits beyond, then the one that moved least.
+

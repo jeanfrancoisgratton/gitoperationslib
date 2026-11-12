@@ -6,7 +6,20 @@ The format is based on Keep a Changelog (keepachangelog.com, version 1.1.0), and
 adheres to Semantic Versioning (semver.org, version 2.0.0). Before 1.0.0, minor versions may
 change the public API.
 
-## [1.8.0] — 2026-11-11
+## [1.9.0] — 2026-11-12
+
+Detailed branch information, from a clone and from the server.
+
+### Added
+- **Package `local`**: reads a clone's `.git` directly, without the git client: branches, the current one, worktrees,
+  upstreams and remotes; commits from loose objects and pack files; ahead/behind, ancestry and merge bases; the branch a
+  branch was created from, from the reflogs (`CreatedFrom`) or guessed from the history (`GuessParent`); and the
+  repository a server has the clone of (`RepoOn`). Checked against the git client on clones of up to 72,000 commits.
+- **`CommitStatuses`** (`CapCommitStatuses`, all three forges): a commit's combined CI state and its statuses, check
+  runs included on GitHub; `SetCommitStatus` reports one.
+- **Package `branchinfo`**: `Collect` gathers, per branch, ahead/behind the default branch and merged, the last commit,
+  the parent branch, the open pull requests and the CI state, from the clone, the server or both, each part on request.
+
 
 CI runners' records, and following a job's log (item 118).
 

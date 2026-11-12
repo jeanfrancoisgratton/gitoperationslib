@@ -53,6 +53,8 @@ const (
 	// Added in 1.8.0.
 	CapRunners           // CI runners' records (Runners)
 	CapWorkflowLogFollow // following a job's log (WorkflowLogFollower)
+	// Added in 1.9.0.
+	CapCommitStatuses // a commit's CI state (CommitStatuses)
 )
 
 var capabilityNames = []struct {
@@ -98,6 +100,7 @@ var capabilityNames = []struct {
 	{CapWorkflowArtifacts, "workflow-artifacts"},
 	{CapRunners, "runners"},
 	{CapWorkflowLogFollow, "workflow-log-follow"},
+	{CapCommitStatuses, "commit-statuses"},
 }
 
 // Has reports whether c includes every capability in want.

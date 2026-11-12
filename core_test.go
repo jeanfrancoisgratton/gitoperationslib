@@ -98,7 +98,7 @@ func TestCapabilityValues(t *testing.T) {
 		CapBranchProtection, CapTagProtection, CapIssues, CapDirectory,
 		CapAccount, CapTokens, CapSecrets, CapCommits, CapOrgAvatars, CapUserWebhooks,
 		CapCommitDiffs, CapPRContents, CapReviewComments, CapCollaborators, CapGitHooks, CapHookDeliveries,
-		CapCIEnvironments, CapOrgSecrets, CapCollaboratorInvitations, CapUserFilters, CapIssueLocks, CapAdminTokens, CapOrgLabels, CapLabelsByID, CapWorkflowRuns, CapWorkflowArtifacts, CapRunners, CapWorkflowLogFollow,
+		CapCIEnvironments, CapOrgSecrets, CapCollaboratorInvitations, CapUserFilters, CapIssueLocks, CapAdminTokens, CapOrgLabels, CapLabelsByID, CapWorkflowRuns, CapWorkflowArtifacts, CapRunners, CapWorkflowLogFollow, CapCommitStatuses,
 	}
 	for i, c := range want {
 		if c != 1<<i {
@@ -165,5 +165,20 @@ func TestAllError(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("fetch called %d times", calls)
+	}
+}
+
+func TestCombineStates(t *testing.T) {
+	for want, in := range map[StatusState][]StatusState{
+		"":            nil,
+		StatusSuccess: {StatusSuccess, StatusSuccess},
+		StatusWarning: {StatusSuccess, StatusWarning},
+		StatusPending: {StatusSuccess, StatusPending, StatusWarning},
+		StatusFailure: {StatusPending, StatusFailure, StatusError},
+		StatusError:   {StatusPending, StatusError},
+	} {
+		if got := CombineStates(in...); got != want {
+			t.Errorf("%v: %q, want %q", in, got, want)
+		}
 	}
 }

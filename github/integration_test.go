@@ -299,3 +299,7 @@ func TestIntegrationRepoActionsSettings(t *testing.T) {
 }
 
 func TestIntegrationRunners(t *testing.T) { contracttest.Runners(t, integrationEnv(t)) }
+
+func TestIntegrationCommitStatuses(t *testing.T) { contracttest.CommitStatuses(t, integrationEnv(t)) }
+
+func TestIntegrationBranchInfo(t *testing.T) { contracttest.BranchInfo(t, integrationEnv(t)) }
