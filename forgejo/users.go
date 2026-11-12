@@ -104,7 +104,7 @@ func ownerVisibility(v gitoperationslib.OwnerVisibility, op string, allowEmpty b
 	return "", fmt.Errorf("forgejo: %s: invalid visibility %q", op, v)
 }
 
-// Users implements gitoperationslib.Admin.
+// Users implements gitoperationslib.Client.
 func (c *Client) Users() gitoperationslib.Users { return users{c} }
 
 type users struct{ c *Client }
@@ -127,13 +127,12 @@ func (u users) List(ctx context.Context, opts gitoperationslib.ListOptions) (git
 	return toPage(resp, out, (*userJSON).toUser), nil
 }
 
-var _ gitoperationslib.UserFilters = (*Client)(nil)
-
 // twoFactorFilterVersion is the first release with is_2fa_enabled. Older ones
 // ignore it, and return everyone.
 var twoFactorFilterVersion = Version{16, 0, 0}
 
-func (c *Client) ListUsersBy(ctx context.Context, filter gitoperationslib.UserFilter, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+func (u users) Search(ctx context.Context, filter gitoperationslib.UserFilter, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+	c := u.c
 	q := forgejoapi.ListQuery(opts)
 	if filter.TwoFactor != nil {
 		if c.version.Compare(twoFactorFilterVersion) < 0 {

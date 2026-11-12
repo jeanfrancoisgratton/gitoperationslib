@@ -15,7 +15,7 @@ func TestWorkflowRunMapping(t *testing.T) {
 		fmt.Fprint(w, `{"id":5,"run_number":2,"display_title":"t","path":".github/workflows/b.yml","event":"push","head_branch":"main","head_sha":"abc",
 			"status":"completed","conclusion":"failure","actor":{"login":"bob"},"run_started_at":"2026-11-05T00:00:01Z"}`)
 	})
-	got, err := c.GetWorkflowRun(context.Background(), "a", "b", 5)
+	got, err := c.CI().Runs().Get(context.Background(), "a", "b", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,11 +37,11 @@ func TestListWorkflowRunsFilters(t *testing.T) {
 		fmt.Fprint(w, `{"total_count":0,"workflow_runs":[]}`)
 	})
 	ctx := context.Background()
-	if _, err := c.ListWorkflowRuns(ctx, "a", "b", gitoperationslib.ListWorkflowRunsOptions{Number: 2}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.CI().Runs().List(ctx, "a", "b", gitoperationslib.ListWorkflowRunsOptions{Number: 2}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Number: %v", err)
 	}
 	status = http.StatusNotFound
-	page, err := c.ListWorkflowRuns(ctx, "a", "b", gitoperationslib.ListWorkflowRunsOptions{Workflow: "none.yml"})
+	page, err := c.CI().Runs().List(ctx, "a", "b", gitoperationslib.ListWorkflowRunsOptions{Workflow: "none.yml"})
 	if err != nil || page.Items == nil || len(page.Items) != 0 {
 		t.Errorf("a workflow that does not exist: %+v, %v", page, err)
 	}
@@ -54,15 +54,15 @@ func TestCancelFinishedRun(t *testing.T) {
 		fmt.Fprint(w, `{"message":"Cannot cancel a workflow run that is completed."}`)
 	})
 	ctx := context.Background()
-	if err := c.CancelWorkflowRun(ctx, "a", "b", 1); err != nil {
+	if err := c.CI().Runs().Cancel(ctx, "a", "b", 1); err != nil {
 		t.Errorf("409: %v", err)
 	}
 	status = http.StatusAccepted
-	if err := c.CancelWorkflowRun(ctx, "a", "b", 1); err != nil {
+	if err := c.CI().Runs().Cancel(ctx, "a", "b", 1); err != nil {
 		t.Errorf("202: %v", err)
 	}
 	status = http.StatusNotFound
-	if err := c.CancelWorkflowRun(ctx, "a", "b", 1); !gitoperationslib.IsNotFound(err) {
+	if err := c.CI().Runs().Cancel(ctx, "a", "b", 1); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("404: %v", err)
 	}
 }
@@ -74,7 +74,7 @@ func TestDeleteActiveWorkflowRun(t *testing.T) {
 		}
 		fmt.Fprint(w, `{"id":1,"status":"in_progress"}`)
 	})
-	if err := c.DeleteWorkflowRun(context.Background(), "a", "b", 1); !errors.Is(err, gitoperationslib.ErrWorkflowRunActive) {
+	if err := c.CI().Runs().Delete(context.Background(), "a", "b", 1); !errors.Is(err, gitoperationslib.ErrWorkflowRunActive) {
 		t.Errorf("err = %v", err)
 	}
 }

@@ -10,16 +10,27 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
-var _ gitoperationslib.Account = (*Client)(nil)
+var _ gitoperationslib.Account = account{}
+
+// Account implements gitoperationslib.Client. Bitbucket has no user webhooks.
+func (c *Client) Account() gitoperationslib.Account {
+	return account{c, unsupported.Account{Backend: gitoperationslib.BackendBitbucket, Reason: "Bitbucket has no user webhooks"}}
+}
+
+type account struct {
+	c *Client
+	unsupported.Account
+}
 
 // Emails, SSHKeys and GPGKeys act on the authenticated user. E-mail addresses
 // can only be listed: Bitbucket refuses to change them with token
 // authentication.
-func (c *Client) Emails() gitoperationslib.Emails   { return emails{c} }
-func (c *Client) SSHKeys() gitoperationslib.SSHKeys { return sshKeys{c} }
-func (c *Client) GPGKeys() gitoperationslib.GPGKeys { return gpgKeys{c} }
+func (svc account) Emails() gitoperationslib.Emails   { return emails{svc.c} }
+func (svc account) SSHKeys() gitoperationslib.SSHKeys { return sshKeys{svc.c} }
+func (svc account) GPGKeys() gitoperationslib.GPGKeys { return gpgKeys{svc.c} }
 
 const noEmailChange = "Bitbucket does not allow changing e-mail addresses with token authentication"
 
@@ -250,7 +261,7 @@ func (k gpgKeys) Verify(context.Context, string, string) (*gitoperationslib.GPGK
 
 // Profile is not available: Bitbucket has no API to change a profile or
 // avatar (the profile is the Atlassian account's).
-func (c *Client) Profile() gitoperationslib.Profile { return profile{} }
+func (svc account) Profile() gitoperationslib.Profile { return profile{} }
 
 type profile struct{}
 
@@ -270,7 +281,7 @@ func (profile) DeleteAvatar(context.Context) error {
 
 // Tokens is not available: personal access tokens cannot be created or
 // revoked through the API.
-func (c *Client) Tokens() gitoperationslib.Tokens { return tokens{} }
+func (svc account) Tokens() gitoperationslib.Tokens { return tokens{} }
 
 type tokens struct{}
 

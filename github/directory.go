@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/partial"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
 func toUser(u *gh.User) gitoperationslib.User {
@@ -79,14 +80,39 @@ func ghList(o gitoperationslib.ListOptions) gh.ListOptions {
 	return gh.ListOptions{Page: o.Page, PerPage: o.PerPage}
 }
 
-// Directory implements gitoperationslib.Client. Every call works with a
-// regular token; GitHub filters what the caller may see (non-members only
-// see an organisation's public members and visible teams).
-func (c *Client) Directory() gitoperationslib.Directory { return directory{c} }
+// Users, Orgs and Teams implement gitoperationslib.Client. They read; managing
+// accounts, organisations and teams is Forgejo's (CapAdmin).
+func (c *Client) Users() gitoperationslib.Users {
+	return users{c, unsupported.Users{Backend: gitoperationslib.BackendGitHub, Reason: noAdmin}}
+}
 
-type directory struct{ c *Client }
+func (c *Client) Orgs() gitoperationslib.Orgs {
+	return orgs{c, unsupported.Orgs{Backend: gitoperationslib.BackendGitHub, Reason: noAdmin}}
+}
 
-func (d directory) User(ctx context.Context, login string) (*gitoperationslib.User, error) {
+func (c *Client) Teams() gitoperationslib.Teams {
+	return teams{c, unsupported.Teams{Backend: gitoperationslib.BackendGitHub, Reason: noAdmin}}
+}
+
+// noAdmin explains the account management GitHub's API does not offer.
+const noAdmin = "managing accounts, organisations and teams is Forgejo's"
+
+type users struct {
+	c *Client
+	unsupported.Users
+}
+
+type orgs struct {
+	c *Client
+	unsupported.Orgs
+}
+
+type teams struct {
+	c *Client
+	unsupported.Teams
+}
+
+func (d users) Get(ctx context.Context, login string) (*gitoperationslib.User, error) {
 	u, _, err := d.c.gh.Users.Get(ctx, login)
 	if err != nil {
 		return nil, convertError(err)
@@ -95,15 +121,15 @@ func (d directory) User(ctx context.Context, login string) (*gitoperationslib.Us
 	return &out, nil
 }
 
-func (d directory) UserInfo(ctx context.Context, login string) (*gitoperationslib.UserInfo, error) {
-	u, err := d.User(ctx, login)
+func (d users) Info(ctx context.Context, login string) (*gitoperationslib.UserInfo, error) {
+	u, err := d.c.Users().Get(ctx, login)
 	if err != nil {
 		return nil, err
 	}
 	info := &gitoperationslib.UserInfo{User: *u}
 	var res partial.Result
 	info.Orgs, err = partial.Collect(ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
-		return d.ListOrgs(ctx, u.Login, o)
+		return d.c.Orgs().List(ctx, u.Login, o)
 	})
 	if err := res.Add("organisations", err); err != nil {
 		return nil, err
@@ -118,7 +144,7 @@ func (d directory) UserInfo(ctx context.Context, login string) (*gitoperationsli
 	return info, nil
 }
 
-func (d directory) Org(ctx context.Context, name string) (*gitoperationslib.Org, error) {
+func (d orgs) Get(ctx context.Context, name string) (*gitoperationslib.Org, error) {
 	o, _, err := d.c.gh.Organizations.Get(ctx, name)
 	if err != nil {
 		return nil, convertError(err)
@@ -127,7 +153,7 @@ func (d directory) Org(ctx context.Context, name string) (*gitoperationslib.Org,
 	return &out, nil
 }
 
-func (d directory) ListOrgs(ctx context.Context, user string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
+func (d orgs) List(ctx context.Context, user string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
 	lo := ghList(opts)
 	list, resp, err := d.c.gh.Organizations.List(ctx, user, &lo)
 	if err != nil {
@@ -138,7 +164,7 @@ func (d directory) ListOrgs(ctx context.Context, user string, opts gitoperations
 
 // ListAllOrgs pages with GitHub's "since" cursor (an organisation ID), which
 // travels in Page and NextPage.
-func (d directory) ListAllOrgs(ctx context.Context, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
+func (d orgs) ListAll(ctx context.Context, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
 	list, resp, err := d.c.gh.Organizations.ListAll(ctx, &gh.OrganizationsListOptions{Since: int64(opts.Page), PerPage: opts.PerPage})
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Org]{}, convertError(err)
@@ -146,21 +172,21 @@ func (d directory) ListAllOrgs(ctx context.Context, opts gitoperationslib.ListOp
 	return toPage(list, resp, toOrg), nil
 }
 
-func (d directory) OrgInfo(ctx context.Context, name string) (*gitoperationslib.OrgInfo, error) {
-	org, err := d.Org(ctx, name)
+func (d orgs) Info(ctx context.Context, name string) (*gitoperationslib.OrgInfo, error) {
+	org, err := d.c.Orgs().Get(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 	info := &gitoperationslib.OrgInfo{Org: *org}
 	var res partial.Result
 	info.Teams, err = partial.Collect(ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Team], error) {
-		return d.ListTeams(ctx, org.Name, o)
+		return d.c.Teams().List(ctx, org.Name, o)
 	})
 	if err := res.Add("teams", err); err != nil {
 		return nil, err
 	}
 	info.Members, err = partial.Collect(ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
-		return d.OrgMembers(ctx, org.Name, o)
+		return d.c.Orgs().Members(ctx, org.Name, o)
 	})
 	if err := res.Add("members", err); err != nil {
 		return nil, err
@@ -180,7 +206,7 @@ func (d directory) OrgInfo(ctx context.Context, name string) (*gitoperationslib.
 	return info, nil
 }
 
-func (d directory) OrgMembers(ctx context.Context, org string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+func (d orgs) Members(ctx context.Context, org string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
 	list, resp, err := d.c.gh.Organizations.ListMembers(ctx, org, &gh.ListMembersOptions{ListOptions: ghList(opts)})
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.User]{}, convertError(err)
@@ -188,7 +214,7 @@ func (d directory) OrgMembers(ctx context.Context, org string, opts gitoperation
 	return toPage(list, resp, toUser), nil
 }
 
-func (d directory) ListTeams(ctx context.Context, org string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Team], error) {
+func (d teams) List(ctx context.Context, org string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Team], error) {
 	lo := ghList(opts)
 	list, resp, err := d.c.gh.Teams.ListTeams(ctx, org, &lo)
 	if err != nil {
@@ -197,7 +223,7 @@ func (d directory) ListTeams(ctx context.Context, org string, opts gitoperations
 	return toPage(list, resp, func(t *gh.Team) gitoperationslib.Team { return toTeam(t, org) }), nil
 }
 
-func (d directory) Team(ctx context.Context, org, name string) (*gitoperationslib.Team, error) {
+func (d teams) Get(ctx context.Context, org, name string) (*gitoperationslib.Team, error) {
 	t, _, err := d.c.gh.Teams.GetTeamBySlug(ctx, org, name)
 	if err != nil {
 		return nil, convertError(err)
@@ -206,21 +232,21 @@ func (d directory) Team(ctx context.Context, org, name string) (*gitoperationsli
 	return &out, nil
 }
 
-func (d directory) TeamInfo(ctx context.Context, org, name string) (*gitoperationslib.TeamInfo, error) {
-	team, err := d.Team(ctx, org, name)
+func (d teams) Info(ctx context.Context, org, name string) (*gitoperationslib.TeamInfo, error) {
+	team, err := d.c.Teams().Get(ctx, org, name)
 	if err != nil {
 		return nil, err
 	}
 	info := &gitoperationslib.TeamInfo{Team: *team}
 	var res partial.Result
 	info.Members, err = partial.Collect(ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
-		return d.TeamMembers(ctx, org, team.Slug, o)
+		return d.c.Teams().Members(ctx, org, team.Slug, o)
 	})
 	if err := res.Add("members", err); err != nil {
 		return nil, err
 	}
 	info.Repos, err = partial.Collect(ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
-		return d.TeamRepos(ctx, org, team.Slug, o)
+		return d.c.Teams().Repos(ctx, org, team.Slug, o)
 	})
 	if err := res.Add("repositories", err); err != nil {
 		return nil, err
@@ -229,7 +255,7 @@ func (d directory) TeamInfo(ctx context.Context, org, name string) (*gitoperatio
 	return info, nil
 }
 
-func (d directory) TeamMembers(ctx context.Context, org, name string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+func (d teams) Members(ctx context.Context, org, name string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
 	list, resp, err := d.c.gh.Teams.ListTeamMembersBySlug(ctx, org, name, &gh.TeamListTeamMembersOptions{ListOptions: ghList(opts)})
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.User]{}, convertError(err)
@@ -237,7 +263,7 @@ func (d directory) TeamMembers(ctx context.Context, org, name string, opts gitop
 	return toPage(list, resp, toUser), nil
 }
 
-func (d directory) TeamRepos(ctx context.Context, org, name string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
+func (d teams) Repos(ctx context.Context, org, name string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
 	lo := ghList(opts)
 	list, resp, err := d.c.gh.Teams.ListTeamReposBySlug(ctx, org, name, &lo)
 	if err != nil {

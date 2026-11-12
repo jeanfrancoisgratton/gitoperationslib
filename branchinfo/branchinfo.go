@@ -62,7 +62,7 @@ type Options struct {
 	// PullRequests reads the open pull requests from each branch (one list for
 	// the repository; Forgejo needs version 16).
 	PullRequests bool
-	// Statuses reads the CI state of each branch's head (CommitStatuses; one
+	// Statuses reads the CI state of each branch's head (Commits().Status; one
 	// to three requests per branch, depending on the forge).
 	Statuses bool
 }
@@ -282,13 +282,6 @@ func (c *collector) server(ctx context.Context) error {
 		return nil
 	}
 	cl := o.Client
-	var statuses gol.CommitStatuses
-	if o.Statuses {
-		var ok bool
-		if statuses, ok = cl.(gol.CommitStatuses); !ok {
-			_ = c.parts.Add("statuses", gol.NotSupported(cl.Backend(), "statuses.get", "commit statuses"))
-		}
-	}
 	var prs []gol.PullRequest
 	if o.PullRequests {
 		list, err := partial.Collect(ctx, func(ctx context.Context, lo gol.ListOptions) (gol.Page[gol.PullRequest], error) {
@@ -329,8 +322,8 @@ func (c *collector) server(ctx context.Context) error {
 				b.PullRequests = append(b.PullRequests, pr)
 			}
 		}
-		if statuses != nil {
-			st, err := statuses.CommitStatus(ctx, o.Owner, o.Repo, name)
+		if o.Statuses {
+			st, err := cl.Commits().Status(ctx, o.Owner, o.Repo, name)
 			if err := c.parts.Add("status of "+name, err); err != nil {
 				return err
 			}

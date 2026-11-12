@@ -14,13 +14,14 @@ import (
 )
 
 var (
-	_ gitoperationslib.Runners             = (*Client)(nil)
-	_ gitoperationslib.WorkflowLogFollower = (*Client)(nil)
+	_ gitoperationslib.Runners = runners{}
 
 	// workflowFollowVersion is the first release that reads a single job, which
 	// following needs to know when it ends.
 	workflowFollowVersion = Version{17, 0, 0}
 )
+
+type runners struct{ c *Client }
 
 type runnerJSON struct {
 	ID          int64    `json:"id"`
@@ -62,7 +63,8 @@ func runnersPath(scope gitoperationslib.RunnerScope, rest ...string) (string, er
 	return forgejoapi.Path(append(append(base, "actions", "runners"), rest...)...), nil
 }
 
-func (c *Client) ListRunners(ctx context.Context, scope gitoperationslib.RunnerScope, opts gitoperationslib.ListRunnersOptions) (gitoperationslib.Page[gitoperationslib.Runner], error) {
+func (svc runners) List(ctx context.Context, scope gitoperationslib.RunnerScope, opts gitoperationslib.ListRunnersOptions) (gitoperationslib.Page[gitoperationslib.Runner], error) {
+	c := svc.c
 	path, err := runnersPath(scope)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Runner]{}, err
@@ -79,7 +81,8 @@ func (c *Client) ListRunners(ctx context.Context, scope gitoperationslib.RunnerS
 	return toPage(resp, out, (*runnerJSON).toRunner), nil
 }
 
-func (c *Client) GetRunner(ctx context.Context, scope gitoperationslib.RunnerScope, id int64) (*gitoperationslib.Runner, error) {
+func (svc runners) Get(ctx context.Context, scope gitoperationslib.RunnerScope, id int64) (*gitoperationslib.Runner, error) {
+	c := svc.c
 	path, err := runnersPath(scope, strconv.FormatInt(id, 10))
 	if err != nil {
 		return nil, err
@@ -92,7 +95,8 @@ func (c *Client) GetRunner(ctx context.Context, scope gitoperationslib.RunnerSco
 	return &runner, nil
 }
 
-func (c *Client) RegisterRunner(ctx context.Context, scope gitoperationslib.RunnerScope, opts gitoperationslib.RegisterRunnerOptions) (*gitoperationslib.RegisteredRunner, error) {
+func (svc runners) Register(ctx context.Context, scope gitoperationslib.RunnerScope, opts gitoperationslib.RegisterRunnerOptions) (*gitoperationslib.RegisteredRunner, error) {
+	c := svc.c
 	const op = "runners.register"
 	switch {
 	case opts.Name == "":
@@ -116,7 +120,8 @@ func (c *Client) RegisterRunner(ctx context.Context, scope gitoperationslib.Runn
 	return &gitoperationslib.RegisteredRunner{ID: out.ID, UUID: out.UUID, Token: out.Token}, nil
 }
 
-func (c *Client) DeleteRunner(ctx context.Context, scope gitoperationslib.RunnerScope, id int64) error {
+func (svc runners) Delete(ctx context.Context, scope gitoperationslib.RunnerScope, id int64) error {
+	c := svc.c
 	path, err := runnersPath(scope, strconv.FormatInt(id, 10))
 	if err != nil {
 		return err
@@ -125,7 +130,8 @@ func (c *Client) DeleteRunner(ctx context.Context, scope gitoperationslib.Runner
 	return err
 }
 
-func (c *Client) RunnerRegistrationToken(ctx context.Context, scope gitoperationslib.RunnerScope) (*gitoperationslib.RunnerToken, error) {
+func (svc runners) RegistrationToken(ctx context.Context, scope gitoperationslib.RunnerScope) (*gitoperationslib.RunnerToken, error) {
+	c := svc.c
 	path, err := runnersPath(scope, "registration-token")
 	if err != nil {
 		return nil, err
@@ -139,11 +145,12 @@ func (c *Client) RunnerRegistrationToken(ctx context.Context, scope gitoperation
 	return &gitoperationslib.RunnerToken{Token: out.Token}, nil
 }
 
-// FollowWorkflowJobLog asks for what follows what it already has (a Range
+// FollowJobLog asks for what follows what it already has (a Range
 // request), checked on 17.0.1: the server answers 206 with the new part, 416 when
 // there is nothing new, 404 "job has not been executed yet" before the job
 // starts, and 500 once it started but has no log yet.
-func (c *Client) FollowWorkflowJobLog(ctx context.Context, owner, repo string, jobID int64, out io.Writer, opts gitoperationslib.FollowLogOptions) error {
+func (svc runs) FollowJobLog(ctx context.Context, owner, repo string, jobID int64, out io.Writer, opts gitoperationslib.FollowLogOptions) error {
+	c := svc.c
 	if err := c.needVersion(workflowFollowVersion, "workflows.follow_log", "following a job's log"); err != nil {
 		return err
 	}
@@ -171,7 +178,7 @@ func (c *Client) FollowWorkflowJobLog(ctx context.Context, owner, repo string, j
 		return err
 	}
 	for {
-		job, err := c.GetWorkflowJob(ctx, owner, repo, jobID)
+		job, err := runs{c}.GetJob(ctx, owner, repo, jobID)
 		if err != nil {
 			return err
 		}

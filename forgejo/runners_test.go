@@ -52,24 +52,24 @@ func TestRunners(t *testing.T) {
 	})
 	ctx := context.Background()
 	scope := gitoperationslib.RepoRunners("acme", "widget")
-	page, err := c.ListRunners(ctx, scope, gitoperationslib.ListRunnersOptions{Inherited: true})
+	page, err := c.CI().Runners().List(ctx, scope, gitoperationslib.ListRunnersOptions{Inherited: true})
 	if err != nil || len(page.Items) != 3 {
 		t.Fatalf("List = %+v, %v", page, err)
 	}
 	if a, b, off := page.Items[0], page.Items[1], page.Items[2]; !a.Online || a.Busy || !b.Online || !b.Busy || off.Online || off.Busy {
 		t.Errorf("statuses = %+v", page.Items)
 	}
-	reg, err := c.RegisterRunner(ctx, scope, gitoperationslib.RegisterRunnerOptions{Name: "c", Ephemeral: true})
+	reg, err := c.CI().Runners().Register(ctx, scope, gitoperationslib.RegisterRunnerOptions{Name: "c", Ephemeral: true})
 	if err != nil || reg.ID != 3 || reg.UUID != "u-3" || reg.Token != "secret" {
 		t.Errorf("Register = %+v, %v", reg, err)
 	}
-	if _, err := c.RegisterRunner(ctx, scope, gitoperationslib.RegisterRunnerOptions{Name: "c", Labels: []string{"x"}}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.CI().Runners().Register(ctx, scope, gitoperationslib.RegisterRunnerOptions{Name: "c", Labels: []string{"x"}}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("labels: %v", err)
 	}
-	if tok, err := c.RunnerRegistrationToken(ctx, scope); err != nil || tok.Token != "reg" || !tok.ExpiresAt.IsZero() {
+	if tok, err := c.CI().Runners().RegistrationToken(ctx, scope); err != nil || tok.Token != "reg" || !tok.ExpiresAt.IsZero() {
 		t.Errorf("token = %+v, %v", tok, err)
 	}
-	if err := c.DeleteRunner(ctx, scope, 3); err != nil {
+	if err := c.CI().Runners().Delete(ctx, scope, 3); err != nil {
 		t.Error(err)
 	}
 	if requests[0] != "GET /api/v1/repos/acme/widget/actions/runners?visible=true" {
@@ -118,7 +118,7 @@ func followServer(t *testing.T, chunks []string, endAfter int) *Client {
 func TestFollowWorkflowJobLog(t *testing.T) {
 	c := followServer(t, []string{"", "", "", "one\n", "two\n", "two\n", "three\n"}, 6)
 	var out bytes.Buffer
-	err := c.FollowWorkflowJobLog(context.Background(), "a", "b", 9, &out, gitoperationslib.FollowLogOptions{Interval: time.Millisecond})
+	err := c.CI().Runs().FollowJobLog(context.Background(), "a", "b", 9, &out, gitoperationslib.FollowLogOptions{Interval: time.Millisecond})
 	if err != nil || out.String() != "one\ntwo\ntwo\nthree\n" {
 		t.Errorf("followed %q, %v", out.String(), err)
 	}
@@ -126,12 +126,12 @@ func TestFollowWorkflowJobLog(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	c = followServer(t, []string{"x\n"}, 1<<30)
-	if err := c.FollowWorkflowJobLog(ctx, "a", "b", 9, io.Discard, gitoperationslib.FollowLogOptions{Interval: time.Millisecond}); !errors.Is(err, context.DeadlineExceeded) {
+	if err := c.CI().Runs().FollowJobLog(ctx, "a", "b", 9, io.Discard, gitoperationslib.FollowLogOptions{Interval: time.Millisecond}); !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("a job that never ends: %v", err)
 	}
 
 	c.version = Version{16, 0, 7}
-	if err := c.FollowWorkflowJobLog(context.Background(), "a", "b", 9, io.Discard, gitoperationslib.FollowLogOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.CI().Runs().FollowJobLog(context.Background(), "a", "b", 9, io.Discard, gitoperationslib.FollowLogOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("before 17: %v", err)
 	}
 }

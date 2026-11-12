@@ -44,10 +44,9 @@ func TestDirectoryUserAndTeamGitHub(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	dir := c.Directory()
 
 	// A part the token may not read is reported, not fatal.
-	user, err := dir.UserInfo(ctx, "alice")
+	user, err := c.Users().Info(ctx, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,11 +57,11 @@ func TestDirectoryUserAndTeamGitHub(t *testing.T) {
 		t.Errorf("Missing = %+v", user.Missing)
 	}
 	// The main object missing fails the call.
-	if _, err := dir.UserInfo(ctx, "nobody"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Users().Info(ctx, "nobody"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("UserInfo(nobody): err = %v, want 404", err)
 	}
 
-	team, err := dir.TeamInfo(ctx, "acme", "back-end")
+	team, err := c.Teams().Info(ctx, "acme", "back-end")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,16 +69,16 @@ func TestDirectoryUserAndTeamGitHub(t *testing.T) {
 		t.Errorf("TeamInfo = %+v", team)
 	}
 	teamMembers = false
-	if team, err = dir.TeamInfo(ctx, "acme", "back-end"); err != nil || !gitoperationslib.IsForbidden(team.Incomplete) || len(team.Repos) != 1 {
+	if team, err = c.Teams().Info(ctx, "acme", "back-end"); err != nil || !gitoperationslib.IsForbidden(team.Incomplete) || len(team.Repos) != 1 {
 		t.Errorf("partial TeamInfo = %+v, %v", team, err)
 	}
-	if _, err := dir.TeamInfo(ctx, "acme", "nobody"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Teams().Info(ctx, "acme", "nobody"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("TeamInfo(nobody): err = %v, want 404", err)
 	}
-	if _, err := dir.TeamMembers(ctx, "acme", "nobody", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Teams().Members(ctx, "acme", "nobody", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("TeamMembers(nobody): err = %v, want 404", err)
 	}
-	if _, err := dir.TeamRepos(ctx, "acme", "nobody", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Teams().Repos(ctx, "acme", "nobody", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("TeamRepos(nobody): err = %v, want 404", err)
 	}
 }
@@ -211,23 +210,23 @@ func TestRepoVariableSetGitHub(t *testing.T) {
 	const patch = "PATCH /api/v3/repos/acme/widget/actions/variables/ENV"
 	const post = "POST /api/v3/repos/acme/widget/actions/variables"
 
-	if err := c.Variables().Set(ctx, repo, "ENV", "v"); err != nil || !slices.Equal(requests, []string{patch}) {
+	if err := c.CI().Variables().Set(ctx, repo, "ENV", "v"); err != nil || !slices.Equal(requests, []string{patch}) {
 		t.Errorf("existing: %v, requests %v", err, requests)
 	}
 	requests, status = nil, http.StatusNotFound
-	if err := c.Variables().Set(ctx, repo, "ENV", "v"); err != nil || !slices.Equal(requests, []string{patch, post}) {
+	if err := c.CI().Variables().Set(ctx, repo, "ENV", "v"); err != nil || !slices.Equal(requests, []string{patch, post}) {
 		t.Errorf("new: %v, requests %v", err, requests)
 	}
 	// Only a 404 means "create it".
 	requests, status = nil, http.StatusForbidden
-	if err := c.Variables().Set(ctx, repo, "ENV", "v"); !gitoperationslib.IsForbidden(err) || !slices.Equal(requests, []string{patch}) {
+	if err := c.CI().Variables().Set(ctx, repo, "ENV", "v"); !gitoperationslib.IsForbidden(err) || !slices.Equal(requests, []string{patch}) {
 		t.Errorf("forbidden: %v, requests %v", err, requests)
 	}
 	requests = nil
-	if err := c.Variables().Set(ctx, repo, "", "v"); err == nil {
+	if err := c.CI().Variables().Set(ctx, repo, "", "v"); err == nil {
 		t.Error("empty name accepted")
 	}
-	if err := c.Variables().Set(ctx, gitoperationslib.UserCI(), "ENV", "v"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.CI().Variables().Set(ctx, gitoperationslib.UserCI(), "ENV", "v"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("user scope: err = %v, want ErrNotSupported", err)
 	}
 	if len(requests) != 0 {
@@ -250,7 +249,7 @@ func TestContentType(t *testing.T) {
 
 func TestAvatarNotSupportedGitHub(t *testing.T) {
 	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected request %s", r.URL) })
-	if err := c.Profile().DeleteAvatar(context.Background()); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.Account().Profile().DeleteAvatar(context.Background()); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("err = %v", err)
 	}
 }

@@ -194,8 +194,8 @@ func TestReleasesRejected(t *testing.T) {
 	if _, err := rels.Edit(ctx, "acme", "widget", 1, gitoperationslib.EditReleaseOptions{HideArchiveLinks: gitoperationslib.Ptr(true)}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("edit hide archive links: err = %v", err)
 	}
-	if _, ok := rels.(gitoperationslib.ExternalAssets); ok {
-		t.Error("GitHub releases should not implement ExternalAssets")
+	if _, err := rels.AddExternalAsset(ctx, "acme", "widget", 1, "x", "https://example.com/x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+		t.Errorf("external asset: err = %v", err)
 	}
 	if _, err := rels.Create(ctx, "acme", "widget", gitoperationslib.CreateReleaseOptions{}); err == nil {
 		t.Error("empty tag accepted")

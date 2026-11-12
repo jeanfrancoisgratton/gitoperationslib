@@ -8,9 +8,21 @@ import (
 	"strings"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
-var _ gitoperationslib.Collaborators = (*Client)(nil)
+var _ gitoperationslib.Collaborators = collaborators{}
+
+// Collaborators implements gitoperationslib.Client. Forgejo gives access at
+// once: there are no invitations to list.
+func (c *Client) Collaborators() gitoperationslib.Collaborators {
+	return collaborators{c, unsupported.Collaborators{Backend: gitoperationslib.BackendForgejo, Reason: "Forgejo gives access at once"}}
+}
+
+type collaborators struct {
+	c *Client
+	unsupported.Collaborators
+}
 
 // collaboratorError converts the error of a call naming a user. Forgejo answers
 // HTTP 422 for an unknown user (checked on 15.0.11), the other forges 404.
@@ -35,10 +47,11 @@ func (c *Client) collaboratorPermission(ctx context.Context, owner, repo, user s
 	return out.Permission, nil
 }
 
-// ListCollaborators implements gitoperationslib.Collaborators. Forgejo lists no
+// List implements gitoperationslib.Collaborators. Forgejo lists no
 // permissions, so each takes a request; the caller's being refused one means
 // they are not an admin, and there is no point in asking for the others.
-func (c *Client) ListCollaborators(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Collaborator], error) {
+func (svc collaborators) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Collaborator], error) {
+	c := svc.c
 	type user struct {
 		Login string `json:"login"`
 	}
@@ -61,8 +74,9 @@ func (c *Client) ListCollaborators(ctx context.Context, owner, repo string, opts
 	return page, nil
 }
 
-// GetCollaborator implements gitoperationslib.Collaborators.
-func (c *Client) GetCollaborator(ctx context.Context, owner, repo, user string) (*gitoperationslib.Collaborator, error) {
+// Get implements gitoperationslib.Collaborators.
+func (svc collaborators) Get(ctx context.Context, owner, repo, user string) (*gitoperationslib.Collaborator, error) {
+	c := svc.c
 	if user == "" {
 		return nil, errors.New("forgejo: repos.get_collaborator: user is required")
 	}
@@ -78,10 +92,11 @@ func (c *Client) GetCollaborator(ctx context.Context, owner, repo, user string) 
 	return out, nil
 }
 
-// AddCollaborator implements gitoperationslib.Collaborators. The permission is
+// Add implements gitoperationslib.Collaborators. The permission is
 // checked here because Forgejo takes any value, and stores write for those it
 // does not know (checked on 15.0.11).
-func (c *Client) AddCollaborator(ctx context.Context, owner, repo, user string, permission gitoperationslib.CollaboratorPermission) (bool, error) {
+func (svc collaborators) Add(ctx context.Context, owner, repo, user string, permission gitoperationslib.CollaboratorPermission) (bool, error) {
+	c := svc.c
 	if user == "" {
 		return false, errors.New("forgejo: repos.add_collaborator: user is required")
 	}
@@ -97,8 +112,9 @@ func (c *Client) AddCollaborator(ctx context.Context, owner, repo, user string, 
 	return false, collaboratorError(err)
 }
 
-// RemoveCollaborator implements gitoperationslib.Collaborators.
-func (c *Client) RemoveCollaborator(ctx context.Context, owner, repo, user string) error {
+// Remove implements gitoperationslib.Collaborators.
+func (svc collaborators) Remove(ctx context.Context, owner, repo, user string) error {
+	c := svc.c
 	if user == "" {
 		return errors.New("forgejo: repos.remove_collaborator: user is required")
 	}

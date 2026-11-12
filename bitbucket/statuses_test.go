@@ -32,18 +32,18 @@ func TestCommitStatusBitbucket(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	cs, err := c.CommitStatus(ctx, "acme", "widget", "main")
+	cs, err := c.Commits().Status(ctx, "acme", "widget", "main")
 	if err != nil || cs.SHA != sha || cs.State != gitoperationslib.StatusError || len(cs.Statuses) != 2 || cs.Statuses[0].TargetURL != "https://ci/1" {
 		t.Errorf("%+v %v", cs, err)
 	}
-	err = c.SetCommitStatus(ctx, "acme", "widget", sha, gitoperationslib.CommitStatus{Context: "ci", State: gitoperationslib.StatusPending, TargetURL: "https://ci/2"})
+	err = c.Commits().SetStatus(ctx, "acme", "widget", sha, gitoperationslib.CommitStatus{Context: "ci", State: gitoperationslib.StatusPending, TargetURL: "https://ci/2"})
 	if err != nil || !strings.Contains(posted, `"state":"INPROGRESS"`) || !strings.Contains(posted, `"key":"ci"`) {
 		t.Errorf("posted %s, %v", posted, err)
 	}
-	if err := c.SetCommitStatus(ctx, "acme", "widget", sha, gitoperationslib.CommitStatus{Context: "ci", State: gitoperationslib.StatusWarning, TargetURL: "u"}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.Commits().SetStatus(ctx, "acme", "widget", sha, gitoperationslib.CommitStatus{Context: "ci", State: gitoperationslib.StatusWarning, TargetURL: "u"}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("warning: %v", err)
 	}
-	if err := c.SetCommitStatus(ctx, "acme", "widget", sha, gitoperationslib.CommitStatus{Context: "ci", State: gitoperationslib.StatusSuccess}); err == nil {
+	if err := c.Commits().SetStatus(ctx, "acme", "widget", sha, gitoperationslib.CommitStatus{Context: "ci", State: gitoperationslib.StatusSuccess}); err == nil {
 		t.Error("no target URL accepted")
 	}
 }

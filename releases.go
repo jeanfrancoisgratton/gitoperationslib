@@ -1,6 +1,43 @@
 package gitoperationslib
 
-import "time"
+import (
+	"context"
+	"io"
+	"time"
+)
+
+// Releases manages releases and their assets.
+//
+// Asset methods take the release ID as well as the asset ID: Forgejo needs
+// both, GitHub ignores the release ID.
+type Releases interface {
+	List(ctx context.Context, owner, repo string, opts ListOptions) (Page[Release], error)
+	Get(ctx context.Context, owner, repo string, id int64) (*Release, error)
+	GetByTag(ctx context.Context, owner, repo, tag string) (*Release, error)
+	// Latest returns the most recent published release that is not a
+	// prerelease.
+	Latest(ctx context.Context, owner, repo string) (*Release, error)
+	Create(ctx context.Context, owner, repo string, opts CreateReleaseOptions) (*Release, error)
+	Edit(ctx context.Context, owner, repo string, id int64, opts EditReleaseOptions) (*Release, error)
+	// Delete removes a release. Its tag is kept.
+	Delete(ctx context.Context, owner, repo string, id int64) error
+
+	ListAssets(ctx context.Context, owner, repo string, releaseID int64, opts ListOptions) (Page[Asset], error)
+	GetAsset(ctx context.Context, owner, repo string, releaseID, assetID int64) (*Asset, error)
+	// UploadAsset streams size bytes from r as a new asset called name.
+	// size must be exact. An empty contentType is guessed from the name's
+	// extension, falling back to application/octet-stream.
+	UploadAsset(ctx context.Context, owner, repo string, releaseID int64, name string, r io.Reader, size int64, contentType string) (*Asset, error)
+	EditAsset(ctx context.Context, owner, repo string, releaseID, assetID int64, opts EditAssetOptions) (*Asset, error)
+	DeleteAsset(ctx context.Context, owner, repo string, releaseID, assetID int64) error
+	// DownloadAsset streams an uploaded asset's content; the caller must
+	// close it. External assets are not downloaded: fetch their DownloadURL.
+	DownloadAsset(ctx context.Context, owner, repo string, releaseID, assetID int64) (io.ReadCloser, error)
+
+	// AddExternalAsset adds an asset that links to a file hosted elsewhere
+	// (Forgejo only, CapExternalAssets).
+	AddExternalAsset(ctx context.Context, owner, repo string, releaseID int64, name, url string) (*Asset, error)
+}
 
 // Release is a named, tagged point in a repository's history, with notes and
 // attached files (assets).

@@ -27,12 +27,12 @@ A Go library for managing git forges through one set of interfaces. Write your c
 go get github.com/jeanfrancoisgratton/gitoperationslib
 ```
 
-Versions follow [Semantic Versioning](https://semver.org): 1.0.0 is the first stable release, and the public API only breaks with a new major version.
+Versions follow [Semantic Versioning](https://semver.org) loosely: the library is written for its author's own tools, and a minor version may break the API when that makes it clearer. 1.9.0 did, reorganising how areas are reached; the [CHANGELOG](__docs/CHANGELOG.md) lists every change with what replaces it.
 
-How 1.x grows without breaking anyone:
-- No method is ever added to an existing interface: that would break every other implementation of it, mocks included.
-- New areas arrive as new optional interfaces, implemented by the backend clients, found with a type assertion and announced by a new `Capability` bit (like `Admin` and `ExternalAssets`).
-- Minor versions may add struct fields, methods on concrete types, sentinel errors, constants and backend options.
+How it grows:
+- Every area is an accessor on `Client` (`client.CI().Runners()`), on every backend; what a forge lacks answers `ErrNotSupported`. A new area adds an accessor, which breaks other implementations of `Client`, mocks included.
+- Each area has a `Capability` bit, to tell beforehand what a backend supports.
+- Minor versions may add struct fields, methods, sentinel errors, constants and backend options.
 
 **Requirements:**
 - Go 1.27.3 or later.
@@ -111,22 +111,25 @@ gitoperationslib/             interfaces, domain types, errors, pagination  (no 
 └── internal/
     ├── forgejoapi/           Forgejo transport: base URL, auth, pagination, errors, uploads
     ├── bitbucketapi/         Bitbucket transport: REST 2.0, pagination, errors
-    ├── partial/              helpers for the Directory info calls (paging, tolerated refusals)
+    ├── partial/              helpers for the Info calls (paging, tolerated refusals)
+    ├── unsupported/          generated services answering ErrNotSupported, which backends embed
     └── contracttest/         one integration suite every backend must pass
 ```
 
 | Package | Import path | Role |
 |---|---|---|
 | root | `github.com/jeanfrancoisgratton/gitoperationslib` | `Client` and the area interfaces, domain types, errors, `Page`/`All`, `Ptr` |
-| `forgejo` | `…/gitoperationslib/forgejo` | Forgejo backend; implements `Client`, `Admin`, `Account`, `CI`, `History` and `ExternalAssets` |
-| `github` | `…/gitoperationslib/github` | GitHub backend; implements `Client`, `Account`, `CI` and `History` |
-| `bitbucket` | `…/gitoperationslib/bitbucket` | Bitbucket Cloud backend; implements `Client`, `Account`, `CI` and `History` |
+| `forgejo` | `…/gitoperationslib/forgejo` | Forgejo backend; implements `Client` |
+| `github` | `…/gitoperationslib/github` | GitHub backend; implements `Client` |
+| `bitbucket` | `…/gitoperationslib/bitbucket` | Bitbucket Cloud backend; implements `Client` |
 | `webhook` | `…/gitoperationslib/webhook` | Verifies, identifies and decodes webhook deliveries from all three forges |
+| `local` | `…/gitoperationslib/local` | Reads a clone's `.git`: branches, upstreams, worktrees, commits, reflogs; no git client |
+| `branchinfo` | `…/gitoperationslib/branchinfo` | A detailed branch list, from a clone, the server, or both |
 
 How a call flows:
 
 1. A constructor (`forgejo.New`, `github.New`, `bitbucket.New`) returns a concrete `*Client` that satisfies `gitoperationslib.Client`.
-2. `Client` hands out one interface per area: `Repos()`, `Branches()`, `Tags()`, `BranchProtections()`, `TagProtections()`, `Releases()`, `PullRequests()`, `Issues()`, `Labels()`, `Milestones()`, `Webhooks()` and `Directory()` (users, organisations, teams).
+2. `Client` hands out one interface per area, every area on every backend: `Repos()`, `Branches()`, `Tags()`, `BranchProtections()`, `TagProtections()`, `Commits()`, `Collaborators()`, `Mirrors()`, `GitHooks()`, `Webhooks()`, `Releases()`, `PullRequests()`, `Issues()`, `Labels()`, `Milestones()`, `CI()`, `Account()`, `Users()`, `Orgs()`, `Teams()` and `Site()`.
 3. The backend converts the library's option structs into the forge's request and calls its API. It then converts the response back into the library's types, so no forge-specific type crosses the boundary.
 4. Error responses become a `*gitoperationslib.APIError`. Requests the forge cannot honour fail with an error matching `gitoperationslib.ErrNotSupported`.
 
@@ -134,7 +137,7 @@ The `webhook` package depends only on the root package, so a service that only r
 
 ## Design choices
 
-- **One interface, several forges.** The domain types model what the forges share. Features only some forges have, or added after 1.0.0, are separate, optional interfaces (`Admin`, `ExternalAssets`, `Account`, `CI`, `History`), so the shared model is not bent around one vendor. Check for them with `Capabilities()` or a type assertion.
+- **One interface, several forges.** The domain types model what the forges share. Features only some forges have are methods like the others, answering `ErrNotSupported` where the forge lacks them, so the shared model is not bent around one vendor and there are no type assertions. `Capabilities()` tells beforehand.
 - **Explicit refusals.** When a forge cannot do something (a merge method, an option, a whole area), the call returns `ErrNotSupported` with a `*NotSupportedError` naming the backend, the operation and the reason. A few calls also return the result along with that error: this happens when the server applied the request but silently ignored part of it, so you can see what actually happened.
 - **No third-party types in the public API.** Every exported type belongs to this library, and conversion happens inside each backend. A `go-github` major version bump therefore never breaks callers.
 - **Few dependencies.** The Forgejo and Bitbucket backends are small hand-written HTTP clients on `net/http`, not SDKs. The Forgejo SDK was rejected because of its churn, and because its minimum Go version would have become ours (see [DESIGN-NOTES.md](__docs/DESIGN-NOTES.md)). Only GitHub uses an SDK (`go-github`, pinned), plus a minimal GraphQL client for what REST cannot do: draft toggling, auto-merge and issue deletion, and `golang.org/x/crypto` to encrypt Actions secrets (the standard library has no XSalsa20-Poly1305).
@@ -168,7 +171,7 @@ The library adapts where it can, and returns `ErrNotSupported` where it cannot. 
 | Detailed branch lists, local and on the server (`local`, `branchinfo`) | ✅ | ✅ | ✅ |
 | Webhooks (repository, organisation/workspace) | ✅ | ✅ | ✅ |
 | Receiving deliveries (`webhook`) | ✅ | ✅ | ⚠️ not yet checked against live deliveries |
-| Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
+| Reading users, organisations, teams (`Users()`, `Orgs()`, `Teams()`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
 
 Differences worth knowing before you start:

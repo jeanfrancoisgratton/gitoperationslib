@@ -135,7 +135,8 @@ func Releases(t *testing.T, env Env) {
 		check(err)
 	}
 
-	if ext, ok := rels.(gitoperationslib.ExternalAssets); ok {
+	if env.Client.Capabilities().Has(gitoperationslib.CapExternalAssets) {
+		ext := rels
 		link, err := ext.AddExternalAsset(ctx, owner, *repo, published.ID, "tool-mirror.tar.gz", "https://example.com/tool.tar.gz")
 		check(err)
 		if !link.External || link.DownloadURL != "https://example.com/tool.tar.gz" {

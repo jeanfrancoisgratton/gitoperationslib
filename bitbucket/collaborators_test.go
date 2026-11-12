@@ -20,7 +20,7 @@ func TestListCollaborators(t *testing.T) {
 		}
 		io.WriteString(w, `{"values":[{"permission":"admin","user":{"uuid":"{alice}","nickname":"alice","account_id":"70121:a"}}],"page":2,"next":"https://x/?page=3"}`)
 	})
-	page, err := c.ListCollaborators(context.Background(), "acme", "widget", gitoperationslib.ListOptions{Page: 2})
+	page, err := c.Collaborators().List(context.Background(), "acme", "widget", gitoperationslib.ListOptions{Page: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,17 +47,17 @@ func TestGetCollaborator(t *testing.T) {
 	})
 	ctx := context.Background()
 	for _, user := range []string{"alice", "{alice}", "70121:a"} {
-		got, err := c.GetCollaborator(ctx, "acme", "widget", user)
+		got, err := c.Collaborators().Get(ctx, "acme", "widget", user)
 		if err != nil || got.Login != "alice" || got.Permission != gitoperationslib.CollaboratorWrite {
 			t.Errorf("Get(%s) = %+v, %v", user, got, err)
 		}
 	}
 	for _, user := range []string{"bob", "70121:gone", "not-a-member"} {
-		if _, err := c.GetCollaborator(ctx, "acme", "widget", user); !gitoperationslib.IsNotFound(err) {
+		if _, err := c.Collaborators().Get(ctx, "acme", "widget", user); !gitoperationslib.IsNotFound(err) {
 			t.Errorf("Get(%s) = %v, want 404", user, err)
 		}
 	}
-	if _, err := c.GetCollaborator(ctx, "acme", "widget", ""); err == nil {
+	if _, err := c.Collaborators().Get(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Get without a user succeeded")
 	}
 }
@@ -72,7 +72,7 @@ func TestAddCollaborator(t *testing.T) {
 	ctx := context.Background()
 	// An account ID can be somebody outside the workspace.
 	for _, user := range []string{"bob", "70121:outsider"} {
-		if invited, err := c.AddCollaborator(ctx, "acme", "widget", user, gitoperationslib.CollaboratorRead); invited || err != nil {
+		if invited, err := c.Collaborators().Add(ctx, "acme", "widget", user, gitoperationslib.CollaboratorRead); invited || err != nil {
 			t.Errorf("Add(%s) = %v, %v", user, invited, err)
 		}
 	}
@@ -83,16 +83,16 @@ func TestAddCollaborator(t *testing.T) {
 	if len(requests) != 2 || requests[0] != want[0] || requests[1] != want[1] {
 		t.Errorf("requests = %q", requests)
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "bob", gitoperationslib.CollaboratorMaintain); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "bob", gitoperationslib.CollaboratorMaintain); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Add(maintain) = %v", err)
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "bob", ""); err == nil || errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "bob", ""); err == nil || errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Add without a permission = %v", err)
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "stranger", gitoperationslib.CollaboratorRead); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "stranger", gitoperationslib.CollaboratorRead); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Add(stranger) = %v", err)
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "", gitoperationslib.CollaboratorRead); err == nil {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "", gitoperationslib.CollaboratorRead); err == nil {
 		t.Error("Add without a user succeeded")
 	}
 	if len(requests) != 2 {
@@ -107,16 +107,16 @@ func TestRemoveCollaborator(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	ctx := context.Background()
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", "{bob}"); err != nil {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", "{bob}"); err != nil {
 		t.Fatal(err)
 	}
 	if want := "DELETE " + collaboratorsBase + "/%7Bbob%7D"; got != want {
 		t.Errorf("request = %q, want %q", got, want)
 	}
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", "stranger"); !gitoperationslib.IsNotFound(err) {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", "stranger"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Remove(stranger) = %v", err)
 	}
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", ""); err == nil {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Remove without a user succeeded")
 	}
 }

@@ -45,56 +45,56 @@ func TestAccountBitbucket(t *testing.T) {
 	ctx := context.Background()
 	const sshID, gpgID = 0xf54f087e8f59460, 0x43e5087282eebe7
 
-	if list, err := c.Emails().List(ctx); err != nil || len(list) != 1 || !list[0].Primary {
+	if list, err := c.Account().Emails().List(ctx); err != nil || len(list) != 1 || !list[0].Primary {
 		t.Errorf("Emails.List = %+v, %v", list, err)
 	}
-	if _, err := c.Emails().Add(ctx, "b@example.com"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Account().Emails().Add(ctx, "b@example.com"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Emails.Add: err = %v, want ErrNotSupported", err)
 	}
-	if err := c.Emails().Delete(ctx, "a@example.com"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.Account().Emails().Delete(ctx, "a@example.com"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Emails.Delete: err = %v, want ErrNotSupported", err)
 	}
 
-	key, err := c.SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "laptop", Key: "ssh-ed25519 AAA"})
+	key, err := c.Account().SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "laptop", Key: "ssh-ed25519 AAA"})
 	if err != nil || key.ID != sshID || key.Title != "laptop" {
 		t.Errorf("SSHKeys.Add = %+v, %v", key, err)
 	}
 	if posted[0]["label"] != "laptop" || posted[0]["key"] != "ssh-ed25519 AAA" {
 		t.Errorf("posted %v", posted[0])
 	}
-	if got, err := c.SSHKeys().Get(ctx, sshID); err != nil || got.Title != "laptop" {
+	if got, err := c.Account().SSHKeys().Get(ctx, sshID); err != nil || got.Title != "laptop" {
 		t.Errorf("SSHKeys.Get = %+v, %v", got, err)
 	}
-	if _, err := c.SSHKeys().Get(ctx, 42); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Account().SSHKeys().Get(ctx, 42); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("SSHKeys.Get(unknown): err = %v, want 404", err)
 	}
-	if page, err := c.SSHKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
+	if page, err := c.Account().SSHKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
 		t.Errorf("SSHKeys.List = %+v, %v", page, err)
 	}
-	if err := c.SSHKeys().Delete(ctx, sshID); err != nil {
+	if err := c.Account().SSHKeys().Delete(ctx, sshID); err != nil {
 		t.Error(err)
 	}
 
-	gpg, err := c.GPGKeys().Add(ctx, "-----BEGIN PGP PUBLIC KEY BLOCK-----", "")
+	gpg, err := c.Account().GPGKeys().Add(ctx, "-----BEGIN PGP PUBLIC KEY BLOCK-----", "")
 	if err != nil || gpg.ID != gpgID || gpg.KeyID != "C74D6C4A818E3CF3" {
 		t.Errorf("GPGKeys.Add = %+v, %v", gpg, err)
 	}
-	if got, err := c.GPGKeys().Get(ctx, gpgID); err != nil || got.ID != gpgID {
+	if got, err := c.Account().GPGKeys().Get(ctx, gpgID); err != nil || got.ID != gpgID {
 		t.Errorf("GPGKeys.Get = %+v, %v", got, err)
 	}
-	if page, err := c.GPGKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
+	if page, err := c.Account().GPGKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
 		t.Errorf("GPGKeys.List = %+v, %v", page, err)
 	}
-	if err := c.GPGKeys().Delete(ctx, gpgID); err != nil {
+	if err := c.Account().GPGKeys().Delete(ctx, gpgID); err != nil {
 		t.Error(err)
 	}
-	if _, err := c.GPGKeys().Add(ctx, "key", "sig"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Account().GPGKeys().Add(ctx, "key", "sig"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("signed GPG key: err = %v, want ErrNotSupported", err)
 	}
-	if _, err := c.GPGKeys().VerificationToken(ctx); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Account().GPGKeys().VerificationToken(ctx); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("VerificationToken: err = %v, want ErrNotSupported", err)
 	}
-	if _, err := c.SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "t", Key: "k", ReadOnly: true}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Account().SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "t", Key: "k", ReadOnly: true}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("read-only key: err = %v, want ErrNotSupported", err)
 	}
 }
@@ -102,11 +102,11 @@ func TestAccountBitbucket(t *testing.T) {
 func TestProfileAndTokensNotSupportedBitbucket(t *testing.T) {
 	c := fakeBitbucket(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected %s %s", r.Method, r.URL.Path) })
 	ctx := context.Background()
-	_, errEdit := c.Profile().Edit(ctx, gitoperationslib.EditProfileOptions{})
-	_, errList := c.Tokens().List(ctx, gitoperationslib.ListOptions{})
-	_, errCreate := c.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x"})
-	for _, err := range []error{errEdit, c.Profile().SetAvatar(ctx, nil), c.Profile().DeleteAvatar(ctx),
-		errList, errCreate, c.Tokens().Delete(ctx, 1), c.Tokens().DeleteByName(ctx, "x")} {
+	_, errEdit := c.Account().Profile().Edit(ctx, gitoperationslib.EditProfileOptions{})
+	_, errList := c.Account().Tokens().List(ctx, gitoperationslib.ListOptions{})
+	_, errCreate := c.Account().Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x"})
+	for _, err := range []error{errEdit, c.Account().Profile().SetAvatar(ctx, nil), c.Account().Profile().DeleteAvatar(ctx),
+		errList, errCreate, c.Account().Tokens().Delete(ctx, 1), c.Account().Tokens().DeleteByName(ctx, "x")} {
 		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("err = %v, want ErrNotSupported", err)
 		}

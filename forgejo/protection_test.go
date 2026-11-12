@@ -57,7 +57,7 @@ func TestBranchProtectionUnsupported(t *testing.T) {
 		}
 	}
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected request %s %s", r.Method, r.URL) })
-	if _, err := c.BranchProtections().Update(context.Background(), "acme", "widget", "main", gitoperationslib.BranchProtection{Pattern: "dev"}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.BranchProtections().Edit(context.Background(), "acme", "widget", "main", gitoperationslib.BranchProtection{Pattern: "dev"}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("rename: err = %v", err)
 	}
 }
@@ -100,7 +100,7 @@ func TestProtectionRequests(t *testing.T) {
 	check(err)
 	_, err = bp.Create(ctx, "acme", "widget", gitoperationslib.BranchProtection{Pattern: "release/*", RequiredApprovals: 1})
 	check(err)
-	_, err = bp.Update(ctx, "acme", "widget", "release/*", gitoperationslib.BranchProtection{RequiredApprovals: 1})
+	_, err = bp.Edit(ctx, "acme", "widget", "release/*", gitoperationslib.BranchProtection{RequiredApprovals: 1})
 	check(err)
 	check(bp.Delete(ctx, "acme", "widget", "release/*"))
 	tag, err := tp.Get(ctx, "acme", "widget", "v*")
@@ -110,7 +110,7 @@ func TestProtectionRequests(t *testing.T) {
 	}
 	_, err = tp.Create(ctx, "acme", "widget", gitoperationslib.TagProtection{Pattern: "v*", Allowlist: gitoperationslib.Allowlist{Users: []string{"alice"}}})
 	check(err)
-	_, err = tp.Update(ctx, "acme", "widget", "v*", gitoperationslib.TagProtection{Allowlist: gitoperationslib.Allowlist{Teams: []string{"devs"}}})
+	_, err = tp.Edit(ctx, "acme", "widget", "v*", gitoperationslib.TagProtection{Allowlist: gitoperationslib.Allowlist{Teams: []string{"devs"}}})
 	check(err)
 	check(tp.Delete(ctx, "acme", "widget", "v*"))
 	if _, err := tp.Get(ctx, "acme", "widget", "other*"); !gitoperationslib.IsNotFound(err) {

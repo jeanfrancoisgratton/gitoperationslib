@@ -18,7 +18,7 @@ import (
 // events and a branch filter, it resets them to "push" and none.
 func TestIntegrationHookEditKeeps(t *testing.T) {
 	ctx, c := adminEnv(t)
-	hooks := c.UserWebhooks()
+	hooks := c.Account().Webhooks()
 	create := func(events ...gitoperationslib.HookEvent) *gitoperationslib.Webhook {
 		t.Helper()
 		hook, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{
@@ -76,7 +76,7 @@ func sortedEvents(h *gitoperationslib.Webhook) []gitoperationslib.HookEvent {
 
 func TestIntegrationHookTypes(t *testing.T) {
 	ctx, c := adminEnv(t)
-	hooks := c.UserWebhooks()
+	hooks := c.Account().Webhooks()
 	push := []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}
 	hook, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{
 		Type: gitoperationslib.HookTypeSlack, URL: "https://example.invalid/slack", Events: push,
@@ -121,7 +121,7 @@ func TestIntegrationHookTypes(t *testing.T) {
 // Deliveries need a runner: see the fixtures in webhook/testdata.
 func TestIntegrationWorkflowHookEvents(t *testing.T) {
 	ctx, c := adminEnv(t)
-	hooks := c.UserWebhooks()
+	hooks := c.Account().Webhooks()
 	create := func(events ...gitoperationslib.HookEvent) (*gitoperationslib.Webhook, error) {
 		hook, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{URL: "https://example.invalid/wf", Events: events})
 		if hook != nil {
@@ -172,7 +172,7 @@ func TestIntegrationSystemWebhookCreate(t *testing.T) {
 	ctx, c := adminEnv(t)
 	secret := "created-system-secret"
 	recv := newHookReceiver(t, map[string][]byte{"/created": []byte(secret)})
-	system := c.SystemWebhooks()
+	system := c.Site().SystemWebhooks()
 	hook, err := system.Create(ctx, gitoperationslib.CreateWebhookOptions{
 		URL: recv.srv.URL + "/created", Secret: secret, Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventRepository},
 	})
@@ -183,7 +183,7 @@ func TestIntegrationSystemWebhookCreate(t *testing.T) {
 	if _, err := system.Get(ctx, hook.ID); err != nil {
 		t.Errorf("Get: %v", err)
 	}
-	if _, err := c.DefaultWebhooks().Get(ctx, hook.ID); err == nil {
+	if _, err := c.Site().DefaultWebhooks().Get(ctx, hook.ID); err == nil {
 		t.Error("listed as a default hook too")
 	}
 
@@ -225,7 +225,7 @@ func TestIntegrationSystemWebhookCreate(t *testing.T) {
 // the second part starts failing, Forgejo fixed it, and the refusal can go.
 func TestIntegrationHookEditFixedEvents(t *testing.T) {
 	ctx, c := adminEnv(t)
-	hooks := c.UserWebhooks()
+	hooks := c.Account().Webhooks()
 	hook, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{URL: "https://example.invalid/fixed", Events: []gitoperationslib.HookEvent{"push", "package"}})
 	if err != nil {
 		t.Fatal(err)

@@ -14,8 +14,8 @@ import (
 // organisation (when it is one: a GitHub personal namespace is not) and at
 // user level. Everything it sets is named GITOPSLIB_IT_… and deleted.
 func CI(t *testing.T, env Env) {
-	ci, ok := env.Client.(gitoperationslib.CI)
-	if !ok || !env.Client.Capabilities().Has(gitoperationslib.CapSecrets) {
+	ci := env.Client.CI()
+	if !env.Client.Capabilities().Has(gitoperationslib.CapSecrets) {
 		t.Fatalf("%s does not implement CI", env.Client.Backend())
 	}
 	t.Run("repository", func(t *testing.T) {

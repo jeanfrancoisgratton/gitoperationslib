@@ -169,11 +169,7 @@ func TestUploadAndExternalAsset(t *testing.T) {
 	if _, err := rels.UploadAsset(ctx, "acme", "widget", 11, "SUMS", strings.NewReader("xyz"), 3, "text/plain"); err != nil {
 		t.Fatal(err)
 	}
-	ext, ok := rels.(gitoperationslib.ExternalAssets)
-	if !ok {
-		t.Fatal("Forgejo releases should implement ExternalAssets")
-	}
-	if _, err := ext.AddExternalAsset(ctx, "acme", "widget", 11, "mirror", "https://example.com/f"); err != nil {
+	if _, err := rels.AddExternalAsset(ctx, "acme", "widget", 11, "mirror", "https://example.com/f"); err != nil {
 		t.Fatal(err)
 	}
 

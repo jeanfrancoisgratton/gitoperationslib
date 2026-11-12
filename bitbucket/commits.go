@@ -12,8 +12,6 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
 )
 
-var _ gitoperationslib.History = (*Client)(nil)
-
 // Commits reads commit history. Bitbucket reports a single date and no
 // committer; a commit's files come from its diffstat (one more request).
 func (c *Client) Commits() gitoperationslib.Commits { return commits{c} }

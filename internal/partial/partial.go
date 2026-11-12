@@ -1,4 +1,4 @@
-// Package partial helps backends build Directory info results from several
+// Package partial helps backends build the Info results of Users, Orgs and Teams from several
 // reads, keeping the parts the caller may not see out of the result instead
 // of failing the whole call.
 package partial

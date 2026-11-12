@@ -23,7 +23,7 @@ func TestListCollaboratorsGitHub(t *testing.T) {
 		w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?page=2>; rel="next"`, r.Host, r.URL.Path))
 		io.WriteString(w, `[{"login":"alice","role_name":"maintain"},{"login":"bob","role_name":"auditor"}]`)
 	})
-	page, err := c.ListCollaborators(context.Background(), "acme", "widget", gitoperationslib.ListOptions{})
+	page, err := c.Collaborators().List(context.Background(), "acme", "widget", gitoperationslib.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,14 +52,14 @@ func TestGetCollaboratorGitHub(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	got, err := c.GetCollaborator(ctx, "acme", "widget", "alice")
+	got, err := c.Collaborators().Get(ctx, "acme", "widget", "alice")
 	if err != nil || got.Login != "alice" || got.Permission != gitoperationslib.CollaboratorMaintain {
 		t.Errorf("Get = %+v, %v", got, err)
 	}
-	if _, err := c.GetCollaborator(ctx, "acme", "widget", "stranger"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Collaborators().Get(ctx, "acme", "widget", "stranger"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get(stranger) = %v, want 404", err)
 	}
-	if _, err := c.GetCollaborator(ctx, "acme", "widget", ""); err == nil {
+	if _, err := c.Collaborators().Get(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Get without a user succeeded")
 	}
 }
@@ -87,30 +87,30 @@ func TestAddCollaboratorGitHub(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	if invited, err := c.AddCollaborator(ctx, "acme", "widget", "invited", gitoperationslib.CollaboratorRead); !invited || err != nil {
+	if invited, err := c.Collaborators().Add(ctx, "acme", "widget", "invited", gitoperationslib.CollaboratorRead); !invited || err != nil {
 		t.Errorf("Add(invited) = %v, %v", invited, err)
 	}
-	if invited, err := c.AddCollaborator(ctx, "acme", "widget", "member", gitoperationslib.CollaboratorWrite); invited || err != nil {
+	if invited, err := c.Collaborators().Add(ctx, "acme", "widget", "member", gitoperationslib.CollaboratorWrite); invited || err != nil {
 		t.Errorf("Add(member) = %v, %v", invited, err)
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "gone", gitoperationslib.CollaboratorTriage); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "gone", gitoperationslib.CollaboratorTriage); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Add(gone) = %v", err)
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "member", gitoperationslib.CollaboratorMaintain); err != nil {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "member", gitoperationslib.CollaboratorMaintain); err != nil {
 		t.Error(err)
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "member", gitoperationslib.CollaboratorAdmin); err != nil {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "member", gitoperationslib.CollaboratorAdmin); err != nil {
 		t.Error(err)
 	}
 	if want := []string{"pull", "push", "triage", "maintain", "admin"}; !slices.Equal(sent, want) {
 		t.Errorf("permissions sent = %q, want %q", sent, want)
 	}
 	for _, p := range []gitoperationslib.CollaboratorPermission{"", "owner"} {
-		if _, err := c.AddCollaborator(ctx, "acme", "widget", "member", p); err == nil {
+		if _, err := c.Collaborators().Add(ctx, "acme", "widget", "member", p); err == nil {
 			t.Errorf("Add(%q) succeeded", p)
 		}
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "", gitoperationslib.CollaboratorRead); err == nil {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "", gitoperationslib.CollaboratorRead); err == nil {
 		t.Error("Add without a user succeeded")
 	}
 	if len(sent) != 5 {
@@ -138,17 +138,17 @@ func TestRemoveCollaboratorGitHub(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", "bob"); err != nil {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", "bob"); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"DELETE collaborators/bob", "GET invitations", "GET invitations", "DELETE invitations/2"}
 	if !slices.Equal(requests, want) {
 		t.Errorf("requests = %q, want %q", requests, want)
 	}
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", "gone"); !gitoperationslib.IsNotFound(err) {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", "gone"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Remove(gone) = %v", err)
 	}
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", ""); err == nil {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Remove without a user succeeded")
 	}
 }
@@ -167,7 +167,7 @@ func TestListCollaboratorInvitations(t *testing.T) {
 		io.WriteString(w, `[{"id":7,"invitee":{"login":"bob"},"permissions":"write","expired":true,"html_url":"https://g/i/7","created_at":"2026-11-05T10:00:00Z"}]`)
 	})
 	ctx := context.Background()
-	page, err := c.ListCollaboratorInvitations(ctx, "acme", "widget", gitoperationslib.ListOptions{})
+	page, err := c.Collaborators().ListInvitations(ctx, "acme", "widget", gitoperationslib.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestListCollaboratorInvitations(t *testing.T) {
 	if i.ID != 7 || i.Login != "bob" || i.Permission != gitoperationslib.CollaboratorWrite || !i.Expired || i.HTMLURL != "https://g/i/7" || i.CreatedAt.IsZero() {
 		t.Errorf("invitation = %+v", i)
 	}
-	if _, err := c.ListCollaboratorInvitations(ctx, "acme", "widget", gitoperationslib.ListOptions{Page: 9}); gitoperationslib.StatusCode(err) != http.StatusForbidden {
+	if _, err := c.Collaborators().ListInvitations(ctx, "acme", "widget", gitoperationslib.ListOptions{Page: 9}); gitoperationslib.StatusCode(err) != http.StatusForbidden {
 		t.Errorf("err = %v", err)
 	}
 }

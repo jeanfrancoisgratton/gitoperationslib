@@ -37,7 +37,7 @@ func TestPushMirrorRead(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	page, err := c.ListPushMirrors(ctx, "acme", "widget", gitoperationslib.ListOptions{PerPage: 2}) // no page asked for
+	page, err := c.Mirrors().ListPush(ctx, "acme", "widget", gitoperationslib.ListOptions{PerPage: 2}) // no page asked for
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestPushMirrorRead(t *testing.T) {
 		t.Errorf("LastSync of a mirror never pushed = %v", first.LastSync)
 	}
 
-	got, err := c.GetPushMirror(ctx, "acme", "widget", "remote_mirror_b")
+	got, err := c.Mirrors().GetPush(ctx, "acme", "widget", "remote_mirror_b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +62,11 @@ func TestPushMirrorRead(t *testing.T) {
 		t.Errorf("got = %+v", got)
 	}
 
-	_, err = c.GetPushMirror(ctx, "acme", "widget", "gone")
+	_, err = c.Mirrors().GetPush(ctx, "acme", "widget", "gone")
 	if !gitoperationslib.IsNotFound(err) || !describedGone(err) {
 		t.Errorf("Get(gone) = %v", err)
 	}
-	if _, err := c.GetPushMirror(ctx, "acme", "widget", ""); err == nil {
+	if _, err := c.Mirrors().GetPush(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Get without a name succeeded")
 	}
 }
@@ -88,7 +88,7 @@ func TestCreatePushMirror(t *testing.T) {
 		io.WriteString(w, neverSynced)
 	})
 	ctx := context.Background()
-	m, err := c.CreatePushMirror(ctx, "acme", "widget", gitoperationslib.CreatePushMirrorOptions{
+	m, err := c.Mirrors().CreatePush(ctx, "acme", "widget", gitoperationslib.CreatePushMirrorOptions{
 		RemoteAddress: "https://example.com/x/y.git", Username: "u", Password: "p",
 		Interval: 8 * time.Hour, SyncOnCommit: true, BranchFilter: "main",
 	})
@@ -110,7 +110,7 @@ func TestCreatePushMirror(t *testing.T) {
 
 	// Without an interval the server would refuse the request: the field is
 	// always sent.
-	if _, err := c.CreatePushMirror(ctx, "acme", "widget", gitoperationslib.CreatePushMirrorOptions{RemoteAddress: "git@example.com:x/y.git", UseSSH: true}); err != nil {
+	if _, err := c.Mirrors().CreatePush(ctx, "acme", "widget", gitoperationslib.CreatePushMirrorOptions{RemoteAddress: "git@example.com:x/y.git", UseSSH: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got["interval"] != "0s" || got["use_ssh"] != true {
@@ -140,7 +140,7 @@ func TestCreatePushMirrorRefused(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			status, body = tt.status, tt.body
-			_, err := c.CreatePushMirror(context.Background(), "acme", "widget", opts)
+			_, err := c.Mirrors().CreatePush(context.Background(), "acme", "widget", opts)
 			api, ok := err.(*gitoperationslib.APIError)
 			if !ok || api.StatusCode != tt.wantStatus || api.Message != tt.wantMessage {
 				t.Errorf("err = %#v", err)
@@ -157,7 +157,7 @@ func TestCreatePushMirrorValidates(t *testing.T) {
 		{RemoteAddress: "x", UseSSH: true, Password: "p"},
 		{RemoteAddress: "x", Interval: -time.Hour},
 	} {
-		if _, err := c.CreatePushMirror(context.Background(), "acme", "widget", opts); err == nil {
+		if _, err := c.Mirrors().CreatePush(context.Background(), "acme", "widget", opts); err == nil {
 			t.Errorf("Create(%+v) succeeded", opts)
 		}
 	}
@@ -173,19 +173,19 @@ func TestDeleteAndSyncMirrors(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	if err := c.DeletePushMirror(ctx, "acme", "widget", "m"); err != nil {
+	if err := c.Mirrors().DeletePush(ctx, "acme", "widget", "m"); err != nil {
 		t.Error(err)
 	}
-	if err := c.DeletePushMirror(ctx, "acme", "widget", "gone"); !gitoperationslib.IsNotFound(err) || !describedGone(err) {
+	if err := c.Mirrors().DeletePush(ctx, "acme", "widget", "gone"); !gitoperationslib.IsNotFound(err) || !describedGone(err) {
 		t.Errorf("Delete(gone) = %v", err)
 	}
-	if err := c.DeletePushMirror(ctx, "acme", "widget", ""); err == nil {
+	if err := c.Mirrors().DeletePush(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Delete without a name succeeded")
 	}
-	if err := c.SyncPushMirrors(ctx, "acme", "widget"); err != nil {
+	if err := c.Mirrors().SyncPush(ctx, "acme", "widget"); err != nil {
 		t.Error(err)
 	}
-	if err := c.SyncMirror(ctx, "acme", "widget"); err != nil {
+	if err := c.Mirrors().Sync(ctx, "acme", "widget"); err != nil {
 		t.Error(err)
 	}
 	want := []string{

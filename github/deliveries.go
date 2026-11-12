@@ -11,8 +11,6 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 )
 
-var _ gitoperationslib.HookDeliveries = (*Client)(nil)
-
 func toHookDelivery(d *gh.HookDelivery) gitoperationslib.HookDelivery {
 	out := gitoperationslib.HookDelivery{
 		ID: d.GetID(), GUID: d.GetGUID(), Event: d.GetEvent(), Action: d.GetAction(), Status: d.GetStatus(), StatusCode: d.GetStatusCode(),
@@ -37,8 +35,9 @@ func toHookDelivery(d *gh.HookDelivery) gitoperationslib.HookDelivery {
 	return out
 }
 
-// ListHookDeliveries implements gitoperationslib.HookDeliveries.
-func (c *Client) ListHookDeliveries(ctx context.Context, scope gitoperationslib.HookScope, hookID int64, opts gitoperationslib.ListHookDeliveriesOptions) (gitoperationslib.HookDeliveryPage, error) {
+// ListDeliveries implements gitoperationslib.Webhooks.
+func (w webhooks) ListDeliveries(ctx context.Context, scope gitoperationslib.HookScope, hookID int64, opts gitoperationslib.ListHookDeliveriesOptions) (gitoperationslib.HookDeliveryPage, error) {
+	c := w.c
 	if err := checkScope(scope); err != nil {
 		return gitoperationslib.HookDeliveryPage{}, err
 	}
@@ -63,8 +62,9 @@ func (c *Client) ListHookDeliveries(ctx context.Context, scope gitoperationslib.
 	return page, nil
 }
 
-// GetHookDelivery implements gitoperationslib.HookDeliveries.
-func (c *Client) GetHookDelivery(ctx context.Context, scope gitoperationslib.HookScope, hookID, id int64) (*gitoperationslib.HookDelivery, error) {
+// GetDelivery implements gitoperationslib.Webhooks.
+func (w webhooks) GetDelivery(ctx context.Context, scope gitoperationslib.HookScope, hookID, id int64) (*gitoperationslib.HookDelivery, error) {
+	c := w.c
 	if err := checkScope(scope); err != nil {
 		return nil, err
 	}
@@ -84,9 +84,10 @@ func (c *Client) GetHookDelivery(ctx context.Context, scope gitoperationslib.Hoo
 	return &out, nil
 }
 
-// RedeliverHook implements gitoperationslib.HookDeliveries. GitHub answers HTTP
+// Redeliver implements gitoperationslib.Webhooks. GitHub answers HTTP
 // 202, which go-github reports as an error.
-func (c *Client) RedeliverHook(ctx context.Context, scope gitoperationslib.HookScope, hookID, id int64) error {
+func (w webhooks) Redeliver(ctx context.Context, scope gitoperationslib.HookScope, hookID, id int64) error {
+	c := w.c
 	if err := checkScope(scope); err != nil {
 		return err
 	}

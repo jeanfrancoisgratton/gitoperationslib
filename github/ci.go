@@ -14,8 +14,7 @@ import (
 )
 
 var (
-	_ gitoperationslib.CI         = (*Client)(nil)
-	_ gitoperationslib.OrgSecrets = (*Client)(nil)
+	_ gitoperationslib.CI = ci{}
 )
 
 // Secrets and Variables manage GitHub Actions secrets and variables. They
@@ -24,8 +23,16 @@ var (
 // admin:org scope or the matching organisation permissions. GitHub has no
 // user-level Actions secrets (user secrets are Codespaces'): UserCI returns
 // ErrNotSupported.
-func (c *Client) Secrets() gitoperationslib.Secrets     { return secrets{c} }
-func (c *Client) Variables() gitoperationslib.Variables { return variables{c} }
+// CI implements gitoperationslib.Client.
+func (c *Client) CI() gitoperationslib.CI { return ci{c} }
+
+type ci struct{ c *Client }
+
+func (svc ci) Secrets() gitoperationslib.Secrets             { return secrets{svc.c} }
+func (svc ci) Variables() gitoperationslib.Variables         { return variables{svc.c} }
+func (svc ci) Runs() gitoperationslib.WorkflowRuns           { return runs{svc.c} }
+func (svc ci) Artifacts() gitoperationslib.WorkflowArtifacts { return artifacts{svc.c} }
+func (svc ci) Runners() gitoperationslib.Runners             { return runners{svc.c} }
 
 // orgVisibility makes new organisation secrets and variables available to all
 // its repositories, as on Forgejo.
@@ -321,8 +328,9 @@ func (c *Client) repoIDs(ctx context.Context, org string, repos []string) ([]int
 	return ids, nil
 }
 
-// GetOrgSecretAccess implements gitoperationslib.OrgSecrets.
-func (c *Client) GetOrgSecretAccess(ctx context.Context, org, name string) (*gitoperationslib.SecretAccess, error) {
+// GetAccess implements gitoperationslib.Secrets.
+func (s secrets) GetAccess(ctx context.Context, org, name string) (*gitoperationslib.SecretAccess, error) {
+	c := s.c
 	if org == "" || name == "" {
 		return nil, errors.New("github: secrets.get_access: organisation and name are required")
 	}
@@ -343,8 +351,9 @@ func (c *Client) GetOrgSecretAccess(ctx context.Context, org, name string) (*git
 	return access, nil
 }
 
-// SetOrgSecret implements gitoperationslib.OrgSecrets.
-func (c *Client) SetOrgSecret(ctx context.Context, org, name, value string, access gitoperationslib.SecretAccess) error {
+// SetWithAccess implements gitoperationslib.Secrets.
+func (s secrets) SetWithAccess(ctx context.Context, org, name, value string, access gitoperationslib.SecretAccess) error {
+	c := s.c
 	if org == "" || name == "" {
 		return errors.New("github: secrets.set: organisation and name are required")
 	}
@@ -365,8 +374,9 @@ func (c *Client) SetOrgSecret(ctx context.Context, org, name, value string, acce
 	return c.setOrgSecret(ctx, org, name, value, out)
 }
 
-// SetOrgSecretRepos implements gitoperationslib.OrgSecrets.
-func (c *Client) SetOrgSecretRepos(ctx context.Context, org, name string, repos []string) error {
+// SetRepos implements gitoperationslib.Secrets.
+func (s secrets) SetRepos(ctx context.Context, org, name string, repos []string) error {
+	c := s.c
 	if org == "" || name == "" {
 		return errors.New("github: secrets.set_repos: organisation and name are required")
 	}

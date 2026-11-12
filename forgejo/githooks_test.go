@@ -35,24 +35,24 @@ func TestGitHooks(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	list, err := c.ListGitHooks(ctx, "acme", "widget")
+	list, err := c.GitHooks().List(ctx, "acme", "widget")
 	want := []gitoperationslib.GitHook{{Name: "pre-receive", Active: true, Content: "#!/bin/sh\n"}, {Name: "update"}}
 	if err != nil || !slices.Equal(list, want) {
 		t.Errorf("List = %+v, %v", list, err)
 	}
-	got, err := c.GetGitHook(ctx, "acme", "widget", "update")
+	got, err := c.GitHooks().Get(ctx, "acme", "widget", "update")
 	if err != nil || got.Active || got.Name != "update" {
 		t.Errorf("Get = %+v, %v", got, err)
 	}
-	if _, err := c.GetGitHook(ctx, "acme", "widget", "nosuch"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.GitHooks().Get(ctx, "acme", "widget", "nosuch"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get(nosuch) = %v", err)
 	}
 	const script = "#!/bin/sh\nexit 0\n"
-	got, err = c.SetGitHook(ctx, "acme", "widget", "update", script)
+	got, err = c.GitHooks().Set(ctx, "acme", "widget", "update", script)
 	if err != nil || !got.Active || got.Content != script || patched["content"] != script {
 		t.Errorf("Set = %+v, %v; sent %v", got, err, patched)
 	}
-	if err := c.DeleteGitHook(ctx, "acme", "widget", "update"); err != nil {
+	if err := c.GitHooks().Delete(ctx, "acme", "widget", "update"); err != nil {
 		t.Error(err)
 	}
 }
@@ -61,16 +61,16 @@ func TestGitHooks(t *testing.T) {
 func TestGitHooksRefusedWithoutRequest(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("request sent: %s", r.URL) })
 	ctx := context.Background()
-	if _, err := c.SetGitHook(ctx, "acme", "widget", "update", ""); err == nil {
+	if _, err := c.GitHooks().Set(ctx, "acme", "widget", "update", ""); err == nil {
 		t.Error("Set without content succeeded")
 	}
-	if _, err := c.SetGitHook(ctx, "acme", "widget", "", "x"); err == nil {
+	if _, err := c.GitHooks().Set(ctx, "acme", "widget", "", "x"); err == nil {
 		t.Error("Set without a name succeeded")
 	}
-	if _, err := c.GetGitHook(ctx, "acme", "widget", ""); err == nil {
+	if _, err := c.GitHooks().Get(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Get without a name succeeded")
 	}
-	if err := c.DeleteGitHook(ctx, "acme", "widget", ""); err == nil {
+	if err := c.GitHooks().Delete(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Delete without a name succeeded")
 	}
 }
@@ -80,7 +80,7 @@ func TestGitHooksDisabledOnServer(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 		io.WriteString(w, `{"message":"must be allowed to edit Git hooks"}`)
 	})
-	_, err := c.ListGitHooks(context.Background(), "acme", "widget")
+	_, err := c.GitHooks().List(context.Background(), "acme", "widget")
 	var api *gitoperationslib.APIError
 	if !errors.As(err, &api) || api.StatusCode != http.StatusForbidden || api.Message != "must be allowed to edit Git hooks" {
 		t.Errorf("err = %v", err)

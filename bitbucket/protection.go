@@ -241,7 +241,7 @@ func (b branchProtections) Create(ctx context.Context, owner, repo string, rule 
 
 // Update replaces the rule's restrictions (not atomically: it deletes the
 // old ones, then creates the new ones).
-func (b branchProtections) Update(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.BranchProtection) (*gitoperationslib.BranchProtection, error) {
+func (b branchProtections) Edit(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.BranchProtection) (*gitoperationslib.BranchProtection, error) {
 	if rule.Pattern == "" {
 		rule.Pattern = pattern
 	}

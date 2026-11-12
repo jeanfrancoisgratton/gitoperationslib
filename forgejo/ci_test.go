@@ -41,25 +41,25 @@ func TestCIForgejo(t *testing.T) {
 	ctx := context.Background()
 	repo, org, user := gitoperationslib.RepoCI("acme", "widget"), gitoperationslib.OrgCI("acme"), gitoperationslib.UserCI()
 
-	if err := c.Secrets().Set(ctx, repo, "TOKEN", "s3cr3t"); err != nil {
+	if err := c.CI().Secrets().Set(ctx, repo, "TOKEN", "s3cr3t"); err != nil {
 		t.Error(err)
 	}
-	if page, err := c.Secrets().List(ctx, org, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 || page.Items[0].CreatedAt.IsZero() {
+	if page, err := c.CI().Secrets().List(ctx, org, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 || page.Items[0].CreatedAt.IsZero() {
 		t.Errorf("List = %+v, %v", page, err)
 	}
-	if err := c.Secrets().Delete(ctx, user, "TOKEN"); err != nil {
+	if err := c.CI().Secrets().Delete(ctx, user, "TOKEN"); err != nil {
 		t.Error(err)
 	}
-	if err := c.Variables().Set(ctx, user, "ENV", "prod"); err != nil {
+	if err := c.CI().Variables().Set(ctx, user, "ENV", "prod"); err != nil {
 		t.Error(err)
 	}
-	if v, err := c.Variables().Get(ctx, repo, "ENV"); err != nil || v.Value != "prod" {
+	if v, err := c.CI().Variables().Get(ctx, repo, "ENV"); err != nil || v.Value != "prod" {
 		t.Errorf("Get = %+v, %v", v, err)
 	}
-	if page, err := c.Variables().List(ctx, repo, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
+	if page, err := c.CI().Variables().List(ctx, repo, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
 		t.Errorf("Variables.List = %+v, %v", page, err)
 	}
-	if err := c.Variables().Delete(ctx, org, "ENV"); err != nil {
+	if err := c.CI().Variables().Delete(ctx, org, "ENV"); err != nil {
 		t.Error(err)
 	}
 	if !reflect.DeepEqual(bodies[0], map[string]any{"data": "s3cr3t"}) || !reflect.DeepEqual(bodies[4], map[string]any{"value": "prod"}) {
@@ -70,13 +70,13 @@ func TestCIForgejo(t *testing.T) {
 	}
 
 	n := len(requests)
-	if _, err := c.Secrets().List(ctx, user, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.CI().Secrets().List(ctx, user, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("user secrets List: err = %v, want ErrNotSupported", err)
 	}
-	if err := c.Secrets().Set(ctx, repo, "", "x"); err == nil {
+	if err := c.CI().Secrets().Set(ctx, repo, "", "x"); err == nil {
 		t.Error("empty name accepted")
 	}
-	if err := c.Variables().Set(ctx, gitoperationslib.CIScope{Repo: "widget"}, "ENV", "x"); err == nil {
+	if err := c.CI().Variables().Set(ctx, gitoperationslib.CIScope{Repo: "widget"}, "ENV", "x"); err == nil {
 		t.Error("repository scope without owner accepted")
 	}
 	if len(requests) != n {
@@ -90,19 +90,19 @@ func TestEnvironmentsNotSupported(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("request sent: %s", r.URL) })
 	ctx := context.Background()
 	scope := gitoperationslib.EnvCI("acme", "widget", "prod")
-	if _, err := c.Secrets().List(ctx, scope, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.CI().Secrets().List(ctx, scope, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Secrets.List = %v", err)
 	}
-	if err := c.Secrets().Set(ctx, scope, "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.CI().Secrets().Set(ctx, scope, "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Secrets.Set = %v", err)
 	}
-	if err := c.Secrets().Delete(ctx, scope, "X"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.CI().Secrets().Delete(ctx, scope, "X"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Secrets.Delete = %v", err)
 	}
-	if _, err := c.Variables().Get(ctx, scope, "X"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.CI().Variables().Get(ctx, scope, "X"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Variables.Get = %v", err)
 	}
-	if err := c.Variables().Set(ctx, scope, "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.CI().Variables().Set(ctx, scope, "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Variables.Set = %v", err)
 	}
 }

@@ -14,11 +14,7 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 )
 
-var (
-	_ gitoperationslib.CommitDiffs    = (*Client)(nil)
-	_ gitoperationslib.PRContents     = (*Client)(nil)
-	_ gitoperationslib.ReviewComments = (*Client)(nil)
-)
+var ()
 
 // maxPRCommits is how many commits of a pull request GitHub lists.
 const maxPRCommits = 250
@@ -33,8 +29,9 @@ func rawOptions(op string, format gitoperationslib.DiffFormat) (gh.RawOptions, e
 	return gh.RawOptions{}, fmt.Errorf("github: %s: invalid format %q", op, format)
 }
 
-// CommitDiff implements gitoperationslib.CommitDiffs.
-func (c *Client) CommitDiff(ctx context.Context, owner, repo, ref string, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+// Diff implements gitoperationslib.Commits.
+func (m commits) Diff(ctx context.Context, owner, repo, ref string, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+	c := m.c
 	if ref == "" {
 		return nil, errors.New("github: commits.diff: ref is required")
 	}
@@ -60,8 +57,9 @@ func commitError(err error) error {
 	return err
 }
 
-// PullRequestDiff implements gitoperationslib.PRContents.
-func (c *Client) PullRequestDiff(ctx context.Context, owner, repo string, number int, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+// Diff implements gitoperationslib.PullRequests.
+func (p pulls) Diff(ctx context.Context, owner, repo string, number int, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+	c := p.c
 	raw, err := rawOptions("pulls.diff", format)
 	if err != nil {
 		return nil, err
@@ -73,8 +71,9 @@ func (c *Client) PullRequestDiff(ctx context.Context, owner, repo string, number
 	return io.NopCloser(strings.NewReader(diff)), nil
 }
 
-// PullRequestFiles implements gitoperationslib.PRContents.
-func (c *Client) PullRequestFiles(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ChangedFile], error) {
+// Files implements gitoperationslib.PullRequests.
+func (p pulls) Files(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ChangedFile], error) {
+	c := p.c
 	lo := ghList(opts)
 	files, resp, err := c.gh.PullRequests.ListFiles(ctx, owner, repo, number, &lo)
 	if err != nil {
@@ -83,8 +82,9 @@ func (c *Client) PullRequestFiles(ctx context.Context, owner, repo string, numbe
 	return toPage(files, resp, toChangedFile), nil
 }
 
-// PullRequestCommits implements gitoperationslib.PRContents.
-func (c *Client) PullRequestCommits(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+// Commits implements gitoperationslib.PullRequests.
+func (p pulls) Commits(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+	c := p.c
 	pr, _, err := c.gh.PullRequests.Get(ctx, owner, repo, number)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Commit]{}, convertError(err)
@@ -164,8 +164,9 @@ const (
 	sideOld = "LEFT"
 )
 
-// ListReviewComments implements gitoperationslib.ReviewComments.
-func (c *Client) ListReviewComments(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ReviewComment], error) {
+// ListReviewComments implements gitoperationslib.PullRequests.
+func (p pulls) ListReviewComments(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ReviewComment], error) {
+	c := p.c
 	comments, resp, err := c.gh.PullRequests.ListComments(ctx, owner, repo, number, &gh.PullRequestListCommentsOptions{ListOptions: ghList(opts)})
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.ReviewComment]{}, convertError(err)
@@ -173,9 +174,10 @@ func (c *Client) ListReviewComments(ctx context.Context, owner, repo string, num
 	return toPage(comments, resp, toReviewComment), nil
 }
 
-// CreateReviewComment implements gitoperationslib.ReviewComments. GitHub
+// CreateReviewComment implements gitoperationslib.PullRequests. GitHub
 // requires a commit, so an empty CommitID costs one request for the head.
-func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, number int, opts gitoperationslib.CreateReviewCommentOptions) (*gitoperationslib.ReviewComment, error) {
+func (p pulls) CreateReviewComment(ctx context.Context, owner, repo string, number int, opts gitoperationslib.CreateReviewCommentOptions) (*gitoperationslib.ReviewComment, error) {
+	c := p.c
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("github: pulls.create_review_comment: %w", err)
 	}
@@ -205,8 +207,9 @@ func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, nu
 	return &rc, nil
 }
 
-// DeleteReviewComment implements gitoperationslib.ReviewComments.
-func (c *Client) DeleteReviewComment(ctx context.Context, owner, repo string, _ int, id int64) error {
+// DeleteReviewComment implements gitoperationslib.PullRequests.
+func (p pulls) DeleteReviewComment(ctx context.Context, owner, repo string, _ int, id int64) error {
+	c := p.c
 	_, err := c.gh.PullRequests.DeleteComment(ctx, owner, repo, id)
 	return convertError(err)
 }

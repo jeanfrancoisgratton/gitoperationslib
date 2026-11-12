@@ -12,8 +12,6 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
 )
 
-var _ gitoperationslib.CommitStatuses = (*Client)(nil)
-
 type commitStatusJSON struct {
 	Status      string    `json:"status"`
 	TargetURL   string    `json:"target_url"`
@@ -30,10 +28,11 @@ type combinedStatusJSON struct {
 	Statuses   []commitStatusJSON `json:"statuses"`
 }
 
-// CommitStatus implements gitoperationslib.CommitStatuses. Forgejo Actions
+// Status implements gitoperationslib.Commits. Forgejo Actions
 // reports each job as a status. The combined state is Forgejo's own. A ref
 // without statuses costs one more request.
-func (c *Client) CommitStatus(ctx context.Context, owner, repo, ref string) (*gitoperationslib.CombinedStatus, error) {
+func (m commits) Status(ctx context.Context, owner, repo, ref string) (*gitoperationslib.CombinedStatus, error) {
+	c := m.c
 	path := forgejoapi.Path("repos", owner, repo, "commits", ref, "status")
 	out := &gitoperationslib.CombinedStatus{}
 	for page := 1; ; page++ {
@@ -76,8 +75,9 @@ func (c *Client) CommitStatus(ctx context.Context, owner, repo, ref string) (*gi
 	return out, nil
 }
 
-// SetCommitStatus implements gitoperationslib.CommitStatuses.
-func (c *Client) SetCommitStatus(ctx context.Context, owner, repo, sha string, s gitoperationslib.CommitStatus) error {
+// SetStatus implements gitoperationslib.Commits.
+func (m commits) SetStatus(ctx context.Context, owner, repo, sha string, s gitoperationslib.CommitStatus) error {
+	c := m.c
 	if s.Context == "" || s.State == "" {
 		return errors.New("forgejo: a commit status needs a context and a state")
 	}

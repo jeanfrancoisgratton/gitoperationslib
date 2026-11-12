@@ -10,16 +10,27 @@ import (
 	gh "github.com/google/go-github/v93/github"
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
-var _ gitoperationslib.Account = (*Client)(nil)
+var _ gitoperationslib.Account = account{}
+
+// Account implements gitoperationslib.Client. GitHub has no user webhooks.
+func (c *Client) Account() gitoperationslib.Account {
+	return account{c, unsupported.Account{Backend: gitoperationslib.BackendGitHub, Reason: "GitHub has no user webhooks"}}
+}
+
+type account struct {
+	c *Client
+	unsupported.Account
+}
 
 // Emails, SSHKeys and GPGKeys need these token permissions: classic tokens
 // the user, admin:public_key and admin:gpg_key scopes; fine-grained tokens
 // the account permissions "Email addresses", "Git SSH keys" and "GPG keys".
-func (c *Client) Emails() gitoperationslib.Emails   { return emails{c} }
-func (c *Client) SSHKeys() gitoperationslib.SSHKeys { return sshKeys{c} }
-func (c *Client) GPGKeys() gitoperationslib.GPGKeys { return gpgKeys{c} }
+func (svc account) Emails() gitoperationslib.Emails   { return emails{svc.c} }
+func (svc account) SSHKeys() gitoperationslib.SSHKeys { return sshKeys{svc.c} }
+func (svc account) GPGKeys() gitoperationslib.GPGKeys { return gpgKeys{svc.c} }
 
 type emails struct{ c *Client }
 
@@ -160,7 +171,7 @@ func (k gpgKeys) Verify(context.Context, string, string) (*gitoperationslib.GPGK
 
 // Profile needs the user scope (classic tokens) or the "Profile" account
 // permission (fine-grained tokens). GitHub has no avatar API.
-func (c *Client) Profile() gitoperationslib.Profile { return profile{c} }
+func (svc account) Profile() gitoperationslib.Profile { return profile{svc.c} }
 
 type profile struct{ c *Client }
 
@@ -199,7 +210,7 @@ func (p profile) DeleteAvatar(context.Context) error {
 
 // Tokens is not available: personal access tokens cannot be created or
 // revoked through the API.
-func (c *Client) Tokens() gitoperationslib.Tokens { return tokens{} }
+func (svc account) Tokens() gitoperationslib.Tokens { return tokens{} }
 
 type tokens struct{}
 

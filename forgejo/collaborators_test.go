@@ -28,7 +28,7 @@ func TestListCollaborators(t *testing.T) {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 	})
-	page, err := c.ListCollaborators(context.Background(), "acme", "widget", gitoperationslib.ListOptions{PerPage: 2})
+	page, err := c.Collaborators().List(context.Background(), "acme", "widget", gitoperationslib.ListOptions{PerPage: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestListCollaboratorsNotAdmin(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 		io.WriteString(w, `{"message":"Only admins can query all permissions"}`)
 	})
-	page, err := c.ListCollaborators(context.Background(), "acme", "widget", gitoperationslib.ListOptions{})
+	page, err := c.Collaborators().List(context.Background(), "acme", "widget", gitoperationslib.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestListCollaboratorsPermissionError(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusTeapot)
 	})
-	if _, err := c.ListCollaborators(context.Background(), "acme", "widget", gitoperationslib.ListOptions{}); gitoperationslib.StatusCode(err) != http.StatusTeapot {
+	if _, err := c.Collaborators().List(context.Background(), "acme", "widget", gitoperationslib.ListOptions{}); gitoperationslib.StatusCode(err) != http.StatusTeapot {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -93,24 +93,24 @@ func TestGetCollaborator(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	got, err := c.GetCollaborator(ctx, "acme", "widget", "alice")
+	got, err := c.Collaborators().Get(ctx, "acme", "widget", "alice")
 	if err != nil || got.Login != "alice" || got.Permission != gitoperationslib.CollaboratorWrite {
 		t.Errorf("Get = %+v, %v", got, err)
 	}
 	permissionStatus = http.StatusForbidden
-	if got, err = c.GetCollaborator(ctx, "acme", "widget", "alice"); err != nil || got.Permission != "" {
+	if got, err = c.Collaborators().Get(ctx, "acme", "widget", "alice"); err != nil || got.Permission != "" {
 		t.Errorf("Get without the right to read permissions = %+v, %v", got, err)
 	}
 	permissionStatus = http.StatusInternalServerError
-	if _, err = c.GetCollaborator(ctx, "acme", "widget", "alice"); gitoperationslib.StatusCode(err) != http.StatusInternalServerError {
+	if _, err = c.Collaborators().Get(ctx, "acme", "widget", "alice"); gitoperationslib.StatusCode(err) != http.StatusInternalServerError {
 		t.Errorf("Get with a server error = %v", err)
 	}
 	for _, user := range []string{"owner", "nobody"} {
-		if _, err := c.GetCollaborator(ctx, "acme", "widget", user); !gitoperationslib.IsNotFound(err) {
+		if _, err := c.Collaborators().Get(ctx, "acme", "widget", user); !gitoperationslib.IsNotFound(err) {
 			t.Errorf("Get(%s) = %v, want 404", user, err)
 		}
 	}
-	if _, err := c.GetCollaborator(ctx, "acme", "widget", ""); err == nil {
+	if _, err := c.Collaborators().Get(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Get without a user succeeded")
 	}
 }
@@ -128,26 +128,26 @@ func TestAddCollaborator(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	ctx := context.Background()
-	invited, err := c.AddCollaborator(ctx, "acme", "widget", "bob", gitoperationslib.CollaboratorAdmin)
+	invited, err := c.Collaborators().Add(ctx, "acme", "widget", "bob", gitoperationslib.CollaboratorAdmin)
 	if err != nil || invited {
 		t.Errorf("Add = %v, %v", invited, err)
 	}
 	if want := []string{`{"permission":"admin"}`}; !slices.Equal(bodies, want) {
 		t.Errorf("bodies = %q", bodies)
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "nobody", gitoperationslib.CollaboratorRead); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "nobody", gitoperationslib.CollaboratorRead); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Add(nobody) = %v, want 404", err)
 	}
 	// Forgejo would store write for these.
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "bob", gitoperationslib.CollaboratorTriage); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "bob", gitoperationslib.CollaboratorTriage); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("Add(triage) = %v", err)
 	}
 	for _, p := range []gitoperationslib.CollaboratorPermission{"", "owner"} {
-		if _, err := c.AddCollaborator(ctx, "acme", "widget", "bob", p); err == nil || errors.Is(err, gitoperationslib.ErrNotSupported) {
+		if _, err := c.Collaborators().Add(ctx, "acme", "widget", "bob", p); err == nil || errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("Add(%q) = %v", p, err)
 		}
 	}
-	if _, err := c.AddCollaborator(ctx, "acme", "widget", "", gitoperationslib.CollaboratorRead); err == nil {
+	if _, err := c.Collaborators().Add(ctx, "acme", "widget", "", gitoperationslib.CollaboratorRead); err == nil {
 		t.Error("Add without a user succeeded")
 	}
 	if len(bodies) != 1 {
@@ -165,13 +165,13 @@ func TestRemoveCollaborator(t *testing.T) {
 		io.WriteString(w, `{"message":"user does not exist [uid: 0, name: nobody]"}`)
 	})
 	ctx := context.Background()
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", "bob"); err != nil {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", "bob"); err != nil {
 		t.Error(err)
 	}
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", "nobody"); !gitoperationslib.IsNotFound(err) {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", "nobody"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Remove(nobody) = %v, want 404", err)
 	}
-	if err := c.RemoveCollaborator(ctx, "acme", "widget", ""); err == nil {
+	if err := c.Collaborators().Remove(ctx, "acme", "widget", ""); err == nil {
 		t.Error("Remove without a user succeeded")
 	}
 }

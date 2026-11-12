@@ -145,7 +145,7 @@ func TestUsersRejected(t *testing.T) {
 
 func TestAdminInterface(t *testing.T) {
 	var c gitoperationslib.Client = fakeForgejo(t, http.NotFound)
-	if _, ok := c.(gitoperationslib.Admin); !ok || !c.Capabilities().Has(gitoperationslib.CapAdmin) {
-		t.Error("Forgejo client should implement Admin and report CapAdmin")
+	if !c.Capabilities().Has(gitoperationslib.CapAdmin) {
+		t.Error("Forgejo client should report CapAdmin")
 	}
 }

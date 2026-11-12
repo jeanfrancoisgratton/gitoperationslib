@@ -210,3 +210,8 @@ func (r releases) DownloadAsset(ctx context.Context, owner, repo string, _, asse
 	}
 	return rc, nil
 }
+
+// AddExternalAsset is Forgejo's: GitHub assets are uploaded files.
+func (r releases) AddExternalAsset(context.Context, string, string, int64, string, string) (*gitoperationslib.Asset, error) {
+	return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "releases.add_external_asset", "external assets")
+}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
 type hookJSON struct {
@@ -408,9 +409,15 @@ func (s hookService) delete(ctx context.Context, id int64) error {
 }
 
 // Webhooks implements gitoperationslib.Client.
-func (c *Client) Webhooks() gitoperationslib.Webhooks { return webhooks{c} }
+func (c *Client) Webhooks() gitoperationslib.Webhooks {
+	return webhooks{c, unsupported.Webhooks{Backend: gitoperationslib.BackendForgejo, Reason: "Forgejo's API keeps no delivery history"}}
+}
 
-type webhooks struct{ c *Client }
+// webhooks has no delivery history: Forgejo's API has none.
+type webhooks struct {
+	c *Client
+	unsupported.Webhooks
+}
 
 func (w webhooks) service(scope gitoperationslib.HookScope) (hookService, error) {
 	switch {
@@ -474,12 +481,15 @@ func (w webhooks) Ping(ctx context.Context, scope gitoperationslib.HookScope, id
 	return err
 }
 
-var (
-	_ gitoperationslib.UserHooks = (*Client)(nil)
-	_ gitoperationslib.SiteHooks = (*Client)(nil)
-)
+var _ gitoperationslib.Site = site{}
 
-func (c *Client) UserWebhooks() gitoperationslib.UserWebhooks {
+// Site implements gitoperationslib.Client.
+func (c *Client) Site() gitoperationslib.Site { return site{c} }
+
+type site struct{ c *Client }
+
+func (svc account) Webhooks() gitoperationslib.UserWebhooks {
+	c := svc.c
 	return userHooks{hookService{c, "user/hooks"}}
 }
 
@@ -503,11 +513,13 @@ func (u userHooks) Edit(ctx context.Context, id int64, opts gitoperationslib.Edi
 
 func (u userHooks) Delete(ctx context.Context, id int64) error { return u.s.delete(ctx, id) }
 
-func (c *Client) SystemWebhooks() gitoperationslib.SystemWebhooks {
+func (svc site) SystemWebhooks() gitoperationslib.SystemWebhooks {
+	c := svc.c
 	return systemHooks{hookService{c, "admin/hooks"}}
 }
 
-func (c *Client) DefaultWebhooks() gitoperationslib.DefaultWebhooks {
+func (svc site) DefaultWebhooks() gitoperationslib.DefaultWebhooks {
+	c := svc.c
 	return defaultHooks{hookService{c, "admin/hooks"}}
 }
 

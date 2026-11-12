@@ -383,9 +383,8 @@ func (m milestones) Delete(ctx context.Context, owner, repo string, id int64) er
 	return convertError(err)
 }
 
-var _ gitoperationslib.IssueLocks = (*Client)(nil)
-
-func (c *Client) LockIssue(ctx context.Context, owner, repo string, number int, reason gitoperationslib.LockReason) error {
+func (s issues) Lock(ctx context.Context, owner, repo string, number int, reason gitoperationslib.LockReason) error {
+	c := s.c
 	var body gh.LockIssueRequest
 	if reason != "" {
 		body.LockReason = gh.Ptr(string(reason))
@@ -394,7 +393,18 @@ func (c *Client) LockIssue(ctx context.Context, owner, repo string, number int, 
 	return convertError(err)
 }
 
-func (c *Client) UnlockIssue(ctx context.Context, owner, repo string, number int) error {
+func (s issues) Unlock(ctx context.Context, owner, repo string, number int) error {
+	c := s.c
 	_, err := c.gh.Issues.Unlock(ctx, owner, repo, number)
 	return convertError(err)
+}
+
+// EditByID and DeleteByID are Forgejo's: GitHub refuses names several labels
+// would share.
+func (l labels) EditByID(context.Context, string, string, int64, gitoperationslib.EditLabelOptions) (*gitoperationslib.Label, error) {
+	return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "labels.edit_by_id", "labels are addressed by name")
+}
+
+func (l labels) DeleteByID(context.Context, string, string, int64) error {
+	return gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "labels.delete_by_id", "labels are addressed by name")
 }

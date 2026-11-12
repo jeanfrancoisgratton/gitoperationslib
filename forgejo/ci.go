@@ -8,13 +8,25 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
-var _ gitoperationslib.CI = (*Client)(nil)
+var _ gitoperationslib.CI = ci{}
+
+// CI implements gitoperationslib.Client.
+func (c *Client) CI() gitoperationslib.CI { return ci{c} }
+
+type ci struct{ c *Client }
+
+func (svc ci) Runs() gitoperationslib.WorkflowRuns           { return runs{svc.c} }
+func (svc ci) Artifacts() gitoperationslib.WorkflowArtifacts { return artifacts{svc.c} }
+func (svc ci) Runners() gitoperationslib.Runners             { return runners{svc.c} }
 
 // Secrets and Variables manage Forgejo Actions secrets and variables.
-func (c *Client) Secrets() gitoperationslib.Secrets     { return secrets{c} }
-func (c *Client) Variables() gitoperationslib.Variables { return variables{c} }
+func (svc ci) Secrets() gitoperationslib.Secrets {
+	return secrets{svc.c, unsupported.Secrets{Backend: gitoperationslib.BackendForgejo, Reason: "an organisation's secrets are available to all its repositories"}}
+}
+func (svc ci) Variables() gitoperationslib.Variables { return variables{svc.c} }
 
 // ciPath is the Actions path of scope: repos/{owner}/{repo}/actions/kind,
 // orgs/{org}/actions/kind or user/actions/kind, followed by name if any.
@@ -46,7 +58,12 @@ func requireName(op, name string) error {
 	return nil
 }
 
-type secrets struct{ c *Client }
+// secrets cannot limit an organisation secret to some repositories: Forgejo's
+// are available to all of them.
+type secrets struct {
+	c *Client
+	unsupported.Secrets
+}
 
 // userSecretsVersion is the first release that lists a user's own secrets.
 var userSecretsVersion = Version{17, 0, 0}

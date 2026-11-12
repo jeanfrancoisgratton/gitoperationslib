@@ -69,8 +69,11 @@ type editOrgBody struct {
 	RepoAdminChangeTeamAccess *bool   `json:"repo_admin_change_team_access,omitempty"`
 }
 
-// Orgs implements gitoperationslib.Admin.
+// Orgs implements gitoperationslib.Client.
 func (c *Client) Orgs() gitoperationslib.Orgs { return orgs{c} }
+
+// Labels implements gitoperationslib.Orgs.
+func (o orgs) Labels() gitoperationslib.OrgLabels { return orgLabels{o.c} }
 
 type orgs struct{ c *Client }
 
@@ -181,16 +184,16 @@ func (o orgs) Delete(ctx context.Context, name string) error {
 	return refusal.Mark(err, refusal.Rule{Status: http.StatusInternalServerError, Fragment: "still has ownership of repositories", Sentinel: gitoperationslib.ErrOwnsRepos})
 }
 
-var _ gitoperationslib.OrgAvatars = (*Client)(nil)
-
-func (c *Client) SetOrgAvatar(ctx context.Context, org string, image io.Reader) error {
+func (o orgs) SetAvatar(ctx context.Context, org string, image io.Reader) error {
+	c := o.c
 	if org == "" {
 		return errors.New("forgejo: orgavatars.set: organisation is required")
 	}
 	return c.uploadAvatar(ctx, "orgavatars.set", forgejoapi.Path("orgs", org, "avatar"), image)
 }
 
-func (c *Client) DeleteOrgAvatar(ctx context.Context, org string) error {
+func (o orgs) DeleteAvatar(ctx context.Context, org string) error {
+	c := o.c
 	if org == "" {
 		return errors.New("forgejo: orgavatars.delete: organisation is required")
 	}

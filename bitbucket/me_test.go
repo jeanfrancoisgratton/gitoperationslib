@@ -45,7 +45,7 @@ func TestMe(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	})
-	me, err := c.Directory().Me(context.Background())
+	me, err := c.Users().Me(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -52,7 +52,7 @@ func TestDirectoryNonMember(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	})
-	info, err := c.Directory().OrgInfo(context.Background(), "acme")
+	info, err := c.Orgs().Info(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,9 +90,8 @@ func TestDirectoryRequests(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	dir := c.Directory()
 
-	user, err := dir.UserInfo(ctx, "alice")
+	user, err := c.Users().Info(ctx, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +99,7 @@ func TestDirectoryRequests(t *testing.T) {
 		t.Errorf("UserInfo = %+v", user)
 	}
 
-	team, err := dir.TeamInfo(ctx, "acme", "DEVS")
+	team, err := c.Teams().Info(ctx, "acme", "DEVS")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +107,7 @@ func TestDirectoryRequests(t *testing.T) {
 		t.Errorf("TeamInfo = %+v", team)
 	}
 
-	members, err := dir.TeamMembers(ctx, "acme", "devs", gitoperationslib.ListOptions{Page: 2, PerPage: 5})
+	members, err := c.Teams().Members(ctx, "acme", "devs", gitoperationslib.ListOptions{Page: 2, PerPage: 5})
 	if err != nil || len(members.Items) != 1 {
 		t.Fatalf("TeamMembers = %+v, %v", members, err)
 	}
@@ -117,10 +116,10 @@ func TestDirectoryRequests(t *testing.T) {
 	}
 
 	// The main object missing fails the call.
-	if _, err := dir.TeamInfo(ctx, "acme", "nobody"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Teams().Info(ctx, "acme", "nobody"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown team: err = %v, want 404", err)
 	}
-	if _, err := dir.UserInfo(ctx, "ghost"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Users().Info(ctx, "ghost"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown user: err = %v, want 404", err)
 	}
 }
@@ -133,7 +132,7 @@ func TestDirectoryServerError(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusInternalServerError)
 	})
-	_, err := c.Directory().UserInfo(context.Background(), "alice")
+	_, err := c.Users().Info(context.Background(), "alice")
 	var apiErr *gitoperationslib.APIError
 	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusInternalServerError {
 		t.Errorf("err = %v, want the 500 (server errors are not tolerated)", err)

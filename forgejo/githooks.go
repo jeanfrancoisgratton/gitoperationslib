@@ -8,7 +8,12 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 )
 
-var _ gitoperationslib.GitHooks = (*Client)(nil)
+var _ gitoperationslib.GitHooks = gitHooks{}
+
+// GitHooks implements gitoperationslib.Client.
+func (c *Client) GitHooks() gitoperationslib.GitHooks { return gitHooks{c} }
+
+type gitHooks struct{ c *Client }
 
 type gitHookJSON struct {
 	Name     string `json:"name"`
@@ -20,8 +25,9 @@ func (j *gitHookJSON) toGitHook() *gitoperationslib.GitHook {
 	return &gitoperationslib.GitHook{Name: j.Name, Active: j.IsActive, Content: j.Content}
 }
 
-// ListGitHooks implements gitoperationslib.GitHooks.
-func (c *Client) ListGitHooks(ctx context.Context, owner, repo string) ([]gitoperationslib.GitHook, error) {
+// List implements gitoperationslib.GitHooks.
+func (svc gitHooks) List(ctx context.Context, owner, repo string) ([]gitoperationslib.GitHook, error) {
+	c := svc.c
 	var out []gitHookJSON
 	if _, err := c.api.Do(ctx, http.MethodGet, repoPath(owner, repo, "hooks", "git"), nil, nil, &out); err != nil {
 		return nil, err
@@ -33,8 +39,9 @@ func (c *Client) ListGitHooks(ctx context.Context, owner, repo string) ([]gitope
 	return hooks, nil
 }
 
-// GetGitHook implements gitoperationslib.GitHooks.
-func (c *Client) GetGitHook(ctx context.Context, owner, repo, name string) (*gitoperationslib.GitHook, error) {
+// Get implements gitoperationslib.GitHooks.
+func (svc gitHooks) Get(ctx context.Context, owner, repo, name string) (*gitoperationslib.GitHook, error) {
+	c := svc.c
 	if name == "" {
 		return nil, errors.New("forgejo: git_hooks.get: name is required")
 	}
@@ -45,10 +52,11 @@ func (c *Client) GetGitHook(ctx context.Context, owner, repo, name string) (*git
 	return out.toGitHook(), nil
 }
 
-// SetGitHook implements gitoperationslib.GitHooks. Empty content is refused: the
+// Set implements gitoperationslib.GitHooks. Empty content is refused: the
 // server would take it for a request to delete the hook, and answer with success
 // (checked on 15.0.11).
-func (c *Client) SetGitHook(ctx context.Context, owner, repo, name, content string) (*gitoperationslib.GitHook, error) {
+func (svc gitHooks) Set(ctx context.Context, owner, repo, name, content string) (*gitoperationslib.GitHook, error) {
+	c := svc.c
 	switch {
 	case name == "":
 		return nil, errors.New("forgejo: git_hooks.set: name is required")
@@ -63,8 +71,9 @@ func (c *Client) SetGitHook(ctx context.Context, owner, repo, name, content stri
 	return out.toGitHook(), nil
 }
 
-// DeleteGitHook implements gitoperationslib.GitHooks.
-func (c *Client) DeleteGitHook(ctx context.Context, owner, repo, name string) error {
+// Delete implements gitoperationslib.GitHooks.
+func (svc gitHooks) Delete(ctx context.Context, owner, repo, name string) error {
+	c := svc.c
 	if name == "" {
 		return errors.New("forgejo: git_hooks.delete: name is required")
 	}

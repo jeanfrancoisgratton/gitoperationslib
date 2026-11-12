@@ -36,7 +36,7 @@ func TestIntegrationGitHooks(t *testing.T) {
 		return err
 	}
 
-	list, err := c.ListGitHooks(ctx, me, repo)
+	list, err := c.GitHooks().List(ctx, me, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,19 +50,19 @@ func TestIntegrationGitHooks(t *testing.T) {
 	if !slices.Contains(names, hook) {
 		t.Errorf("listed %v", names)
 	}
-	if _, err := c.GetGitHook(ctx, me, repo, "nosuch"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.GitHooks().Get(ctx, me, repo, "nosuch"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get(nosuch) = %v", err)
 	}
 
 	const script = "#!/bin/sh\necho refused by the test hook >&2\nexit 1\n"
-	set, err := c.SetGitHook(ctx, me, repo, hook, script)
+	set, err := c.GitHooks().Set(ctx, me, repo, hook, script)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !set.Active || set.Content != script {
 		t.Errorf("Set = %+v", set)
 	}
-	if got, err := c.GetGitHook(ctx, me, repo, hook); err != nil || !got.Active || got.Content != script {
+	if got, err := c.GitHooks().Get(ctx, me, repo, hook); err != nil || !got.Active || got.Content != script {
 		t.Errorf("Get = %+v, %v", got, err)
 	}
 	if err := push("refused.txt"); err == nil || !strings.Contains(err.Error(), "refused by the test hook") {
@@ -70,11 +70,11 @@ func TestIntegrationGitHooks(t *testing.T) {
 	}
 
 	for range 2 { // deleting is idempotent
-		if err := c.DeleteGitHook(ctx, me, repo, hook); err != nil {
+		if err := c.GitHooks().Delete(ctx, me, repo, hook); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got, err := c.GetGitHook(ctx, me, repo, hook); err != nil || got.Active || got.Content != "" {
+	if got, err := c.GitHooks().Get(ctx, me, repo, hook); err != nil || got.Active || got.Content != "" {
 		t.Errorf("Get after delete = %+v, %v", got, err)
 	}
 	if err := push("allowed.txt"); err != nil {
@@ -104,7 +104,7 @@ func TestIntegrationAdminTypedDeliveries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.AddCollaborator(ctx, admin, repo, reviewer, gitoperationslib.CollaboratorWrite); err != nil {
+	if _, err := c.Collaborators().Add(ctx, admin, repo, reviewer, gitoperationslib.CollaboratorWrite); err != nil {
 		t.Fatal(err)
 	}
 	scope := gitoperationslib.RepoHooks(admin, repo)

@@ -35,14 +35,15 @@ func OrgCI(org string) CIScope { return CIScope{Owner: org} }
 // (Forgejo only).
 func UserCI() CIScope { return CIScope{} }
 
-// CI manages the secrets and variables of CI workflows: Forgejo Actions,
-// GitHub Actions, Bitbucket Pipelines (CapSecrets). Find it with a type
-// assertion:
-//
-//	ci, ok := client.(gitoperationslib.CI)
+// CI groups what CI workflows use and do: secrets and variables (Forgejo
+// Actions, GitHub Actions, Bitbucket Pipelines; CapSecrets), workflow runs and
+// artifacts, and runners.
 type CI interface {
 	Secrets() Secrets
 	Variables() Variables
+	Runs() WorkflowRuns
+	Artifacts() WorkflowArtifacts
+	Runners() Runners
 }
 
 // Secrets manages CI secrets. Their values are write-only: once stored they
@@ -53,6 +54,11 @@ type CI interface {
 // Forgejo, with GITEA_, GITHUB_ or FORGEJO_). Empty values are refused.
 // Forgejo turns line endings into LF: base64-encode values whose exact bytes
 // matter.
+//
+// GetAccess, SetWithAccess and SetRepos limit an organisation secret to some
+// repositories: GitHub only (CapOrgSecrets), as the secrets of a Forgejo
+// organisation or a Bitbucket workspace are available to all its
+// repositories. Each repository named takes one more request, to find its ID.
 type Secrets interface {
 	// List returns the secrets' names. Forgejo before 17 cannot list the user's
 	// secrets (ErrNotSupported).
@@ -61,9 +67,17 @@ type Secrets interface {
 	// encrypted for the scope's public key before it is sent. A new
 	// organisation secret is available to all the organisation's repositories,
 	// and an existing one keeps its access, at the cost of one or two more
-	// requests: see OrgSecrets to limit it.
+	// requests: see SetWithAccess to limit it.
 	Set(ctx context.Context, scope CIScope, name, value string) error
 	Delete(ctx context.Context, scope CIScope, name string) error
+
+	// GetAccess returns who can use an organisation secret.
+	GetAccess(ctx context.Context, org, name string) (*SecretAccess, error)
+	// SetWithAccess creates a secret or replaces it, with its value and access.
+	SetWithAccess(ctx context.Context, org, name, value string, access SecretAccess) error
+	// SetRepos replaces the repositories that can use a secret. GitHub
+	// answers HTTP 409 unless its visibility is SecretVisibleSelected.
+	SetRepos(ctx context.Context, org, name string, repos []string) error
 }
 
 // Secret is a CI secret; its value is never returned.
@@ -105,24 +119,4 @@ type SecretAccess struct {
 	// Repos names the repositories, without their owner. It only applies to
 	// SecretVisibleSelected; empty means none.
 	Repos []string `json:"repos,omitzero"`
-}
-
-// OrgSecrets limits organisation secrets to some repositories. Only the GitHub
-// backend implements it (CapOrgSecrets): the secrets of a Forgejo organisation or
-// a Bitbucket workspace are available to all its repositories. Find it with a
-// type assertion:
-//
-//	s, ok := client.(gitoperationslib.OrgSecrets)
-//
-// Each repository named takes one more request, to find its ID. A secret's value
-// cannot be read back, so changing its visibility takes SetOrgSecret, with the
-// value.
-type OrgSecrets interface {
-	// GetOrgSecretAccess returns who can use a secret.
-	GetOrgSecretAccess(ctx context.Context, org, name string) (*SecretAccess, error)
-	// SetOrgSecret creates a secret or replaces it, with its value and access.
-	SetOrgSecret(ctx context.Context, org, name, value string, access SecretAccess) error
-	// SetOrgSecretRepos replaces the repositories that can use a secret. GitHub
-	// answers HTTP 409 unless its visibility is SecretVisibleSelected.
-	SetOrgSecretRepos(ctx context.Context, org, name string, repos []string) error
 }

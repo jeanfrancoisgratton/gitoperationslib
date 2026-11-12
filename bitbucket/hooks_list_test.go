@@ -66,17 +66,17 @@ func TestSecretDeleteBitbucket(t *testing.T) {
 	})
 	ctx := context.Background()
 	repo := gitoperationslib.RepoCI("acme", "widget")
-	if err := c.Secrets().Delete(ctx, repo, "TOKEN"); err != nil {
+	if err := c.CI().Secrets().Delete(ctx, repo, "TOKEN"); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(deleted, []string{"/2.0/repositories/acme/widget/pipelines_config/variables/{s1}"}) {
 		t.Errorf("deleted = %v", deleted)
 	}
 	deleted = nil
-	if err := c.Secrets().Delete(ctx, repo, "ENV"); !gitoperationslib.IsNotFound(err) {
+	if err := c.CI().Secrets().Delete(ctx, repo, "ENV"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("a variable as a secret: err = %v, want 404", err)
 	}
-	if err := c.Variables().Delete(ctx, repo, "TOKEN"); !gitoperationslib.IsNotFound(err) {
+	if err := c.CI().Variables().Delete(ctx, repo, "TOKEN"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("a secret as a variable: err = %v, want 404", err)
 	}
 	if len(deleted) != 0 {

@@ -372,21 +372,21 @@ func TestIntegrationAdminTeams(t *testing.T) {
 	}
 
 	// The owner team is protected.
-	owners, err := teams.GetByName(ctx, org, "owners")
+	owners, err := teams.Get(ctx, org, "owners")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if owners.Permission != gitoperationslib.TeamPermissionOwner || owners.Org != org {
 		t.Errorf("owners = %+v", owners)
 	}
-	if err := teams.Delete(ctx, owners.ID); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
+	if err := teams.Delete(ctx, org, owners.Name); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
 		t.Fatalf("delete owner team: err = %v, want ErrOwnerTeam", err)
 	}
-	if _, err := teams.Get(ctx, owners.ID); err != nil {
+	if _, err := teams.Get(ctx, org, owners.Name); err != nil {
 		t.Fatalf("owner team gone after refused delete: %v", err)
 	}
-	if _, err := teams.GetByName(ctx, org, "no-such-team"); !gitoperationslib.IsNotFound(err) {
-		t.Errorf("GetByName missing: err = %v, want 404", err)
+	if _, err := teams.Get(ctx, org, "no-such-team"); !gitoperationslib.IsNotFound(err) {
+		t.Errorf("Get missing: err = %v, want 404", err)
 	}
 
 	units := map[gitoperationslib.TeamUnit]gitoperationslib.TeamPermission{
@@ -415,14 +415,14 @@ func TestIntegrationAdminTeams(t *testing.T) {
 	}
 
 	// Raise to admin, then lower back to per-unit access.
-	raised, err := teams.Edit(ctx, devs.ID, gitoperationslib.EditTeamOptions{Access: &gitoperationslib.TeamAccess{Permission: gitoperationslib.TeamPermissionAdmin}})
+	raised, err := teams.Edit(ctx, org, devs.Name, gitoperationslib.EditTeamOptions{Access: &gitoperationslib.TeamAccess{Permission: gitoperationslib.TeamPermissionAdmin}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if raised.Permission != gitoperationslib.TeamPermissionAdmin {
 		t.Errorf("raised = %+v", raised)
 	}
-	lowered, err := teams.Edit(ctx, devs.ID, gitoperationslib.EditTeamOptions{Access: &gitoperationslib.TeamAccess{Units: map[gitoperationslib.TeamUnit]gitoperationslib.TeamPermission{
+	lowered, err := teams.Edit(ctx, org, devs.Name, gitoperationslib.EditTeamOptions{Access: &gitoperationslib.TeamAccess{Units: map[gitoperationslib.TeamUnit]gitoperationslib.TeamPermission{
 		gitoperationslib.TeamUnitCode: gitoperationslib.TeamPermissionRead,
 	}}})
 	if err != nil {
@@ -431,13 +431,14 @@ func TestIntegrationAdminTeams(t *testing.T) {
 	if lowered.Permission == gitoperationslib.TeamPermissionAdmin || lowered.Units[gitoperationslib.TeamUnitCode] != gitoperationslib.TeamPermissionRead {
 		t.Errorf("lowered = %+v", lowered)
 	}
-	described, err := teams.Edit(ctx, devs.ID, gitoperationslib.EditTeamOptions{Name: gitoperationslib.Ptr("developers"), Description: gitoperationslib.Ptr("edited")})
+	described, err := teams.Edit(ctx, org, devs.Name, gitoperationslib.EditTeamOptions{Name: gitoperationslib.Ptr("developers"), Description: gitoperationslib.Ptr("edited")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if described.Name != "developers" || described.Description != "edited" || described.Units[gitoperationslib.TeamUnitCode] != gitoperationslib.TeamPermissionRead {
 		t.Errorf("described = %+v (access should be unchanged)", described)
 	}
+	devs = described // teams are addressed by name
 
 	if !contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Team], error) {
 		return teams.List(ctx, org, o)
@@ -446,17 +447,17 @@ func TestIntegrationAdminTeams(t *testing.T) {
 	}
 
 	// Membership through the team also makes the user an org member.
-	if err := teams.AddMember(ctx, devs.ID, user); err != nil {
+	if err := teams.AddMember(ctx, org, devs.Name, user); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := teams.IsMember(ctx, devs.ID, user); err != nil || !ok {
+	if ok, err := teams.IsMember(ctx, org, devs.Name, user); err != nil || !ok {
 		t.Errorf("team IsMember = %v, %v", ok, err)
 	}
 	if ok, err := c.Orgs().IsMember(ctx, org, user); err != nil || !ok {
 		t.Errorf("org IsMember after team add = %v, %v", ok, err)
 	}
 	if !contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
-		return teams.Members(ctx, devs.ID, o)
+		return teams.Members(ctx, org, devs.Name, o)
 	}, func(u gitoperationslib.User) bool { return u.Login == user }) {
 		t.Error("Members is missing the user")
 	}
@@ -465,35 +466,35 @@ func TestIntegrationAdminTeams(t *testing.T) {
 	if _, err := c.Repos().Create(ctx, gitoperationslib.CreateRepoOptions{Owner: org, Name: repo}); err != nil {
 		t.Fatal(err)
 	}
-	if err := teams.AddRepo(ctx, devs.ID, org, repo); err != nil {
+	if err := teams.AddRepo(ctx, org, devs.Name, org, repo); err != nil {
 		t.Fatal(err)
 	}
 	hasRepo := func() bool {
 		return contains(t, ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
-			return teams.Repos(ctx, devs.ID, o)
+			return teams.Repos(ctx, org, devs.Name, o)
 		}, func(r gitoperationslib.Repo) bool { return r.Name == repo })
 	}
 	if !hasRepo() {
 		t.Error("Repos is missing the added repo")
 	}
-	if err := teams.RemoveRepo(ctx, devs.ID, org, repo); err != nil {
+	if err := teams.RemoveRepo(ctx, org, devs.Name, org, repo); err != nil {
 		t.Fatal(err)
 	}
 	if hasRepo() {
 		t.Error("repo still listed after RemoveRepo")
 	}
 
-	if err := teams.RemoveMember(ctx, devs.ID, user); err != nil {
+	if err := teams.RemoveMember(ctx, org, devs.Name, user); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := teams.IsMember(ctx, devs.ID, user); err != nil || ok {
+	if ok, err := teams.IsMember(ctx, org, devs.Name, user); err != nil || ok {
 		t.Errorf("IsMember after remove = %v, %v", ok, err)
 	}
 
-	if err := teams.Delete(ctx, devs.ID); err != nil {
+	if err := teams.Delete(ctx, org, devs.Name); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := teams.Get(ctx, devs.ID); !gitoperationslib.IsNotFound(err) {
+	if _, err := teams.Get(ctx, org, devs.Name); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get after delete: err = %v, want 404", err)
 	}
 }
@@ -731,7 +732,7 @@ func TestIntegrationAdminSudo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	me, err := sudo.Directory().Me(ctx)
+	me, err := sudo.Users().Me(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -781,7 +782,7 @@ func TestIntegrationOTP(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 			continue
 		}
-		if me, err := c.Directory().Me(ctx); err != nil || me.Login != user {
+		if me, err := c.Users().Me(ctx); err != nil || me.Login != user {
 			t.Errorf("%s: Me() = %v, %v", name, me, err)
 		}
 	}
@@ -791,11 +792,11 @@ func TestIntegrationOTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, err := c.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: contracttest.RepoPrefix + "otp", Scopes: []string{"read:user"}})
+	tok, err := c.Account().Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: contracttest.RepoPrefix + "otp", Scopes: []string{"read:user"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Tokens().Delete(ctx, tok.ID); err != nil {
+	if err := c.Account().Tokens().Delete(ctx, tok.ID); err != nil {
 		t.Error(err)
 	}
 }
@@ -846,16 +847,16 @@ func TestIntegrationAdminAvatar(t *testing.T) {
 	if err := png.Encode(&img, m); err != nil {
 		t.Fatal(err)
 	}
-	if err := sudo.Profile().SetAvatar(ctx, &img); err != nil {
+	if err := sudo.Account().Profile().SetAvatar(ctx, &img); err != nil {
 		t.Fatal(err)
 	}
 	if avatarURL() == original {
 		t.Error("avatar URL unchanged after SetAvatar")
 	}
-	if err := sudo.Profile().SetAvatar(ctx, strings.NewReader("not an image")); gitoperationslib.StatusCode(err) != http.StatusInternalServerError {
+	if err := sudo.Account().Profile().SetAvatar(ctx, strings.NewReader("not an image")); gitoperationslib.StatusCode(err) != http.StatusInternalServerError {
 		t.Errorf("not an image: err = %v, want Forgejo's HTTP 500", err)
 	}
-	if err := sudo.Profile().DeleteAvatar(ctx); err != nil {
+	if err := sudo.Account().Profile().DeleteAvatar(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if got := avatarURL(); got != original {
@@ -903,7 +904,7 @@ func webSystemHook(t *testing.T, ctx context.Context, c *Client, target, secret 
 	submit("/user/login", "/user/login", url.Values{"user_name": {login}, "password": {password}})
 
 	known := map[int64]bool{}
-	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, c.SystemWebhooks().List) {
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, c.Site().SystemWebhooks().List) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -914,12 +915,12 @@ func webSystemHook(t *testing.T, ctx context.Context, c *Client, target, secret 
 		"payload_url": {target}, "http_method": {"POST"}, "content_type": {"1"}, "secret": {secret},
 		"events": {"push_only"}, "branch_filter": {"*"}, "active": {"on"},
 	})
-	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, c.SystemWebhooks().List) {
+	for hook, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, c.Site().SystemWebhooks().List) {
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !known[hook.ID] {
-			t.Cleanup(func() { _ = c.SystemWebhooks().Delete(context.Background(), hook.ID) })
+			t.Cleanup(func() { _ = c.Site().SystemWebhooks().Delete(context.Background(), hook.ID) })
 			if hook.URL != target {
 				t.Errorf("new system webhook points to %s, want %s", hook.URL, target)
 			}
@@ -955,7 +956,7 @@ func TestIntegrationAdminUserWebhooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hooks := c.UserWebhooks()
+	hooks := c.Account().Webhooks()
 	events := []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}
 
 	created := map[int64]bool{}
@@ -1023,7 +1024,7 @@ func TestIntegrationAdminUserWebhooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sudo.UserWebhooks().Get(ctx, id); !gitoperationslib.IsNotFound(err) {
+	if _, err := sudo.Account().Webhooks().Get(ctx, id); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("another user's hook: err = %v, want 404", err)
 	}
 
@@ -1045,7 +1046,7 @@ func TestIntegrationAdminSiteWebhooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	system, deflt := c.SystemWebhooks(), c.DefaultWebhooks()
+	system, deflt := c.Site().SystemWebhooks(), c.Site().DefaultWebhooks()
 	events := []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}
 
 	systemID := webSystemHook(t, ctx, c, recv.srv.URL+"/system", systemSecret)
@@ -1164,10 +1165,10 @@ func TestIntegrationAdminSiteWebhooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sudo.SystemWebhooks().Delete(ctx, systemID); !gitoperationslib.IsForbidden(err) {
+	if err := sudo.Site().SystemWebhooks().Delete(ctx, systemID); !gitoperationslib.IsForbidden(err) {
 		t.Errorf("non-admin system Delete: err = %v, want 403", err)
 	}
-	if _, err := sudo.DefaultWebhooks().Create(ctx, gitoperationslib.CreateWebhookOptions{URL: moved, Events: events}); !gitoperationslib.IsForbidden(err) {
+	if _, err := sudo.Site().DefaultWebhooks().Create(ctx, gitoperationslib.CreateWebhookOptions{URL: moved, Events: events}); !gitoperationslib.IsForbidden(err) {
 		t.Errorf("non-admin default Create: err = %v, want 403", err)
 	}
 	if err := system.Delete(ctx, systemID); err != nil {
@@ -1200,13 +1201,13 @@ func TestIntegrationAdminOrgAvatar(t *testing.T) {
 	if err := png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 32, 32))); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.SetOrgAvatar(ctx, org, bytes.NewReader(img.Bytes())); err != nil {
+	if err := c.Orgs().SetAvatar(ctx, org, bytes.NewReader(img.Bytes())); err != nil {
 		t.Fatal(err)
 	}
 	if avatarURL() == original {
 		t.Error("avatar URL unchanged after SetOrgAvatar")
 	}
-	if err := c.SetOrgAvatar(ctx, org, strings.NewReader("not an image")); gitoperationslib.StatusCode(err) != http.StatusInternalServerError {
+	if err := c.Orgs().SetAvatar(ctx, org, strings.NewReader("not an image")); gitoperationslib.StatusCode(err) != http.StatusInternalServerError {
 		t.Errorf("not an image: err = %v, want Forgejo's HTTP 500", err)
 	}
 
@@ -1221,23 +1222,23 @@ func TestIntegrationAdminOrgAvatar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sudo.SetOrgAvatar(ctx, org, bytes.NewReader(img.Bytes())); !gitoperationslib.IsForbidden(err) {
+	if err := sudo.Orgs().SetAvatar(ctx, org, bytes.NewReader(img.Bytes())); !gitoperationslib.IsForbidden(err) {
 		t.Errorf("non-owner SetOrgAvatar: err = %v, want 403", err)
 	}
-	if err := sudo.DeleteOrgAvatar(ctx, org); !gitoperationslib.IsForbidden(err) {
+	if err := sudo.Orgs().DeleteAvatar(ctx, org); !gitoperationslib.IsForbidden(err) {
 		t.Errorf("non-owner DeleteOrgAvatar: err = %v, want 403", err)
 	}
 
-	if err := c.DeleteOrgAvatar(ctx, org); err != nil {
+	if err := c.Orgs().DeleteAvatar(ctx, org); err != nil {
 		t.Fatal(err)
 	}
 	if got := avatarURL(); got != original {
 		t.Errorf("avatar URL after DeleteOrgAvatar = %s, want the default %s", got, original)
 	}
-	if err := c.DeleteOrgAvatar(ctx, org); err != nil {
+	if err := c.Orgs().DeleteAvatar(ctx, org); err != nil {
 		t.Errorf("second DeleteOrgAvatar: %v", err)
 	}
-	if err := c.DeleteOrgAvatar(ctx, org+"-none"); !gitoperationslib.IsNotFound(err) {
+	if err := c.Orgs().DeleteAvatar(ctx, org+"-none"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown organisation: err = %v, want 404", err)
 	}
 }
@@ -1265,7 +1266,7 @@ func TestIntegrationAdminSSHKeyReadOnlyIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	id, _ := out["id"].(float64)
-	t.Cleanup(func() { _ = c.SSHKeys().Delete(context.Background(), int64(id)) })
+	t.Cleanup(func() { _ = c.Account().SSHKeys().Delete(context.Background(), int64(id)) })
 	if v, ok := out["read_only"]; ok {
 		t.Errorf("Forgejo now reports read_only = %v", v)
 	}
@@ -1291,7 +1292,7 @@ func TestIntegrationAdminTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tokens := user.Tokens()
+	tokens := user.Account().Tokens()
 
 	tok, err := tokens.Create(ctx, gitoperationslib.CreateTokenOptions{Name: "123", Scopes: []string{"write:user", "read:repository"}})
 	if err != nil {
@@ -1309,10 +1310,10 @@ func TestIntegrationAdminTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if me, err := viaToken.Directory().User(ctx, login); err != nil || me.Login != login {
+	if me, err := viaToken.Users().Get(ctx, login); err != nil || me.Login != login {
 		t.Errorf("with the new token: %v, %v", me, err)
 	}
-	if _, err := viaToken.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x", Scopes: []string{"read:user"}}); !errors.Is(err, gitoperationslib.ErrPasswordRequired) {
+	if _, err := viaToken.Account().Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x", Scopes: []string{"read:user"}}); !errors.Is(err, gitoperationslib.ErrPasswordRequired) {
 		t.Errorf("Create with a token: err = %v, want ErrPasswordRequired", err)
 	}
 
@@ -1355,7 +1356,7 @@ func TestIntegrationAdminTokens(t *testing.T) {
 	if page, err := tokens.List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 0 {
 		t.Errorf("after deletion: %+v, %v", page.Items, err)
 	}
-	if _, err := viaToken.Directory().User(ctx, login); !gitoperationslib.IsUnauthorized(err) {
+	if _, err := viaToken.Users().Get(ctx, login); !gitoperationslib.IsUnauthorized(err) {
 		t.Errorf("revoked token still works: err = %v", err)
 	}
 }

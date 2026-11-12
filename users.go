@@ -1,6 +1,112 @@
 package gitoperationslib
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// UserFilter selects users. Nil fields do not filter.
+type UserFilter struct {
+	// TwoFactor selects users with, or without, two-factor authentication. It
+	// needs Forgejo 16 (ErrNotSupported on older servers, which would ignore it
+	// and return everyone).
+	TwoFactor *bool `json:"twoFactor,omitzero"`
+}
+
+// Users reads and manages user accounts. Me, Get and Info read with whatever
+// rights the token has (CapDirectory; Bitbucket has Me only): a site admin
+// sees everything, other users what the web interface would show them. The
+// other methods administer accounts, Forgejo only (CapAdmin), and need a
+// site-admin token.
+type Users interface {
+	// Me returns the authenticated user as the credentials identify it, with
+	// everything the token may read about the account: private profile
+	// fields, e-mail addresses, memberships, repositories and keys.
+	Me(ctx context.Context) (*CurrentUser, error)
+	// Get returns a user account. Fields the server hides from the caller
+	// (e-mail, admin flags, last login…) are left empty.
+	Get(ctx context.Context, login string) (*User, error)
+	// Info returns a user with the organisations they belong to and the
+	// repositories they own, as far as the caller can see them.
+	Info(ctx context.Context, login string) (*UserInfo, error)
+
+	List(ctx context.Context, opts ListOptions) (Page[User], error)
+	// Search lists users by criteria (CapUserFilters).
+	Search(ctx context.Context, filter UserFilter, opts ListOptions) (Page[User], error)
+	Create(ctx context.Context, opts CreateUserOptions) (*User, error)
+	// Edit applies opts. If the server ignores a visibility change (Forgejo
+	// 15.0.x cannot switch a user back to public), Edit returns the updated
+	// user together with an error matching ErrNotSupported.
+	Edit(ctx context.Context, login string, opts EditUserOptions) (*User, error)
+	// Rename changes a user's login. The old login keeps redirecting to the
+	// new one, so Get(oldLogin) returns the renamed user.
+	Rename(ctx context.Context, login, newLogin string) error
+	Delete(ctx context.Context, login string, opts DeleteUserOptions) error
+	// Tokens manages the access tokens of the user called login with an
+	// ordinary site-admin token, where Account().Tokens() needs the user's
+	// password (CapAdminTokens; Forgejo 16 and later).
+	Tokens(login string) Tokens
+}
+
+// UserInfo is a user with the organisations and repositories the caller can
+// see.
+type UserInfo struct {
+	User
+	Orgs  []Org  `json:"orgs"`  // organisations the user belongs to
+	Repos []Repo `json:"repos"` // repositories the user owns
+	// Incomplete is nil when every part was read. Otherwise it describes the
+	// parts the server refused (401, 403, 404) or the backend cannot list
+	// (ErrNotSupported); those fields are left empty. It is not serialised:
+	// Missing carries the same information as data.
+	Incomplete error `json:"-"`
+	// Missing lists the parts recorded in Incomplete, one entry each.
+	Missing []PartError `json:"missing,omitzero"`
+}
+
+// CurrentUser is the authenticated user, as returned by Users().Me. Fields
+// a backend does not report are left empty.
+type CurrentUser struct {
+	User
+	// LoginName is the name used to sign in on an external authentication
+	// source (LDAP, OAuth…), and AuthSourceID that source; 0 for a local
+	// account. Forgejo only.
+	LoginName    string `json:"loginName,omitzero"`
+	AuthSourceID int64  `json:"authSourceId,omitzero"`
+	UUID         string `json:"uuid,omitzero"`      // Bitbucket only
+	AccountID    string `json:"accountId,omitzero"` // Atlassian account ID; Bitbucket only
+	// TwoFactorAuth reports whether two-factor authentication is enabled;
+	// nil when the backend does not tell. GitHub and Bitbucket only.
+	TwoFactorAuth *bool `json:"twoFactorAuth,omitzero"`
+	// Type is the account type ("User", "Bot"…); GitHub only.
+	Type              string    `json:"type,omitzero"`
+	Plan              string    `json:"plan,omitzero"`              // GitHub only
+	Hireable          bool      `json:"hireable,omitzero"`          // GitHub only
+	TwitterUsername   string    `json:"twitterUsername,omitzero"`   // GitHub only
+	PublicRepos       int       `json:"publicRepos,omitzero"`       // GitHub only
+	TotalPrivateRepos int64     `json:"totalPrivateRepos,omitzero"` // GitHub only
+	OwnedPrivateRepos int64     `json:"ownedPrivateRepos,omitzero"` // GitHub only
+	PublicGists       int       `json:"publicGists,omitzero"`       // GitHub only
+	PrivateGists      int       `json:"privateGists,omitzero"`      // GitHub only
+	DiskUsage         int       `json:"diskUsage,omitzero"`         // in KiB; GitHub only
+	Collaborators     int       `json:"collaborators,omitzero"`     // GitHub only
+	UpdatedAt         time.Time `json:"updatedAt,omitzero"`         // GitHub only
+	// Settings are the account preferences; Forgejo only.
+	Settings *UserSettings `json:"settings,omitzero"`
+
+	Emails []Email `json:"emails"`
+	Orgs   []Org   `json:"orgs"` // organisations the user belongs to, private memberships included
+	Teams  []Team  `json:"teams"`
+	// Repos are the repositories the user owns or reaches as a collaborator
+	// or organisation member, private ones included.
+	Repos   []Repo   `json:"repos"`
+	SSHKeys []SSHKey `json:"sshKeys"`
+	GPGKeys []GPGKey `json:"gpgKeys"`
+	// Incomplete is nil when every part was read; see UserInfo.Incomplete.
+	// A token lacking a scope (GitHub's user:email, read:public_key…)
+	// leaves the matching part empty and recorded here.
+	Incomplete error       `json:"-"`
+	Missing    []PartError `json:"missing,omitzero"` // see UserInfo.Missing
+}
 
 // User is a user account.
 type User struct {

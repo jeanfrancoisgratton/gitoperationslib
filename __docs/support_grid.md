@@ -25,13 +25,13 @@ Backends: **Forgejo** (≥ 15.0.0, primary), **GitHub** (github.com, GitHub Ente
 | Issues, labels, milestones, comments | ✅ | ✅ | ❌ issue tracker retired by Atlassian |
 | Webhooks (repository, organisation/workspace) | ✅ | ✅ | ✅ |
 | Receiving and verifying deliveries | ✅ | ✅ | ⚠️ from documentation, not yet checked against live deliveries |
-| Reading users, organisations, teams (`Directory`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
+| Reading users, organisations, teams (`Users()`, `Orgs()`, `Teams()`) | ✅ | ✅ | ⚠️ the authenticated user (`Me`) only |
 | Managing users, organisations, teams (`Admin`) | ✅ | — | — |
 | CI secrets and variables (`CI`) | ✅ | ✅ | ✅ |
 | CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`) | ⚠️ grows by version, 15 to 17 | ✅ | ❌ not yet |
 | CI runners (`Runners`) | ✅ | ✅ single-use registration | ❌ |
 | A commit's CI state (`CommitStatuses`) | ✅ | ✅ statuses and check runs | ✅ |
-| Commit history and changed files (`History`) | ⚠️ no per-file line counts, no renames, no date filter | ✅ | ⚠️ no date filter |
+| Commit history and changed files (`Commits()`) | ⚠️ no per-file line counts, no renames, no date filter | ✅ | ⚠️ no date filter |
 | Own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`) | ✅ | ✅ no avatar, no tokens | ⚠️ e-mail addresses read-only, no profile, no tokens |
 | Collaborators (`Collaborators`) | ✅ | ⚠️ new collaborators are usually invited | ✅ |
 | Push mirrors and mirror sync (`Mirrors`) | ✅ | ❌ | ❌ |
@@ -274,7 +274,7 @@ Events (`HookEvent`):
 | Form-encoded deliveries | ✅ | ✅ | — |
 | Checked against live deliveries | ✅ | ✅ (real signatures) | ❌ synthetic fixtures |
 
-## Reading users, organisations and teams (`Directory`)
+## Reading users, organisations and teams (`Users()`, `Orgs()`, `Teams()`)
 
 Works with any token; the server filters what the caller may see. Forgejo checks run with a non-admin token.
 
@@ -330,7 +330,7 @@ See [TODO.md](TODO.md) for open items and the reasons behind each limitation.
 
 ## CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`)
 
-Checked against real runs on Forgejo 15.0.11, 16.0.7 and 17.0.1, and on GitHub. Bitbucket Pipelines is not implemented, so the type assertions fail: the test token cannot enable pipelines, so nothing could be run.
+Checked against real runs on Forgejo 15.0.11, 16.0.7 and 17.0.1, and on GitHub. Bitbucket Pipelines is not implemented, so its calls answer `ErrNotSupported`: the test token cannot enable pipelines, so nothing could be run.
 
 | Feature | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|
@@ -363,7 +363,7 @@ Checked live on Forgejo 15.0.11 and 17.0.1, with a runner, and on GitHub.
 | Organisation secrets limited to some repositories (`OrgSecrets`) | ❌ | ✅† | ❌ |
 | User secrets and variables | ⚠️ secrets can only be listed from 17 | ❌ | ❌ refused with API tokens |
 
-## Commit history (`History`)
+## Commit history (`Commits()`)
 
 | Feature | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|

@@ -47,7 +47,7 @@ func TestDeploymentVariablesBitbucket(t *testing.T) {
 	ctx := context.Background()
 	// By name, by slug, ignoring case.
 	for _, name := range []string{"Prod EU", "prod-eu", "PROD eu"} {
-		v, err := c.Variables().Get(ctx, gitoperationslib.EnvCI("acme", "widget", name), "ENV")
+		v, err := c.CI().Variables().Get(ctx, gitoperationslib.EnvCI("acme", "widget", name), "ENV")
 		if err != nil || v.Value != "prod" {
 			t.Errorf("Get in %q = %+v, %v", name, v, err)
 		}
@@ -55,7 +55,7 @@ func TestDeploymentVariablesBitbucket(t *testing.T) {
 	// By UUID, with no lookup.
 	requests = nil
 	scope := gitoperationslib.EnvCI("acme", "widget", "{e1}")
-	secrets, err := c.Secrets().List(ctx, scope, gitoperationslib.ListOptions{})
+	secrets, err := c.CI().Secrets().List(ctx, scope, gitoperationslib.ListOptions{})
 	if err != nil || len(secrets.Items) != 1 || secrets.Items[0].Name != "TOKEN" {
 		t.Errorf("Secrets.List = %+v, %v", secrets, err)
 	}
@@ -66,24 +66,24 @@ func TestDeploymentVariablesBitbucket(t *testing.T) {
 	// Writing looks the environment up once, even when the entry exists.
 	requests = nil
 	byName := gitoperationslib.EnvCI("acme", "widget", "prod-eu")
-	if err := c.Variables().Set(ctx, byName, "ENV", "new"); err != nil {
+	if err := c.CI().Variables().Set(ctx, byName, "ENV", "new"); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"GET " + envs, "POST " + vars, "GET " + vars, "PUT " + vars + "/{v1}"}
 	if !slices.Equal(requests, want) {
 		t.Errorf("requests = %q, want %q", requests, want)
 	}
-	if err := c.Secrets().Set(ctx, byName, "NEW", "s3cret"); err != nil {
+	if err := c.CI().Secrets().Set(ctx, byName, "NEW", "s3cret"); err != nil {
 		t.Fatal(err)
 	}
 	if last := bodies[len(bodies)-1]; last.Key != "NEW" || !last.Secured || last.Value != "s3cret" {
 		t.Errorf("secret sent = %+v", last)
 	}
-	if err := c.Secrets().Delete(ctx, byName, "TOKEN"); err != nil {
+	if err := c.CI().Secrets().Delete(ctx, byName, "TOKEN"); err != nil {
 		t.Error(err)
 	}
 	// One list for both kinds, as elsewhere.
-	if err := c.Secrets().Set(ctx, byName, "ENV", "x"); err == nil || !strings.Contains(err.Error(), "is a variable") {
+	if err := c.CI().Secrets().Set(ctx, byName, "ENV", "x"); err == nil || !strings.Contains(err.Error(), "is a variable") {
 		t.Errorf("secret named like a variable: err = %v", err)
 	}
 }
@@ -97,7 +97,7 @@ func TestDeploymentVariablesUnknownEnvironment(t *testing.T) {
 		lookups++
 		io.WriteString(w, `{"values": []}`)
 	})
-	err := c.Variables().Set(context.Background(), gitoperationslib.EnvCI("acme", "widget", "nope"), "ENV", "x")
+	err := c.CI().Variables().Set(context.Background(), gitoperationslib.EnvCI("acme", "widget", "nope"), "ENV", "x")
 	if !gitoperationslib.IsNotFound(err) {
 		t.Errorf("err = %v, want 404", err)
 	}
@@ -119,7 +119,7 @@ func TestDeploymentVariablesLaggingEnvironment(t *testing.T) {
 		}
 		io.WriteString(w, `{"values": []}`)
 	})
-	if _, err := c.Variables().List(context.Background(), gitoperationslib.EnvCI("acme", "widget", "New"), gitoperationslib.ListOptions{}); err != nil {
+	if _, err := c.CI().Variables().List(context.Background(), gitoperationslib.EnvCI("acme", "widget", "New"), gitoperationslib.ListOptions{}); err != nil {
 		t.Error(err)
 	}
 }
@@ -127,7 +127,7 @@ func TestDeploymentVariablesLaggingEnvironment(t *testing.T) {
 func TestEnvironmentScopeNeedsARepositoryBitbucket(t *testing.T) {
 	c := fakeBitbucket(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("request sent: %s", r.URL) })
 	for _, scope := range []gitoperationslib.CIScope{{Owner: "acme", Environment: "prod"}, {Environment: "prod"}} {
-		if err := c.Variables().Set(context.Background(), scope, "X", "x"); err == nil {
+		if err := c.CI().Variables().Set(context.Background(), scope, "X", "x"); err == nil {
 			t.Errorf("Set(%+v) succeeded", scope)
 		}
 	}

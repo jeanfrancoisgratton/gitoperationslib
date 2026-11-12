@@ -598,8 +598,6 @@ func (m milestones) Delete(ctx context.Context, owner, repo string, id int64) er
 	return err
 }
 
-var _ gitoperationslib.IssueLocks = (*Client)(nil)
-
 // issueLocksVersion is the first release with /issues/{index}/lock.
 var issueLocksVersion = Version{17, 0, 0}
 
@@ -616,13 +614,15 @@ func (c *Client) issueLock(ctx context.Context, method, op, owner, repo string, 
 	return err
 }
 
-func (c *Client) LockIssue(ctx context.Context, owner, repo string, number int, reason gitoperationslib.LockReason) error {
+func (s issues) Lock(ctx context.Context, owner, repo string, number int, reason gitoperationslib.LockReason) error {
+	c := s.c
 	if reason == "" {
 		return errors.New("forgejo: issues.lock: reason is required")
 	}
 	return c.issueLock(ctx, http.MethodPut, "issues.lock", owner, repo, number, map[string]string{"reason": string(reason)})
 }
 
-func (c *Client) UnlockIssue(ctx context.Context, owner, repo string, number int) error {
+func (s issues) Unlock(ctx context.Context, owner, repo string, number int) error {
+	c := s.c
 	return c.issueLock(ctx, http.MethodDelete, "issues.unlock", owner, repo, number, nil)
 }

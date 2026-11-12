@@ -88,26 +88,26 @@ func TestAllWithoutLinkHeader(t *testing.T) {
 		},
 		"team members": func(o gitoperationslib.ListOptions) int {
 			return collect(t, o, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
-				return c.Teams().Members(ctx, 1, o)
+				return teams{c}.membersByID(ctx, 1, o)
 			})
 		},
 		"team repositories": func(o gitoperationslib.ListOptions) int {
 			return collect(t, o, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
-				return c.Teams().Repos(ctx, 1, o)
+				return teams{c}.reposByID(ctx, 1, o)
 			})
 		},
 		"secrets": func(o gitoperationslib.ListOptions) int {
 			return collect(t, o, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Secret], error) {
-				return c.Secrets().List(ctx, org, o)
+				return c.CI().Secrets().List(ctx, org, o)
 			})
 		},
 		"variables": func(o gitoperationslib.ListOptions) int {
 			return collect(t, o, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Variable], error) {
-				return c.Variables().List(ctx, repo, o)
+				return c.CI().Variables().List(ctx, repo, o)
 			})
 		},
 		"SSH keys": func(o gitoperationslib.ListOptions) int {
-			return collect(t, o, c.SSHKeys().List)
+			return collect(t, o, c.Account().SSHKeys().List)
 		},
 		"reviews": func(o gitoperationslib.ListOptions) int {
 			return collect(t, o, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Review], error) {

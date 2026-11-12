@@ -16,12 +16,9 @@ import (
 // editing a file that exists on the default branch, is opened as a pull
 // request.
 func Diffs(t *testing.T, env Env) {
-	h, isHistory := env.Client.(gitoperationslib.History)
-	cd, isCommitDiffs := env.Client.(gitoperationslib.CommitDiffs)
-	pc, isPRContents := env.Client.(gitoperationslib.PRContents)
-	rc, isReviewComments := env.Client.(gitoperationslib.ReviewComments)
-	caps := gitoperationslib.CapCommitDiffs | gitoperationslib.CapPRContents | gitoperationslib.CapReviewComments
-	if !isHistory || !isCommitDiffs || !isPRContents || !isReviewComments || !env.Client.Capabilities().Has(caps) {
+	cd, pc := env.Client.Commits(), env.Client.PullRequests()
+	caps := gitoperationslib.CapCommits | gitoperationslib.CapCommitDiffs | gitoperationslib.CapPRContents | gitoperationslib.CapReviewComments
+	if !env.Client.Capabilities().Has(caps) {
 		t.Fatalf("%s does not implement the diff interfaces", env.Client.Backend())
 	}
 	if env.CreateBranch == nil || env.WriteFile == nil {
@@ -41,7 +38,7 @@ func Diffs(t *testing.T, env Env) {
 	check(retryConflict(ctx, t, func() error { return env.WriteFile(ctx, owner, name, base, edited, "one\ntwo\nthree\n") }))
 	check(env.CreateBranch(ctx, owner, name, branch, added, "new\n"))
 	check(env.WriteFile(ctx, owner, name, branch, edited, "one\nTWO\nthree\nfour\n"))
-	commits := h.Commits()
+	commits := env.Client.Commits()
 
 	var head *gitoperationslib.Commit
 	if !eventually(ctx, func() bool {
@@ -128,20 +125,20 @@ func Diffs(t *testing.T, env Env) {
 
 	t.Run("commit diff", func(t *testing.T) {
 		for _, ref := range []string{head.SHA, branch} {
-			stream, err := cd.CommitDiff(ctx, owner, name, ref, gitoperationslib.DiffUnified)
+			stream, err := cd.Diff(ctx, owner, name, ref, gitoperationslib.DiffUnified)
 			diff := read(t, stream, err)
 			if !strings.Contains(diff, "b/"+edited) || !strings.Contains(diff, "+TWO") || !strings.Contains(diff, "-two") || strings.Contains(diff, added) {
 				t.Errorf("diff of %s = %q", ref, diff)
 			}
 		}
-		stream, err := cd.CommitDiff(ctx, owner, name, head.SHA, gitoperationslib.DiffPatch)
+		stream, err := cd.Diff(ctx, owner, name, head.SHA, gitoperationslib.DiffPatch)
 		if patch := read(t, stream, err); !strings.HasPrefix(patch, "From ") || !strings.Contains(patch, "+TWO") {
 			t.Errorf("patch = %q", patch)
 		}
-		if _, err := cd.CommitDiff(ctx, owner, name, "0123456789abcdef0123456789abcdef01234567", gitoperationslib.DiffUnified); !gitoperationslib.IsNotFound(err) {
+		if _, err := cd.Diff(ctx, owner, name, "0123456789abcdef0123456789abcdef01234567", gitoperationslib.DiffUnified); !gitoperationslib.IsNotFound(err) {
 			t.Errorf("unknown commit: err = %v, want 404", err)
 		}
-		if _, err := cd.CommitDiff(ctx, owner, name, head.SHA, "nope"); err == nil {
+		if _, err := cd.Diff(ctx, owner, name, head.SHA, "nope"); err == nil {
 			t.Error("invalid format accepted")
 		}
 	})
@@ -150,24 +147,24 @@ func Diffs(t *testing.T, env Env) {
 	check(err)
 
 	t.Run("pull request contents", func(t *testing.T) {
-		stream, err := pc.PullRequestDiff(ctx, owner, name, pr.Number, gitoperationslib.DiffUnified)
+		stream, err := pc.Diff(ctx, owner, name, pr.Number, gitoperationslib.DiffUnified)
 		if diff := read(t, stream, err); !strings.Contains(diff, "b/"+added) || !strings.Contains(diff, "+TWO") {
 			t.Errorf("diff = %q", diff)
 		}
-		stream, err = pc.PullRequestDiff(ctx, owner, name, pr.Number, gitoperationslib.DiffPatch)
+		stream, err = pc.Diff(ctx, owner, name, pr.Number, gitoperationslib.DiffPatch)
 		if patch := read(t, stream, err); !strings.HasPrefix(patch, "From ") {
 			t.Errorf("patch = %q", patch)
 		}
-		if _, err := pc.PullRequestDiff(ctx, owner, name, pr.Number, "nope"); err == nil {
+		if _, err := pc.Diff(ctx, owner, name, pr.Number, "nope"); err == nil {
 			t.Error("invalid format accepted")
 		}
-		if _, err := pc.PullRequestDiff(ctx, owner, name, 99999, gitoperationslib.DiffUnified); !gitoperationslib.IsNotFound(err) {
+		if _, err := pc.Diff(ctx, owner, name, 99999, gitoperationslib.DiffUnified); !gitoperationslib.IsNotFound(err) {
 			t.Errorf("unknown pull request: err = %v, want 404", err)
 		}
 
 		files := map[string]gitoperationslib.ChangedFile{}
 		for f, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: 1}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ChangedFile], error) {
-			return pc.PullRequestFiles(ctx, owner, name, pr.Number, o)
+			return pc.Files(ctx, owner, name, pr.Number, o)
 		}) {
 			check(err)
 			files[f.Path] = f
@@ -183,7 +180,7 @@ func Diffs(t *testing.T, env Env) {
 		for _, perPage := range []int{0, 1} {
 			var got []string
 			for c, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: perPage}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
-				return pc.PullRequestCommits(ctx, owner, name, pr.Number, o)
+				return pc.Commits(ctx, owner, name, pr.Number, o)
 			}) {
 				check(err)
 				if c.Message == "" || c.Files != nil {
@@ -198,22 +195,22 @@ func Diffs(t *testing.T, env Env) {
 	})
 
 	t.Run("comment on several lines", func(t *testing.T) {
-		c, err := rc.CreateReviewComment(ctx, owner, name, pr.Number, gitoperationslib.CreateReviewCommentOptions{Path: edited, Body: "on two lines", Line: 2, ExtraLines: 1})
+		c, err := pc.CreateReviewComment(ctx, owner, name, pr.Number, gitoperationslib.CreateReviewCommentOptions{Path: edited, Body: "on two lines", Line: 2, ExtraLines: 1})
 		if errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Skip(err)
 		}
 		check(err)
-		t.Cleanup(func() { _ = rc.DeleteReviewComment(context.Background(), owner, name, pr.Number, c.ID) })
+		t.Cleanup(func() { _ = pc.DeleteReviewComment(context.Background(), owner, name, pr.Number, c.ID) })
 		if c.Line != 2 || c.ExtraLines != 1 {
 			t.Errorf("created = %+v", c)
 		}
-		page, err := rc.ListReviewComments(ctx, owner, name, pr.Number, gitoperationslib.ListOptions{})
+		page, err := pc.ListReviewComments(ctx, owner, name, pr.Number, gitoperationslib.ListOptions{})
 		check(err)
 		i := slices.IndexFunc(page.Items, func(l gitoperationslib.ReviewComment) bool { return l.ID == c.ID })
 		if i < 0 || page.Items[i].Line != 2 || page.Items[i].ExtraLines != 1 {
 			t.Errorf("listed = %+v", page.Items)
 		}
-		check(rc.DeleteReviewComment(ctx, owner, name, pr.Number, c.ID))
+		check(pc.DeleteReviewComment(ctx, owner, name, pr.Number, c.ID))
 	})
 
 	t.Run("review comments", func(t *testing.T) {
@@ -221,7 +218,7 @@ func Diffs(t *testing.T, env Env) {
 			t.Helper()
 			var all []gitoperationslib.ReviewComment
 			for c, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ReviewComment], error) {
-				return rc.ListReviewComments(ctx, owner, name, pr.Number, o)
+				return pc.ListReviewComments(ctx, owner, name, pr.Number, o)
 			}) {
 				check(err)
 				all = append(all, c)
@@ -234,17 +231,17 @@ func Diffs(t *testing.T, env Env) {
 		for _, bad := range []gitoperationslib.CreateReviewCommentOptions{
 			{Body: "b", Line: 1}, {Path: edited, Line: 1}, {Path: edited, Body: "b"}, {Path: edited, Body: "b", Line: 1, OldLine: 1},
 		} {
-			if _, err := rc.CreateReviewComment(ctx, owner, name, pr.Number, bad); err == nil {
+			if _, err := pc.CreateReviewComment(ctx, owner, name, pr.Number, bad); err == nil {
 				t.Errorf("Create(%+v) accepted", bad)
 			}
 		}
 
-		onNew, err := rc.CreateReviewComment(ctx, owner, name, pr.Number, gitoperationslib.CreateReviewCommentOptions{Path: edited, Body: "on the new line", Line: 2})
+		onNew, err := pc.CreateReviewComment(ctx, owner, name, pr.Number, gitoperationslib.CreateReviewCommentOptions{Path: edited, Body: "on the new line", Line: 2})
 		check(err)
 		if onNew.ID == 0 || onNew.Path != edited || onNew.Line != 2 || onNew.OldLine != 0 || onNew.Body != "on the new line" || !strings.EqualFold(onNew.Author, env.Login) {
 			t.Errorf("comment on a new line = %+v", onNew)
 		}
-		onOld, err := rc.CreateReviewComment(ctx, owner, name, pr.Number, gitoperationslib.CreateReviewCommentOptions{Path: edited, Body: "on the old line", OldLine: 2})
+		onOld, err := pc.CreateReviewComment(ctx, owner, name, pr.Number, gitoperationslib.CreateReviewCommentOptions{Path: edited, Body: "on the old line", OldLine: 2})
 		check(err)
 		if onOld.OldLine != 2 || onOld.Line != 0 {
 			t.Errorf("comment on an old line = %+v", onOld)
@@ -262,7 +259,7 @@ func Diffs(t *testing.T, env Env) {
 		}
 
 		commitBound := gitoperationslib.CreateReviewCommentOptions{Path: edited, Body: "on a commit", Line: 2, CommitID: head.SHA}
-		c, err := rc.CreateReviewComment(ctx, owner, name, pr.Number, commitBound)
+		c, err := pc.CreateReviewComment(ctx, owner, name, pr.Number, commitBound)
 		if isBitbucket(env) {
 			if !errors.Is(err, gitoperationslib.ErrNotSupported) {
 				t.Errorf("CommitID: err = %v, want ErrNotSupported", err)
@@ -272,15 +269,15 @@ func Diffs(t *testing.T, env Env) {
 			if c.CommitID == "" {
 				t.Errorf("comment on a commit = %+v", c)
 			}
-			check(rc.DeleteReviewComment(ctx, owner, name, pr.Number, c.ID))
+			check(pc.DeleteReviewComment(ctx, owner, name, pr.Number, c.ID))
 		}
 
-		check(rc.DeleteReviewComment(ctx, owner, name, pr.Number, onNew.ID))
-		check(rc.DeleteReviewComment(ctx, owner, name, pr.Number, onOld.ID))
+		check(pc.DeleteReviewComment(ctx, owner, name, pr.Number, onNew.ID))
+		check(pc.DeleteReviewComment(ctx, owner, name, pr.Number, onOld.ID))
 		if got := list(); len(got) != 0 {
 			t.Errorf("after deleting: %+v", got)
 		}
-		if err := rc.DeleteReviewComment(ctx, owner, name, pr.Number, 99999999); !gitoperationslib.IsNotFound(err) {
+		if err := pc.DeleteReviewComment(ctx, owner, name, pr.Number, 99999999); !gitoperationslib.IsNotFound(err) {
 			t.Errorf("delete an unknown comment: err = %v, want 404", err)
 		}
 	})

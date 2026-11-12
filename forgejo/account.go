@@ -17,11 +17,16 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/refusal"
 )
 
-var _ gitoperationslib.Account = (*Client)(nil)
+var _ gitoperationslib.Account = account{}
 
-func (c *Client) Emails() gitoperationslib.Emails   { return emails{c} }
-func (c *Client) SSHKeys() gitoperationslib.SSHKeys { return sshKeys{c} }
-func (c *Client) GPGKeys() gitoperationslib.GPGKeys { return gpgKeys{c} }
+// Account implements gitoperationslib.Client.
+func (c *Client) Account() gitoperationslib.Account { return account{c} }
+
+type account struct{ c *Client }
+
+func (svc account) Emails() gitoperationslib.Emails   { return emails{svc.c} }
+func (svc account) SSHKeys() gitoperationslib.SSHKeys { return sshKeys{svc.c} }
+func (svc account) GPGKeys() gitoperationslib.GPGKeys { return gpgKeys{svc.c} }
 
 type emails struct{ c *Client }
 
@@ -170,7 +175,7 @@ func (k gpgKeys) Verify(ctx context.Context, keyID, armoredSignature string) (*g
 	return &key, nil
 }
 
-func (c *Client) Profile() gitoperationslib.Profile { return profile{c} }
+func (svc account) Profile() gitoperationslib.Profile { return profile{svc.c} }
 
 type profile struct{ c *Client }
 
@@ -265,11 +270,10 @@ func leadingZeroBug(keyID string, err error) error {
 	return err
 }
 
-func (c *Client) Tokens() gitoperationslib.Tokens { return tokens{c: c} }
+func (svc account) Tokens() gitoperationslib.Tokens { return tokens{c: svc.c} }
 
-var _ gitoperationslib.AdminTokens = (*Client)(nil)
-
-func (c *Client) TokensOf(login string) gitoperationslib.Tokens {
+func (u users) Tokens(login string) gitoperationslib.Tokens {
+	c := u.c
 	return tokens{c: c, admin: true, login: login}
 }
 

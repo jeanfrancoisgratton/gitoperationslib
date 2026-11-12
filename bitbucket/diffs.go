@@ -13,15 +13,12 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
 )
 
-var (
-	_ gitoperationslib.CommitDiffs    = (*Client)(nil)
-	_ gitoperationslib.PRContents     = (*Client)(nil)
-	_ gitoperationslib.ReviewComments = (*Client)(nil)
-)
+var ()
 
-// CommitDiff implements gitoperationslib.CommitDiffs. It first resolves ref:
+// Diff implements gitoperationslib.Commits. It first resolves ref:
 // a commit's diff is addressed by its hash.
-func (c *Client) CommitDiff(ctx context.Context, owner, repo, ref string, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+func (m commits) Diff(ctx context.Context, owner, repo, ref string, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+	c := m.c
 	if ref == "" {
 		return nil, errors.New("bitbucket: commits.diff: ref is required")
 	}
@@ -35,16 +32,18 @@ func (c *Client) CommitDiff(ctx context.Context, owner, repo, ref string, format
 	return c.api.Stream(ctx, repoPath(owner, repo, string(format), j.Hash))
 }
 
-// PullRequestDiff implements gitoperationslib.PRContents.
-func (c *Client) PullRequestDiff(ctx context.Context, owner, repo string, number int, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+// Diff implements gitoperationslib.PullRequests.
+func (p pulls) Diff(ctx context.Context, owner, repo string, number int, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+	c := p.c
 	if !format.Valid() {
 		return nil, fmt.Errorf("bitbucket: pulls.diff: invalid format %q", format)
 	}
 	return c.api.Stream(ctx, pullsPath(owner, repo, strconv.Itoa(number), string(format)))
 }
 
-// PullRequestFiles implements gitoperationslib.PRContents.
-func (c *Client) PullRequestFiles(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ChangedFile], error) {
+// Files implements gitoperationslib.PullRequests.
+func (p pulls) Files(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ChangedFile], error) {
+	c := p.c
 	values, next, err := bitbucketapi.ListPaged[diffstatJSON](ctx, c.api, pullsPath(owner, repo, strconv.Itoa(number), "diffstat"), bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.ChangedFile]{}, err
@@ -56,10 +55,11 @@ func (c *Client) PullRequestFiles(ctx context.Context, owner, repo string, numbe
 	return out, nil
 }
 
-// PullRequestCommits implements gitoperationslib.PRContents. This endpoint has
+// Commits implements gitoperationslib.PullRequests. This endpoint has
 // page tokens, which Page.NextPage cannot carry (page=2 is refused with HTTP
 // 400, checked 2026-11-05), so the commits all come at once.
-func (c *Client) PullRequestCommits(ctx context.Context, owner, repo string, number int, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+func (p pulls) Commits(ctx context.Context, owner, repo string, number int, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+	c := p.c
 	all, err := bitbucketapi.All[commitJSON](ctx, c.api, pullsPath(owner, repo, strconv.Itoa(number), "commits"), nil)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Commit]{}, err
@@ -117,10 +117,11 @@ func (j *prCommentJSON) toReviewComment() gitoperationslib.ReviewComment {
 	return rc
 }
 
-// ListReviewComments implements gitoperationslib.ReviewComments. Bitbucket
+// ListReviewComments implements gitoperationslib.PullRequests. Bitbucket
 // lists line comments with the others, and keeps deleted ones, so they are
 // picked out of the full list.
-func (c *Client) ListReviewComments(ctx context.Context, owner, repo string, number int, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ReviewComment], error) {
+func (p pulls) ListReviewComments(ctx context.Context, owner, repo string, number int, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ReviewComment], error) {
+	c := p.c
 	all, err := bitbucketapi.All[prCommentJSON](ctx, c.api, pullsPath(owner, repo, strconv.Itoa(number), "comments"), nil)
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.ReviewComment]{}, err
@@ -134,9 +135,10 @@ func (c *Client) ListReviewComments(ctx context.Context, owner, repo string, num
 	return page, nil
 }
 
-// CreateReviewComment implements gitoperationslib.ReviewComments. Comments
+// CreateReviewComment implements gitoperationslib.PullRequests. Comments
 // are tied to the pull request, not to a commit: CommitID is not supported.
-func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, number int, opts gitoperationslib.CreateReviewCommentOptions) (*gitoperationslib.ReviewComment, error) {
+func (p pulls) CreateReviewComment(ctx context.Context, owner, repo string, number int, opts gitoperationslib.CreateReviewCommentOptions) (*gitoperationslib.ReviewComment, error) {
+	c := p.c
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("bitbucket: pulls.create_review_comment: %w", err)
 	}
@@ -163,8 +165,9 @@ func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, nu
 	return &rc, nil
 }
 
-// DeleteReviewComment implements gitoperationslib.ReviewComments.
-func (c *Client) DeleteReviewComment(ctx context.Context, owner, repo string, number int, id int64) error {
+// DeleteReviewComment implements gitoperationslib.PullRequests.
+func (p pulls) DeleteReviewComment(ctx context.Context, owner, repo string, number int, id int64) error {
+	c := p.c
 	_, err := c.api.Do(ctx, http.MethodDelete, pullsPath(owner, repo, strconv.Itoa(number), "comments", strconv.FormatInt(id, 10)), nil, nil, nil)
 	return err
 }

@@ -10,18 +10,37 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
-var _ gitoperationslib.CI = (*Client)(nil)
+var _ gitoperationslib.CI = ciArea{}
 
-// Secrets and Variables manage Bitbucket Pipelines variables, which are one
+// CI implements gitoperationslib.Client. Secrets and Variables manage Bitbucket Pipelines variables, which are one
 // list: Secrets are its secured entries, Variables the others. A name used by
 // one kind cannot be set as the other. Keys keep their case. Lists return
 // everything as one page. User-level variables are not available with API
 // tokens: UserCI returns ErrNotSupported. EnvCI reaches the deployment variables
 // of an environment, which work the same way.
-func (c *Client) Secrets() gitoperationslib.Secrets     { return secrets{ci{c}} }
-func (c *Client) Variables() gitoperationslib.Variables { return variables{ci{c}} }
+func (c *Client) CI() gitoperationslib.CI { return ciArea{c} }
+
+// noPipelines explains the CI parts that are not implemented for Bitbucket.
+const noPipelines = "Bitbucket Pipelines runs and runners are not implemented"
+
+type ciArea struct{ c *Client }
+
+func (a ciArea) Secrets() gitoperationslib.Secrets {
+	return secrets{ci{a.c}, unsupported.Secrets{Backend: gitoperationslib.BackendBitbucket, Reason: "a workspace's secrets are available to all its repositories"}}
+}
+func (a ciArea) Variables() gitoperationslib.Variables { return variables{ci{a.c}} }
+func (a ciArea) Runs() gitoperationslib.WorkflowRuns {
+	return unsupported.WorkflowRuns{Backend: gitoperationslib.BackendBitbucket, Reason: noPipelines}
+}
+func (a ciArea) Artifacts() gitoperationslib.WorkflowArtifacts {
+	return unsupported.WorkflowArtifacts{Backend: gitoperationslib.BackendBitbucket, Reason: noPipelines}
+}
+func (a ciArea) Runners() gitoperationslib.Runners {
+	return unsupported.Runners{Backend: gitoperationslib.BackendBitbucket, Reason: noPipelines}
+}
 
 type pipelineVarJSON struct {
 	UUID    string `json:"uuid,omitempty"`
@@ -197,7 +216,10 @@ func (v ci) all(ctx context.Context, op string, scope gitoperationslib.CIScope) 
 	return bitbucketapi.All[pipelineVarJSON](ctx, v.c.api, base, nil)
 }
 
-type secrets struct{ ci }
+type secrets struct {
+	ci
+	unsupported.Secrets
+}
 
 func (s secrets) List(ctx context.Context, scope gitoperationslib.CIScope, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Secret], error) {
 	all, err := s.all(ctx, "secrets.list", scope)

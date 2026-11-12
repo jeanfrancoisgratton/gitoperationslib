@@ -141,7 +141,7 @@ func TestIntegrationHookDeliveries(t *testing.T) {
 	find := func(redelivery bool) *gitoperationslib.HookDelivery {
 		t.Helper()
 		for deadline := time.Now().Add(45 * time.Second); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
-			page, err := c.ListHookDeliveries(ctx, scope, hook.ID, gitoperationslib.ListHookDeliveriesOptions{})
+			page, err := c.Webhooks().ListDeliveries(ctx, scope, hook.ID, gitoperationslib.ListHookDeliveriesOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -158,7 +158,7 @@ func TestIntegrationHookDeliveries(t *testing.T) {
 	if first.ID == 0 || first.GUID == "" || first.StatusCode == 0 || first.DeliveredAt.IsZero() || first.RequestPayload != nil {
 		t.Errorf("listed = %+v", first)
 	}
-	full, err := c.GetHookDelivery(ctx, scope, hook.ID, first.ID)
+	full, err := c.Webhooks().GetDelivery(ctx, scope, hook.ID, first.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,10 +174,10 @@ func TestIntegrationHookDeliveries(t *testing.T) {
 	if err := webhook.Verify(body.Bytes(), headers, []byte("s3cret")); err != nil {
 		t.Errorf("Verify: %v", err)
 	}
-	if _, err := c.GetHookDelivery(ctx, scope, hook.ID, 1); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Webhooks().GetDelivery(ctx, scope, hook.ID, 1); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get(unknown) = %v", err)
 	}
-	if err := c.RedeliverHook(ctx, scope, hook.ID, first.ID); err != nil {
+	if err := c.Webhooks().Redeliver(ctx, scope, hook.ID, first.ID); err != nil {
 		t.Fatal(err)
 	}
 	if again := find(true); again.GUID != first.GUID || again.ID == first.ID {

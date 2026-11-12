@@ -12,8 +12,7 @@ import (
 // whose name needs escaping, with one commit adding a file on top of the
 // initial one.
 func Commits(t *testing.T, env Env) {
-	h, ok := env.Client.(gitoperationslib.History)
-	if !ok || !env.Client.Capabilities().Has(gitoperationslib.CapCommits) {
+	if !env.Client.Capabilities().Has(gitoperationslib.CapCommits) {
 		t.Fatalf("%s does not implement History", env.Client.Backend())
 	}
 	if env.CreateBranch == nil {
@@ -26,7 +25,7 @@ func Commits(t *testing.T, env Env) {
 	if err := env.CreateBranch(ctx, owner, name, branch, file, "one\ntwo\n"); err != nil {
 		t.Fatal(err)
 	}
-	commits := h.Commits()
+	commits := env.Client.Commits()
 
 	// The branch head, by branch name.
 	var head *gitoperationslib.Commit

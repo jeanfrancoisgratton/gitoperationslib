@@ -96,7 +96,7 @@ func WithRetry(p gitoperationslib.RetryPolicy) Option { return func(cfg *config)
 
 // WithSudo makes every request act as the user login (Sudo header): the
 // server applies that user's permissions and attributes changes to them, and
-// Directory().Me() returns them. The credentials must be a site
+// Users().Me() returns them. The credentials must be a site
 // administrator's; other users get HTTP 403 "Only administrators allowed to
 // sudo", and an unknown login HTTP 404 on every request, New's version check
 // included.
@@ -113,7 +113,6 @@ type Client struct {
 
 var (
 	_ gitoperationslib.Client = (*Client)(nil)
-	_ gitoperationslib.Admin  = (*Client)(nil)
 )
 
 // New connects to the Forgejo instance at baseURL (the instance root, or its

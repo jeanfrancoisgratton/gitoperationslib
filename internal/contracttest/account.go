@@ -23,8 +23,8 @@ import (
 // GPG key, and removes them. A part the token may not read (HTTP 403) is
 // skipped; the GPG part also needs the gpg binary.
 func Account(t *testing.T, env Env) {
-	acct, ok := env.Client.(gitoperationslib.Account)
-	if !ok || !env.Client.Capabilities().Has(gitoperationslib.CapAccount) {
+	acct := env.Client.Account()
+	if !env.Client.Capabilities().Has(gitoperationslib.CapAccount) {
 		t.Fatalf("%s does not implement Account", env.Client.Backend())
 	}
 	t.Run("emails", func(t *testing.T) { accountEmails(t, env, acct.Emails()) })
@@ -285,7 +285,7 @@ func accountProfile(t *testing.T, env Env, profile gitoperationslib.Profile) {
 		}
 		return
 	}
-	before, err := env.Client.Directory().User(ctx, env.Login)
+	before, err := env.Client.Users().Get(ctx, env.Login)
 	if err != nil {
 		t.Fatal(err)
 	}

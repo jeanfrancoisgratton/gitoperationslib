@@ -19,7 +19,60 @@ Detailed branch information, from a clone and from the server.
   runs included on GitHub; `SetCommitStatus` reports one.
 - **Package `branchinfo`**: `Collect` gathers, per branch, ahead/behind the default branch and merged, the last commit,
   the parent branch, the open pull requests and the CI state, from the clone, the server or both, each part on request.
+- **Package `internal/unsupported`**, generated from the root interfaces: a base per service answering `ErrNotSupported`
+  with a reason, which the backends return or embed.
 
+### Changed (breaking)
+The layout was reorganised so that every area is reached the same way: an accessor on `Client`, on every backend, with
+`ErrNotSupported` from the calls a forge lacks. There are no optional interfaces and type assertions anymore; check
+`Capabilities()` beforehand where needed. Method names no longer repeat their area. JSON tags, errors, backend
+constructors and `Capability` values are unchanged. The mapping, also in `__docs/REFACTOR-1.9.0.md`:
+
+| Before | Now |
+|---|---|
+| `client.(gol.History).Commits()` | `client.Commits()` |
+| `client.(gol.CommitDiffs).CommitDiff` | `client.Commits().Diff` |
+| `client.(gol.CommitStatuses).CommitStatus`, `SetCommitStatus` | `client.Commits().Status`, `SetStatus` |
+| `client.(gol.PRContents).PullRequestDiff`, `PullRequestFiles`, `PullRequestCommits` | `client.PullRequests().Diff`, `Files`, `Commits` |
+| `client.(gol.ReviewComments).ListReviewComments`, `CreateReviewComment`, `DeleteReviewComment` | `client.PullRequests().ListReviewComments`, `CreateReviewComment`, `DeleteReviewComment` |
+| `client.(gol.IssueLocks).LockIssue`, `UnlockIssue` | `client.Issues().Lock`, `Unlock` |
+| `client.(gol.LabelsByID).EditLabelByID`, `DeleteLabelByID` | `client.Labels().EditByID`, `DeleteByID` |
+| `client.(gol.OrgLabels).ListOrgLabels`, `GetOrgLabel`, `CreateOrgLabel`, `EditOrgLabel`, `DeleteOrgLabel` | `client.Orgs().Labels().List`, `Get`, `Create`, `Edit`, `Delete` |
+| `client.Releases().(gol.ExternalAssets).AddExternalAsset` | `client.Releases().AddExternalAsset` |
+| `client.(gol.Collaborators).ListCollaborators`, `GetCollaborator`, `AddCollaborator`, `RemoveCollaborator` | `client.Collaborators().List`, `Get`, `Add`, `Remove` |
+| `client.(gol.CollaboratorInvitations).ListCollaboratorInvitations` | `client.Collaborators().ListInvitations` |
+| `client.(gol.Mirrors).ListPushMirrors`, `GetPushMirror`, `CreatePushMirror`, `DeletePushMirror`, `SyncPushMirrors`, `SyncMirror` | `client.Mirrors().ListPush`, `GetPush`, `CreatePush`, `DeletePush`, `SyncPush`, `Sync` |
+| `client.(gol.GitHooks).ListGitHooks`, `GetGitHook`, `SetGitHook`, `DeleteGitHook` | `client.GitHooks().List`, `Get`, `Set`, `Delete` |
+| `client.(gol.HookDeliveries).ListHookDeliveries`, `GetHookDelivery`, `RedeliverHook` | `client.Webhooks().ListDeliveries`, `GetDelivery`, `Redeliver` |
+| `client.(gol.UserHooks).UserWebhooks()` | `client.Account().Webhooks()` |
+| `client.(gol.SiteHooks).SystemWebhooks()`, `DefaultWebhooks()` | `client.Site().SystemWebhooks()`, `DefaultWebhooks()` |
+| `client.(gol.CI).Secrets()`, `Variables()` | `client.CI().Secrets()`, `Variables()` |
+| `client.(gol.OrgSecrets).GetOrgSecretAccess`, `SetOrgSecret`, `SetOrgSecretRepos` | `client.CI().Secrets().GetAccess`, `SetWithAccess`, `SetRepos` |
+| `client.(gol.WorkflowRuns).ListWorkflowRuns`, `GetWorkflowRun`, `CancelWorkflowRun`, `RerunWorkflowRun`, `DeleteWorkflowRun`, `ListWorkflowJobs`, `GetWorkflowJob`, `RerunWorkflowJob`, `WorkflowJobLogs`, `WorkflowRunLogs` | `client.CI().Runs().List`, `Get`, `Cancel`, `Rerun`, `Delete`, `ListJobs`, `GetJob`, `RerunJob`, `JobLogs`, `Logs` |
+| `client.(gol.WorkflowLogFollower).FollowWorkflowJobLog` | `client.CI().Runs().FollowJobLog` |
+| `client.(gol.WorkflowArtifacts).ListWorkflowArtifacts`, `ListWorkflowRunArtifacts`, `GetWorkflowArtifact`, `DeleteWorkflowArtifact`, `DownloadWorkflowArtifact` | `client.CI().Artifacts().List`, `ListForRun`, `Get`, `Delete`, `Download` |
+| `client.(gol.Runners).ListRunners`, `GetRunner`, `RegisterRunner`, `DeleteRunner`, `RunnerRegistrationToken` | `client.CI().Runners().List`, `Get`, `Register`, `Delete`, `RegistrationToken` |
+| `client.(gol.Account).Emails()`, `SSHKeys()`, `GPGKeys()`, `Profile()`, `Tokens()` | `client.Account().Emails()`, `SSHKeys()`, `GPGKeys()`, `Profile()`, `Tokens()` |
+| `client.(gol.AdminTokens).TokensOf(login)` | `client.Users().Tokens(login)` |
+| `client.Directory().Me`, `User`, `UserInfo` | `client.Users().Me`, `Get`, `Info` |
+| `client.(gol.Admin).Users().List`, `Create`, `Edit`, `Rename`, `Delete` | `client.Users().List`, `Create`, `Edit`, `Rename`, `Delete` |
+| `client.(gol.UserFilters).ListUsersBy` | `client.Users().Search` |
+| `client.Directory().Org`, `ListOrgs`, `ListAllOrgs`, `OrgInfo`, `OrgMembers` | `client.Orgs().Get`, `List`, `ListAll`, `Info`, `Members` |
+| `client.(gol.Admin).Orgs()…` | `client.Orgs()…` |
+| `client.(gol.OrgAvatars).SetOrgAvatar`, `DeleteOrgAvatar` | `client.Orgs().SetAvatar`, `DeleteAvatar` |
+| `client.Directory().ListTeams`, `Team`, `TeamInfo`, `TeamMembers`, `TeamRepos` | `client.Teams().List`, `Get`, `Info`, `Members`, `Repos` |
+| `client.(gol.Admin).Teams()…(id, …)`, `GetByName(org, name)` | `client.Teams()…(org, name, …)`, `Get(org, name)` |
+| `BranchProtections().Update`, `TagProtections().Update` | `…().Edit` |
+
+- **Teams are addressed by organisation and name** everywhere, as GitHub does; Forgejo looks the ID up first (one more
+  request). `Team.ID` keeps it.
+- `Directory`, `Admin`, `History`, `CommitDiffs`, `CommitStatuses`, `PRContents`, `ReviewComments`, `IssueLocks`,
+  `LabelsByID`, `ExternalAssets`, `HookDeliveries`, `UserHooks`, `SiteHooks`, `CollaboratorInvitations`, `OrgSecrets`,
+  `WorkflowLogFollower`, `UserFilters`, `OrgAvatars` and `AdminTokens` are gone; `Site` is new.
+- The root package's files follow the areas (`branch.go` → `branches.go` and `tags.go`, `diff.go` into `commits.go` and
+  `pulls.go`…); the backends' files keep their names.
+
+## [1.8.0] — 2026-11-11
 
 CI runners' records, and following a job's log (item 118).
 

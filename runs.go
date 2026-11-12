@@ -6,40 +6,49 @@ import (
 	"time"
 )
 
+// FollowLogOptions tunes FollowJobLog.
+type FollowLogOptions struct {
+	Interval time.Duration `json:"interval,omitzero"` // between polls; zero: two seconds
+}
+
 // WorkflowRuns reads and controls CI workflow runs and their jobs: Forgejo Actions
-// and GitHub Actions (CapWorkflowRuns). Find it with a type assertion:
-//
-//	r, ok := client.(gitoperationslib.WorkflowRuns)
+// and GitHub Actions (CapWorkflowRuns), through CI().Runs().
 //
 // On Forgejo, listing and reading runs need nothing more than the minimum version;
-// jobs, logs, cancel and delete need 16; GetWorkflowJob and both reruns need 17.
-// Older servers return ErrNotSupported.
+// jobs, logs, cancel and delete need 16; GetJob, both reruns and FollowJobLog
+// (CapWorkflowLogFollow) need 17. Older servers return ErrNotSupported.
 type WorkflowRuns interface {
-	ListWorkflowRuns(ctx context.Context, owner, repo string, opts ListWorkflowRunsOptions) (Page[WorkflowRun], error)
-	GetWorkflowRun(ctx context.Context, owner, repo string, id int64) (*WorkflowRun, error)
-	// CancelWorkflowRun stops a run. A run already finished stays as it is, with
+	List(ctx context.Context, owner, repo string, opts ListWorkflowRunsOptions) (Page[WorkflowRun], error)
+	Get(ctx context.Context, owner, repo string, id int64) (*WorkflowRun, error)
+	// Cancel stops a run. A run already finished stays as it is, with
 	// no error.
-	CancelWorkflowRun(ctx context.Context, owner, repo string, id int64) error
-	// RerunWorkflowRun starts a finished run's jobs again, under the same ID.
-	RerunWorkflowRun(ctx context.Context, owner, repo string, id int64) error
-	// DeleteWorkflowRun removes a finished run, and returns ErrWorkflowRunActive
+	Cancel(ctx context.Context, owner, repo string, id int64) error
+	// Rerun starts a finished run's jobs again, under the same ID.
+	Rerun(ctx context.Context, owner, repo string, id int64) error
+	// Delete removes a finished run, and returns ErrWorkflowRunActive
 	// for one still going, after one more request.
-	DeleteWorkflowRun(ctx context.Context, owner, repo string, id int64) error
+	Delete(ctx context.Context, owner, repo string, id int64) error
 
-	// ListWorkflowJobs lists a run's jobs. Forgejo returns them all at once, and
-	// without their steps: use GetWorkflowJob.
-	ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64, opts ListOptions) (Page[WorkflowJob], error)
-	GetWorkflowJob(ctx context.Context, owner, repo string, jobID int64) (*WorkflowJob, error)
-	// RerunWorkflowJob starts a finished job again, with the jobs that depend on
+	// ListJobs lists a run's jobs. Forgejo returns them all at once, and
+	// without their steps: use GetJob.
+	ListJobs(ctx context.Context, owner, repo string, runID int64, opts ListOptions) (Page[WorkflowJob], error)
+	GetJob(ctx context.Context, owner, repo string, jobID int64) (*WorkflowJob, error)
+	// RerunJob starts a finished job again, with the jobs that depend on
 	// it.
-	RerunWorkflowJob(ctx context.Context, owner, repo string, jobID int64) error
-	// WorkflowJobLogs streams a job's log, as text. GitHub can take a moment to
+	RerunJob(ctx context.Context, owner, repo string, jobID int64) error
+	// JobLogs streams a job's log, as text. GitHub can take a moment to
 	// have it after the job ends. The caller must close it.
-	WorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (io.ReadCloser, error)
-	// WorkflowRunLogs streams the logs of a run's jobs, as a ZIP archive. Forgejo
+	JobLogs(ctx context.Context, owner, repo string, jobID int64) (io.ReadCloser, error)
+	// Logs streams the logs of a run's jobs, as a ZIP archive. Forgejo
 	// adds an empty ".MISSING" entry for a job with no log yet. The caller must
 	// close it.
-	WorkflowRunLogs(ctx context.Context, owner, repo string, runID int64) (io.ReadCloser, error)
+	Logs(ctx context.Context, owner, repo string, runID int64) (io.ReadCloser, error)
+
+	// FollowJobLog writes the job's log to out as it grows, and returns once
+	// the job ended and all of it is written, or when ctx is done. Forgejo needs
+	// version 17, and sends the log as it comes. GitHub only has it once the job
+	// ended: the call waits, then writes it all.
+	FollowJobLog(ctx context.Context, owner, repo string, jobID int64, out io.Writer, opts FollowLogOptions) error
 }
 
 // ListWorkflowRunsOptions selects runs, newest first. Zero fields do not filter.
@@ -95,7 +104,7 @@ type WorkflowJob struct {
 	HTMLURL     string    `json:"htmlUrl"`
 	StartedAt   time.Time `json:"startedAt,omitzero"`   // GitHub only
 	CompletedAt time.Time `json:"completedAt,omitzero"` // GitHub only
-	// Steps is set by GetWorkflowJob, and by ListWorkflowJobs on GitHub.
+	// Steps is set by GetJob, and by ListJobs on GitHub.
 	Steps []WorkflowStep `json:"steps,omitzero"`
 }
 
@@ -110,20 +119,18 @@ type WorkflowStep struct {
 	CompletedAt time.Time `json:"completedAt,omitzero"`
 }
 
-// WorkflowArtifacts manages the files workflow runs store: Forgejo 16 and later
-// (ErrNotSupported on older servers) and GitHub (CapWorkflowArtifacts). Find it
-// with a type assertion:
-//
-//	a, ok := client.(gitoperationslib.WorkflowArtifacts)
+// WorkflowArtifacts manages the files workflow runs store, through
+// CI().Artifacts(): Forgejo 16 and later (ErrNotSupported on older servers) and
+// GitHub (CapWorkflowArtifacts).
 type WorkflowArtifacts interface {
-	// ListWorkflowArtifacts lists a repository's artifacts.
-	ListWorkflowArtifacts(ctx context.Context, owner, repo string, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
-	ListWorkflowRunArtifacts(ctx context.Context, owner, repo string, runID int64, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
-	GetWorkflowArtifact(ctx context.Context, owner, repo string, id int64) (*WorkflowArtifact, error)
-	DeleteWorkflowArtifact(ctx context.Context, owner, repo string, id int64) error
-	// DownloadWorkflowArtifact streams an artifact as a ZIP archive. The caller
+	// List lists a repository's artifacts.
+	List(ctx context.Context, owner, repo string, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
+	ListForRun(ctx context.Context, owner, repo string, runID int64, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
+	Get(ctx context.Context, owner, repo string, id int64) (*WorkflowArtifact, error)
+	Delete(ctx context.Context, owner, repo string, id int64) error
+	// Download streams an artifact as a ZIP archive. The caller
 	// must close it.
-	DownloadWorkflowArtifact(ctx context.Context, owner, repo string, id int64) (io.ReadCloser, error)
+	Download(ctx context.Context, owner, repo string, id int64) (io.ReadCloser, error)
 }
 
 // ListWorkflowArtifactsOptions selects artifacts.

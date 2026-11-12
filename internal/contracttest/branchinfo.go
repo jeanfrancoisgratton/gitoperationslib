@@ -21,9 +21,9 @@ func BranchInfo(t *testing.T, env Env) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, statuses := env.Client.(gitoperationslib.CommitStatuses)
+	s, statuses := env.Client.Commits(), env.Client.Capabilities().Has(gitoperationslib.CapCommitStatuses)
 	if statuses {
-		if err := s.SetCommitStatus(ctx, env.Org, *repo, head.SHA, gitoperationslib.CommitStatus{
+		if err := s.SetStatus(ctx, env.Org, *repo, head.SHA, gitoperationslib.CommitStatus{
 			Context: "gitopslib/bi", State: gitoperationslib.StatusSuccess, TargetURL: "https://example.com/build/1",
 		}); err != nil {
 			t.Fatal(err)

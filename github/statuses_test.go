@@ -27,7 +27,7 @@ func TestCommitStatusGitHub(t *testing.T) {
 			t.Errorf("unexpected %s %s", r.Method, r.URL)
 		}
 	})
-	cs, err := c.CommitStatus(context.Background(), "acme", "widget", "main")
+	cs, err := c.Commits().Status(context.Background(), "acme", "widget", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestCommitStatusGitHub(t *testing.T) {
 	if s := cs.Statuses[2]; !s.Check || s.Context != "test" || s.State != gitoperationslib.StatusPending || s.Description != "running" {
 		t.Errorf("check run %+v", s)
 	}
-	if cs, err = c.CommitStatus(context.Background(), "acme", "widget", "empty"); err != nil || cs.State != "" || cs.SHA != "def" {
+	if cs, err = c.Commits().Status(context.Background(), "acme", "widget", "empty"); err != nil || cs.State != "" || cs.SHA != "def" {
 		t.Errorf("none: %+v %v", cs, err)
 	}
 }

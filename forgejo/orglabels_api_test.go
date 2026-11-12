@@ -20,11 +20,11 @@ func TestListOrgLabelsUserAndNobody(t *testing.T) {
 		http.NotFound(w, r)
 	})
 	ctx := context.Background()
-	page, err := c.ListOrgLabels(ctx, "alice", gitoperationslib.ListOptions{})
+	page, err := c.Orgs().Labels().List(ctx, "alice", gitoperationslib.ListOptions{})
 	if err != nil || page.Items == nil || len(page.Items) != 0 {
 		t.Errorf("a user: %+v, %v", page, err)
 	}
-	if _, err := c.ListOrgLabels(ctx, "nobody", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Orgs().Labels().List(ctx, "nobody", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("nobody: %v", err)
 	}
 }

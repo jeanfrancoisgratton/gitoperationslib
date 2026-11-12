@@ -96,7 +96,7 @@ func TestTeamsRequests(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	teams := c.Teams()
+	ts := teams{c}
 	check := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -105,37 +105,37 @@ func TestTeamsRequests(t *testing.T) {
 	}
 	page := gitoperationslib.ListOptions{PerPage: 5}
 
-	list, err := teams.List(ctx, "acme", page)
+	list, err := ts.List(ctx, "acme", page)
 	check(err)
 	if len(list.Items) != 1 || list.Items[0].Name != "devs" || list.Items[0].Org != "acme" {
 		t.Errorf("List = %+v", list)
 	}
-	_, err = teams.Get(ctx, 6)
+	_, err = ts.getByID(ctx, 6)
 	check(err)
-	_, err = teams.Create(ctx, "acme", gitoperationslib.CreateTeamOptions{Name: "devs", Access: gitoperationslib.TeamAccess{Permission: gitoperationslib.TeamPermissionAdmin}})
+	_, err = ts.Create(ctx, "acme", gitoperationslib.CreateTeamOptions{Name: "devs", Access: gitoperationslib.TeamAccess{Permission: gitoperationslib.TeamPermissionAdmin}})
 	check(err)
-	_, err = teams.Edit(ctx, 6, gitoperationslib.EditTeamOptions{Description: gitoperationslib.Ptr("x")})
+	_, err = ts.editByID(ctx, 6, gitoperationslib.EditTeamOptions{Description: gitoperationslib.Ptr("x")})
 	check(err)
-	members, err := teams.Members(ctx, 6, page)
+	members, err := ts.membersByID(ctx, 6, page)
 	check(err)
 	if len(members.Items) != 1 || members.Items[0].Login != "alice" {
 		t.Errorf("Members = %+v", members)
 	}
-	ok, err := teams.IsMember(ctx, 6, "alice")
+	ok, err := ts.isMemberByID(ctx, 6, "alice")
 	check(err)
 	if !ok {
 		t.Error("IsMember = false")
 	}
-	check(teams.AddMember(ctx, 6, "alice"))
-	check(teams.RemoveMember(ctx, 6, "alice"))
-	repos, err := teams.Repos(ctx, 6, page)
+	check(ts.addMemberByID(ctx, 6, "alice"))
+	check(ts.removeMemberByID(ctx, 6, "alice"))
+	repos, err := ts.reposByID(ctx, 6, page)
 	check(err)
 	if len(repos.Items) != 1 || repos.Items[0].Name != "widget" {
 		t.Errorf("Repos = %+v", repos)
 	}
-	check(teams.AddRepo(ctx, 6, "acme", "widget"))
-	check(teams.RemoveRepo(ctx, 6, "acme", "widget"))
-	check(teams.Delete(ctx, 6))
+	check(ts.addRepoByID(ctx, 6, "acme", "widget"))
+	check(ts.removeRepoByID(ctx, 6, "acme", "widget"))
+	check(ts.deleteByID(ctx, 6))
 
 	wantRequests := []string{
 		"GET /api/v1/orgs/acme/teams?limit=5&page=1",
@@ -176,27 +176,27 @@ func TestOwnerTeamGuard(t *testing.T) {
 		io.WriteString(w, ownerTeamResponse)
 	})
 	ctx := context.Background()
-	teams := c.Teams()
+	ts := teams{c}
 
-	if err := teams.Delete(ctx, 5); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
+	if err := ts.deleteByID(ctx, 5); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
 		t.Errorf("Delete: err = %v, want ErrOwnerTeam", err)
 	}
-	if _, err := teams.Edit(ctx, 5, gitoperationslib.EditTeamOptions{Name: gitoperationslib.Ptr("Renamed")}); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
+	if _, err := ts.editByID(ctx, 5, gitoperationslib.EditTeamOptions{Name: gitoperationslib.Ptr("Renamed")}); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
 		t.Errorf("rename: err = %v, want ErrOwnerTeam", err)
 	}
-	if _, err := teams.Edit(ctx, 5, gitoperationslib.EditTeamOptions{Access: &gitoperationslib.TeamAccess{Permission: gitoperationslib.TeamPermissionRead}}); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
+	if _, err := ts.editByID(ctx, 5, gitoperationslib.EditTeamOptions{Access: &gitoperationslib.TeamAccess{Permission: gitoperationslib.TeamPermissionRead}}); !errors.Is(err, gitoperationslib.ErrOwnerTeam) {
 		t.Errorf("access change: err = %v, want ErrOwnerTeam", err)
 	}
 	if len(writes) != 0 {
 		t.Fatalf("guarded operations sent %v", writes)
 	}
 	// Changing only the description, or "renaming" to the same name, is allowed.
-	if _, err := teams.Edit(ctx, 5, gitoperationslib.EditTeamOptions{Name: gitoperationslib.Ptr("Owners"), Description: gitoperationslib.Ptr("x")}); err != nil {
+	if _, err := ts.editByID(ctx, 5, gitoperationslib.EditTeamOptions{Name: gitoperationslib.Ptr("Owners"), Description: gitoperationslib.Ptr("x")}); err != nil {
 		t.Errorf("description edit: %v", err)
 	}
 }
 
-func TestTeamGetByName(t *testing.T) {
+func TestTeamGet(t *testing.T) {
 	var queries []string
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
 		queries = append(queries, r.URL.RawQuery)
@@ -208,15 +208,15 @@ func TestTeamGetByName(t *testing.T) {
 		}
 		io.WriteString(w, `{"ok":true,"data":[{"id":6,"name":"Devs"}]}`)
 	})
-	team, err := c.Teams().GetByName(context.Background(), "acme", "devs")
+	team, err := c.Teams().Get(context.Background(), "acme", "devs")
 	if err != nil || team.ID != 6 || team.Org != "acme" {
-		t.Fatalf("GetByName = %+v, %v", team, err)
+		t.Fatalf("Get = %+v, %v", team, err)
 	}
 	if len(queries) != 2 || queries[0] != "limit=50&page=1&q=devs" {
 		t.Errorf("queries = %v", queries)
 	}
 
-	if _, err := c.Teams().GetByName(context.Background(), "acme", "nobody"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Teams().Get(context.Background(), "acme", "nobody"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("missing team: err = %v, want 404", err)
 	}
 }

@@ -1,5 +1,28 @@
 package gitoperationslib
 
+import (
+	"context"
+)
+
+// BranchProtections manages branch protection rules, addressed by pattern.
+// Edit replaces a rule entirely: Get it, change it, then Edit.
+type BranchProtections interface {
+	List(ctx context.Context, owner, repo string) ([]BranchProtection, error)
+	Get(ctx context.Context, owner, repo, pattern string) (*BranchProtection, error)
+	Create(ctx context.Context, owner, repo string, rule BranchProtection) (*BranchProtection, error)
+	Edit(ctx context.Context, owner, repo, pattern string, rule BranchProtection) (*BranchProtection, error)
+	Delete(ctx context.Context, owner, repo, pattern string) error
+}
+
+// TagProtections manages tag protection rules, addressed by pattern.
+type TagProtections interface {
+	List(ctx context.Context, owner, repo string) ([]TagProtection, error)
+	Get(ctx context.Context, owner, repo, pattern string) (*TagProtection, error)
+	Create(ctx context.Context, owner, repo string, rule TagProtection) (*TagProtection, error)
+	Edit(ctx context.Context, owner, repo, pattern string, rule TagProtection) (*TagProtection, error)
+	Delete(ctx context.Context, owner, repo, pattern string) error
+}
+
 // Allowlist names users and teams exempt from a restriction. On GitHub,
 // rules are rulesets whose exemptions ("bypass actors") can be teams but not
 // individual users, so Users returns ErrNotSupported there.

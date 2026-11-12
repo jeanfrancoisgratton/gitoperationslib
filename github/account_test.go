@@ -44,37 +44,37 @@ func TestAccountGitHub(t *testing.T) {
 	})
 	ctx := context.Background()
 
-	if list, err := c.Emails().List(ctx); err != nil || len(list) != 1 || list[0].Visibility != "private" {
+	if list, err := c.Account().Emails().List(ctx); err != nil || len(list) != 1 || list[0].Visibility != "private" {
 		t.Errorf("Emails.List = %+v, %v", list, err)
 	}
-	if added, err := c.Emails().Add(ctx, "b@example.com"); err != nil || len(added) != 1 || added[0].Address != "B@Example.com" {
+	if added, err := c.Account().Emails().Add(ctx, "b@example.com"); err != nil || len(added) != 1 || added[0].Address != "B@Example.com" {
 		t.Errorf("Emails.Add = %+v, %v, want only the new address", added, err)
 	}
-	if err := c.Emails().Delete(ctx, "b@example.com"); err != nil {
+	if err := c.Account().Emails().Delete(ctx, "b@example.com"); err != nil {
 		t.Error(err)
 	}
-	if key, err := c.SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "laptop", Key: "ssh-ed25519 AAA"}); err != nil || key.ID != 5 {
+	if key, err := c.Account().SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "laptop", Key: "ssh-ed25519 AAA"}); err != nil || key.ID != 5 {
 		t.Errorf("SSHKeys.Add = %+v, %v", key, err)
 	}
-	if page, err := c.SSHKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
+	if page, err := c.Account().SSHKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
 		t.Errorf("SSHKeys.List = %+v, %v", page, err)
 	}
-	if _, err := c.SSHKeys().Get(ctx, 5); err != nil {
+	if _, err := c.Account().SSHKeys().Get(ctx, 5); err != nil {
 		t.Error(err)
 	}
-	if err := c.SSHKeys().Delete(ctx, 5); err != nil {
+	if err := c.Account().SSHKeys().Delete(ctx, 5); err != nil {
 		t.Error(err)
 	}
-	if key, err := c.GPGKeys().Add(ctx, "-----BEGIN PGP PUBLIC KEY BLOCK-----", ""); err != nil || key.KeyID != "3262EFF25BA0D270" {
+	if key, err := c.Account().GPGKeys().Add(ctx, "-----BEGIN PGP PUBLIC KEY BLOCK-----", ""); err != nil || key.KeyID != "3262EFF25BA0D270" {
 		t.Errorf("GPGKeys.Add = %+v, %v", key, err)
 	}
-	if page, err := c.GPGKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
+	if page, err := c.Account().GPGKeys().List(ctx, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
 		t.Errorf("GPGKeys.List = %+v, %v", page, err)
 	}
-	if _, err := c.GPGKeys().Get(ctx, 3); err != nil {
+	if _, err := c.Account().GPGKeys().Get(ctx, 3); err != nil {
 		t.Error(err)
 	}
-	if err := c.GPGKeys().Delete(ctx, 3); err != nil {
+	if err := c.Account().GPGKeys().Delete(ctx, 3); err != nil {
 		t.Error(err)
 	}
 
@@ -93,12 +93,12 @@ func TestAccountGitHub(t *testing.T) {
 	n := len(requests)
 	for name, err := range map[string]error{
 		"read-only key": func() error {
-			_, err := c.SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "t", Key: "k", ReadOnly: true})
+			_, err := c.Account().SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: "t", Key: "k", ReadOnly: true})
 			return err
 		}(),
-		"signed GPG key": func() error { _, err := c.GPGKeys().Add(ctx, "key", "sig"); return err }(),
-		"token":          func() error { _, err := c.GPGKeys().VerificationToken(ctx); return err }(),
-		"verify":         func() error { _, err := c.GPGKeys().Verify(ctx, "id", "sig"); return err }(),
+		"signed GPG key": func() error { _, err := c.Account().GPGKeys().Add(ctx, "key", "sig"); return err }(),
+		"token":          func() error { _, err := c.Account().GPGKeys().VerificationToken(ctx); return err }(),
+		"verify":         func() error { _, err := c.Account().GPGKeys().Verify(ctx, "id", "sig"); return err }(),
 	} {
 		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("%s: err = %v, want ErrNotSupported", name, err)
@@ -121,7 +121,7 @@ func TestProfileGitHub(t *testing.T) {
 		io.WriteString(w, `{"login": "me", "name": "Jean", "bio": "b", "blog": "", "company": "Acme"}`)
 	})
 	ctx := context.Background()
-	u, err := c.Profile().Edit(ctx, gitoperationslib.EditProfileOptions{
+	u, err := c.Account().Profile().Edit(ctx, gitoperationslib.EditProfileOptions{
 		FullName: gitoperationslib.Ptr("Jean"), Description: gitoperationslib.Ptr("b"), Website: gitoperationslib.Ptr(""),
 		Company: gitoperationslib.Ptr("Acme"), Hireable: gitoperationslib.Ptr(true),
 	})
@@ -135,10 +135,10 @@ func TestProfileGitHub(t *testing.T) {
 	}
 	for name, err := range map[string]error{
 		"pronouns": func() error {
-			_, err := c.Profile().Edit(ctx, gitoperationslib.EditProfileOptions{Pronouns: gitoperationslib.Ptr("x")})
+			_, err := c.Account().Profile().Edit(ctx, gitoperationslib.EditProfileOptions{Pronouns: gitoperationslib.Ptr("x")})
 			return err
 		}(),
-		"avatar": c.Profile().SetAvatar(ctx, nil),
+		"avatar": c.Account().Profile().SetAvatar(ctx, nil),
 	} {
 		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("%s: err = %v, want ErrNotSupported", name, err)
@@ -152,9 +152,9 @@ func TestProfileGitHub(t *testing.T) {
 func TestTokensNotSupportedGitHub(t *testing.T) {
 	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected %s %s", r.Method, r.URL.Path) })
 	ctx := context.Background()
-	_, errList := c.Tokens().List(ctx, gitoperationslib.ListOptions{})
-	_, errCreate := c.Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x"})
-	for _, err := range []error{errList, errCreate, c.Tokens().Delete(ctx, 1), c.Tokens().DeleteByName(ctx, "x")} {
+	_, errList := c.Account().Tokens().List(ctx, gitoperationslib.ListOptions{})
+	_, errCreate := c.Account().Tokens().Create(ctx, gitoperationslib.CreateTokenOptions{Name: "x"})
+	for _, err := range []error{errList, errCreate, c.Account().Tokens().Delete(ctx, 1), c.Account().Tokens().DeleteByName(ctx, "x")} {
 		if !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("err = %v, want ErrNotSupported", err)
 		}

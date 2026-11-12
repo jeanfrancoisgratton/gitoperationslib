@@ -265,7 +265,8 @@ func Issues(t *testing.T, env Env) {
 		t.Errorf("Get label after delete: err = %v, want 404", err)
 	}
 
-	if l, ok := env.Client.(gitoperationslib.IssueLocks); ok {
+	if env.Client.Capabilities().Has(gitoperationslib.CapIssueLocks) {
+		l := env.Client.Issues()
 		t.Run("locks", func(t *testing.T) {
 			issue, err := issues.Create(ctx, owner, *repo, gitoperationslib.CreateIssueOptions{Title: "To lock"})
 			check(err)
@@ -275,20 +276,20 @@ func Issues(t *testing.T, env Env) {
 				check(err)
 				return got.Locked
 			}
-			err = l.LockIssue(ctx, owner, *repo, issue.Number, gitoperationslib.LockReasonResolved)
+			err = l.Lock(ctx, owner, *repo, issue.Number, gitoperationslib.LockReasonResolved)
 			if errors.Is(err, gitoperationslib.ErrNotSupported) {
 				t.Skip(err)
 			}
 			check(err)
 			if !locked() {
-				t.Error("not locked after LockIssue")
+				t.Error("not locked after Lock")
 			}
-			check(l.LockIssue(ctx, owner, *repo, issue.Number, gitoperationslib.LockReasonResolved))
-			check(l.UnlockIssue(ctx, owner, *repo, issue.Number))
+			check(l.Lock(ctx, owner, *repo, issue.Number, gitoperationslib.LockReasonResolved))
+			check(l.Unlock(ctx, owner, *repo, issue.Number))
 			if locked() {
-				t.Error("locked after UnlockIssue")
+				t.Error("locked after Unlock")
 			}
-			check(l.UnlockIssue(ctx, owner, *repo, issue.Number))
+			check(l.Unlock(ctx, owner, *repo, issue.Number))
 		})
 	}
 }

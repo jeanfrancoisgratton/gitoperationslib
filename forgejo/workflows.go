@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	_ gitoperationslib.WorkflowRuns      = (*Client)(nil)
-	_ gitoperationslib.WorkflowArtifacts = (*Client)(nil)
+	_ gitoperationslib.WorkflowRuns      = runs{}
+	_ gitoperationslib.WorkflowArtifacts = artifacts{}
 
 	// workflowJobsVersion has jobs, logs, cancel, delete and artifacts, and
 	// workflowRerunVersion a single job and the reruns (measured on 15.0.11, 16.0.7
@@ -22,6 +22,10 @@ var (
 	workflowJobsVersion  = Version{16, 0, 0}
 	workflowRerunVersion = Version{17, 0, 0}
 )
+
+type runs struct{ c *Client }
+
+type artifacts struct{ c *Client }
 
 func (c *Client) needVersion(need Version, op, what string) error {
 	if c.version.Compare(need) < 0 {
@@ -134,7 +138,8 @@ func artifactPath(owner, repo string, id int64, rest ...string) string {
 	return repoPath(owner, repo, append([]string{"actions", "artifacts", strconv.FormatInt(id, 10)}, rest...)...)
 }
 
-func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo string, opts gitoperationslib.ListWorkflowRunsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowRun], error) {
+func (svc runs) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListWorkflowRunsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowRun], error) {
+	c := svc.c
 	q := forgejoapi.ListQuery(opts.ListOptions)
 	for key, value := range map[string]string{"workflow_id": opts.Workflow, "status": opts.Status, "event": opts.Event, "head_sha": opts.SHA} {
 		if value != "" {
@@ -170,7 +175,8 @@ func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo string, opts 
 	return page, nil
 }
 
-func (c *Client) GetWorkflowRun(ctx context.Context, owner, repo string, id int64) (*gitoperationslib.WorkflowRun, error) {
+func (svc runs) Get(ctx context.Context, owner, repo string, id int64) (*gitoperationslib.WorkflowRun, error) {
+	c := svc.c
 	var out workflowRunJSON
 	if _, err := c.api.Do(ctx, http.MethodGet, runPath(owner, repo, id), nil, nil, &out); err != nil {
 		return nil, err
@@ -179,7 +185,8 @@ func (c *Client) GetWorkflowRun(ctx context.Context, owner, repo string, id int6
 	return &run, nil
 }
 
-func (c *Client) CancelWorkflowRun(ctx context.Context, owner, repo string, id int64) error {
+func (svc runs) Cancel(ctx context.Context, owner, repo string, id int64) error {
+	c := svc.c
 	if err := c.needVersion(workflowJobsVersion, "workflows.cancel", "cancelling a run"); err != nil {
 		return err
 	}
@@ -187,7 +194,8 @@ func (c *Client) CancelWorkflowRun(ctx context.Context, owner, repo string, id i
 	return err
 }
 
-func (c *Client) RerunWorkflowRun(ctx context.Context, owner, repo string, id int64) error {
+func (svc runs) Rerun(ctx context.Context, owner, repo string, id int64) error {
+	c := svc.c
 	if err := c.needVersion(workflowRerunVersion, "workflows.rerun", "rerunning a run"); err != nil {
 		return err
 	}
@@ -195,13 +203,14 @@ func (c *Client) RerunWorkflowRun(ctx context.Context, owner, repo string, id in
 	return err
 }
 
-// DeleteWorkflowRun reads the run first: the server answers HTTP 500 for one still
+// Delete reads the run first: the server answers HTTP 500 for one still
 // going.
-func (c *Client) DeleteWorkflowRun(ctx context.Context, owner, repo string, id int64) error {
+func (svc runs) Delete(ctx context.Context, owner, repo string, id int64) error {
+	c := svc.c
 	if err := c.needVersion(workflowJobsVersion, "workflows.delete", "deleting a run"); err != nil {
 		return err
 	}
-	run, err := c.GetWorkflowRun(ctx, owner, repo, id)
+	run, err := runs{c}.Get(ctx, owner, repo, id)
 	if err != nil {
 		return err
 	}
@@ -212,7 +221,8 @@ func (c *Client) DeleteWorkflowRun(ctx context.Context, owner, repo string, id i
 	return err
 }
 
-func (c *Client) ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.WorkflowJob], error) {
+func (svc runs) ListJobs(ctx context.Context, owner, repo string, runID int64, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.WorkflowJob], error) {
+	c := svc.c
 	if err := c.needVersion(workflowJobsVersion, "workflows.jobs", "listing a run's jobs"); err != nil {
 		return gitoperationslib.Page[gitoperationslib.WorkflowJob]{}, err
 	}
@@ -227,7 +237,8 @@ func (c *Client) ListWorkflowJobs(ctx context.Context, owner, repo string, runID
 	return page, nil
 }
 
-func (c *Client) GetWorkflowJob(ctx context.Context, owner, repo string, jobID int64) (*gitoperationslib.WorkflowJob, error) {
+func (svc runs) GetJob(ctx context.Context, owner, repo string, jobID int64) (*gitoperationslib.WorkflowJob, error) {
+	c := svc.c
 	if err := c.needVersion(workflowRerunVersion, "workflows.job", "reading a single job"); err != nil {
 		return nil, err
 	}
@@ -239,7 +250,8 @@ func (c *Client) GetWorkflowJob(ctx context.Context, owner, repo string, jobID i
 	return &job, nil
 }
 
-func (c *Client) RerunWorkflowJob(ctx context.Context, owner, repo string, jobID int64) error {
+func (svc runs) RerunJob(ctx context.Context, owner, repo string, jobID int64) error {
+	c := svc.c
 	if err := c.needVersion(workflowRerunVersion, "workflows.rerun_job", "rerunning a job"); err != nil {
 		return err
 	}
@@ -247,14 +259,16 @@ func (c *Client) RerunWorkflowJob(ctx context.Context, owner, repo string, jobID
 	return err
 }
 
-func (c *Client) WorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (io.ReadCloser, error) {
+func (svc runs) JobLogs(ctx context.Context, owner, repo string, jobID int64) (io.ReadCloser, error) {
+	c := svc.c
 	if err := c.needVersion(workflowJobsVersion, "workflows.job_logs", "reading a job's log"); err != nil {
 		return nil, err
 	}
 	return c.api.Stream(ctx, jobPath(owner, repo, jobID, "logs"))
 }
 
-func (c *Client) WorkflowRunLogs(ctx context.Context, owner, repo string, runID int64) (io.ReadCloser, error) {
+func (svc runs) Logs(ctx context.Context, owner, repo string, runID int64) (io.ReadCloser, error) {
+	c := svc.c
 	if err := c.needVersion(workflowJobsVersion, "workflows.run_logs", "reading a run's logs"); err != nil {
 		return nil, err
 	}
@@ -277,15 +291,18 @@ func (c *Client) listArtifactsAt(ctx context.Context, path string, opts gitopera
 	return toPage(resp, out, (*workflowArtifactJSON).toArtifact), nil
 }
 
-func (c *Client) ListWorkflowArtifacts(ctx context.Context, owner, repo string, opts gitoperationslib.ListWorkflowArtifactsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowArtifact], error) {
+func (svc artifacts) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListWorkflowArtifactsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowArtifact], error) {
+	c := svc.c
 	return c.listArtifactsAt(ctx, repoPath(owner, repo, "actions", "artifacts"), opts)
 }
 
-func (c *Client) ListWorkflowRunArtifacts(ctx context.Context, owner, repo string, runID int64, opts gitoperationslib.ListWorkflowArtifactsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowArtifact], error) {
+func (svc artifacts) ListForRun(ctx context.Context, owner, repo string, runID int64, opts gitoperationslib.ListWorkflowArtifactsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowArtifact], error) {
+	c := svc.c
 	return c.listArtifactsAt(ctx, runPath(owner, repo, runID, "artifacts"), opts)
 }
 
-func (c *Client) GetWorkflowArtifact(ctx context.Context, owner, repo string, id int64) (*gitoperationslib.WorkflowArtifact, error) {
+func (svc artifacts) Get(ctx context.Context, owner, repo string, id int64) (*gitoperationslib.WorkflowArtifact, error) {
+	c := svc.c
 	if err := c.needVersion(workflowJobsVersion, "workflows.artifact", "workflow artifacts"); err != nil {
 		return nil, err
 	}
@@ -297,7 +314,8 @@ func (c *Client) GetWorkflowArtifact(ctx context.Context, owner, repo string, id
 	return &artifact, nil
 }
 
-func (c *Client) DeleteWorkflowArtifact(ctx context.Context, owner, repo string, id int64) error {
+func (svc artifacts) Delete(ctx context.Context, owner, repo string, id int64) error {
+	c := svc.c
 	if err := c.needVersion(workflowJobsVersion, "workflows.delete_artifact", "workflow artifacts"); err != nil {
 		return err
 	}
@@ -305,7 +323,8 @@ func (c *Client) DeleteWorkflowArtifact(ctx context.Context, owner, repo string,
 	return err
 }
 
-func (c *Client) DownloadWorkflowArtifact(ctx context.Context, owner, repo string, id int64) (io.ReadCloser, error) {
+func (svc artifacts) Download(ctx context.Context, owner, repo string, id int64) (io.ReadCloser, error) {
+	c := svc.c
 	if err := c.needVersion(workflowJobsVersion, "workflows.download_artifact", "workflow artifacts"); err != nil {
 		return nil, err
 	}

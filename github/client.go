@@ -13,6 +13,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/retry"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
 // Option configures New.
@@ -66,6 +67,21 @@ type Client struct {
 }
 
 var _ gitoperationslib.Client = (*Client)(nil)
+
+// Mirrors implements gitoperationslib.Client: GitHub's API manages no mirrors.
+func (c *Client) Mirrors() gitoperationslib.Mirrors {
+	return unsupported.Mirrors{Backend: gitoperationslib.BackendGitHub, Reason: "the API manages no mirrors"}
+}
+
+// GitHooks implements gitoperationslib.Client: GitHub runs no server-side hooks.
+func (c *Client) GitHooks() gitoperationslib.GitHooks {
+	return unsupported.GitHooks{Backend: gitoperationslib.BackendGitHub, Reason: "GitHub runs no server-side git hooks"}
+}
+
+// Site implements gitoperationslib.Client: github.com is not administered.
+func (c *Client) Site() gitoperationslib.Site {
+	return unsupported.Site{Backend: gitoperationslib.BackendGitHub, Reason: "github.com is not administered through the API"}
+}
 
 // New returns a client for github.com (or GitHub Enterprise Server with
 // WithEnterpriseURL), authenticated with a personal access token. An empty

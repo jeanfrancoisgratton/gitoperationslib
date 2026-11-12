@@ -34,7 +34,7 @@ func TestDirectoryConversions(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	u, err := c.Directory().User(ctx, "alice")
+	u, err := c.Users().Get(ctx, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestDirectoryConversions(t *testing.T) {
 		t.Errorf("User:\ngot  %+v\nwant %+v", *u, want)
 	}
 
-	team, err := c.Directory().Team(ctx, "acme", "back-end")
+	team, err := c.Teams().Get(ctx, "acme", "back-end")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestDirectoryOrgInfo(t *testing.T) {
 		}
 	})
 	// fakeGitHub answers /orgs/acme with a bare login.
-	info, err := c.Directory().OrgInfo(context.Background(), "acme")
+	info, err := c.Orgs().Info(context.Background(), "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestDirectoryListAllOrgsCursor(t *testing.T) {
 	var names []string
 	for org, err := range gitoperationslib.All(context.Background(), gitoperationslib.ListOptions{},
 		func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
-			return c.Directory().ListAllOrgs(ctx, o)
+			return c.Orgs().ListAll(ctx, o)
 		}) {
 		if err != nil {
 			t.Fatal(err)

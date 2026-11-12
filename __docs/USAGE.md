@@ -8,7 +8,7 @@ This guide covers every package, interface, type and option of the library, with
 2. [Connecting](#2-connecting)
    - [Forgejo](#21-forgejo) · [GitHub](#22-github) · [Bitbucket Cloud](#23-bitbucket-cloud) · [Choosing at run time](#24-choosing-a-backend-at-run-time)
 3. [Core concepts](#3-core-concepts)
-   - [Client](#31-the-client) · [Capabilities](#32-capabilities-and-optional-interfaces) · [Errors](#33-errors) · [Pagination](#34-pagination) · [Optional fields](#35-optional-fields-and-ptr) · [Enums](#36-enums) · [JSON](#37-json)
+   - [Client](#31-the-client) · [Capabilities](#32-capabilities) · [Errors](#33-errors) · [Pagination](#34-pagination) · [Optional fields](#35-optional-fields-and-ptr) · [Enums](#36-enums) · [JSON](#37-json)
 4. [Repositories](#4-repositories)
 5. [Branches](#5-branches)
 6. [Tags](#6-tags)
@@ -21,17 +21,17 @@ This guide covers every package, interface, type and option of the library, with
 13. [Milestones](#13-milestones)
 14. [Managing webhooks](#14-managing-webhooks)
 15. [Receiving webhooks (`webhook` package)](#15-receiving-webhooks-webhook-package)
-16. [Users, organisations and teams (Directory)](#16-users-organisations-and-teams-directory)
+16. [Users, organisations and teams](#16-users-organisations-and-teams)
    - [Your own account: e-mail addresses, SSH and GPG keys, profile, tokens (`Account`)](#165-managing-your-own-account-account)
 17. [Administration (Forgejo): managing users, organisations, teams](#17-administration-forgejo)
 18. [Recipes](#18-recipes)
 19. [Reference: errors returned without an HTTP call](#19-reference-errors-returned-without-an-http-call)
 20. [CI secrets and variables (`CI`)](#20-ci-secrets-and-variables-ci)
-21. [Commit history (`History`)](#21-commit-history-history)
+21. [Commit history (`Commits`)](#21-commit-history-commits)
 22. [Collaborators and mirrors](#22-collaborators-and-mirrors)
 23. [CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`)](#23-ci-workflow-runs-workflowruns-workflowartifacts)
 24. [CI runners (`Runners`)](#24-ci-runners-runners)
-25. [A commit's CI state (`CommitStatuses`)](#25-a-commits-ci-state-commitstatuses)
+25. [A commit's CI state (`Commits().Status`)](#25-a-commits-ci-state-commitsstatus)
 26. [Reading a clone (`local`)](#26-reading-a-clone-local)
 27. [Detailed branch lists (`branchinfo`)](#27-detailed-branch-lists-branchinfo)
 
@@ -141,7 +141,7 @@ Forgejo-only options, in addition to the common ones:
 
 | Option | Effect |
 |---|---|
-| `forgejo.WithSudo(login)` | Every request acts as `login` (`Sudo` header): that user's permissions apply, changes are attributed to them, and `Directory().Me()` returns them. Site administrators only. Other callers get HTTP 403 "Only administrators allowed to sudo", and an unknown login gives HTTP 404 on every request, `New` included. |
+| `forgejo.WithSudo(login)` | Every request acts as `login` (`Sudo` header): that user's permissions apply, changes are attributed to them, and `Users().Me()` returns them. Site administrators only. Other callers get HTTP 403 "Only administrators allowed to sudo", and an unknown login gives HTTP 404 on every request, `New` included. |
 
 ```go
 client, err := forgejo.New(ctx, "https://git.example.com", forgejo.Token(os.Getenv("FORGEJO_TOKEN")),
@@ -175,7 +175,7 @@ if client.Version().Compare(forgejo.Version{Major: 15}) >= 0 {
 }
 ```
 
-The Forgejo client implements `gol.Client`, `gol.Admin`, `gol.Account`, `gol.CI` and `gol.History`. Its `Releases()` value also implements `gol.ExternalAssets`.
+The Forgejo client implements `gol.Client`.
 
 ### 2.2 GitHub
 
@@ -262,26 +262,46 @@ func open(ctx context.Context, forge string) (gol.Client, error) {
 type Client interface {
 	Backend() Backend          // BackendForgejo, BackendGitHub or BackendBitbucket
 	Capabilities() Capability  // bit set; see below
+
 	Repos() Repos
 	Branches() Branches
 	Tags() Tags
 	BranchProtections() BranchProtections
 	TagProtections() TagProtections
+	Commits() Commits             // history, diffs, CI statuses
+	Collaborators() Collaborators
+	Mirrors() Mirrors
+	GitHooks() GitHooks
+	Webhooks() Webhooks           // repository and organisation hooks, delivery history
 	Releases() Releases
-	PullRequests() PullRequests
-	Issues() Issues
+
+	PullRequests() PullRequests   // also diffs, files, commits, line comments
+	Issues() Issues               // also locks
 	Labels() Labels
 	Milestones() Milestones
-	Webhooks() Webhooks
-	Directory() Directory
+
+	CI() CI                       // Secrets() Variables() Runs() Artifacts() Runners()
+
+	Account() Account             // Emails() SSHKeys() GPGKeys() Profile() Tokens() Webhooks()
+	Users() Users
+	Orgs() Orgs                   // also Labels(), the organisation's
+	Teams() Teams
+	Site() Site                   // SystemWebhooks() DefaultWebhooks()
 }
 ```
 
-The accessors are cheap: they return small values bound to the client, so you can call them inline (`client.Repos().Get(…)`) or keep the result in a variable. Every backend implements every area interface. Where a forge has no equivalent, the methods return `ErrNotSupported`.
+The accessors are cheap: they return small values bound to the client, so you can call them inline (`client.Repos().Get(…)`) or keep the result in a variable. **Every area is reached this way on every backend**: where a forge, or a Forgejo version, has no equivalent, the methods return an error matching `ErrNotSupported`, without a request. There are no optional interfaces to find with type assertions.
 
-### 3.2 Capabilities and optional interfaces
+```go
+page, err := client.CI().Runners().List(ctx, gol.RepoRunners("acme", "widget"), gol.ListRunnersOptions{})
+if errors.Is(err, gol.ErrNotSupported) {
+	// Bitbucket, for one
+}
+```
 
-`Capabilities()` returns a `gol.Capability` bit set:
+### 3.2 Capabilities
+
+`Capabilities()` returns a `gol.Capability` bit set, to tell beforehand what a backend supports, for instance to hide a command:
 
 | Constant | Name (`String()`) | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|---|
@@ -291,39 +311,39 @@ The accessors are cheap: they return small values bound to the client, so you ca
 | `CapBranchProtection` | `branch-protection` | ✅ | ✅ | ✅ |
 | `CapTagProtection` | `tag-protection` | ✅ | ✅ | |
 | `CapReleases` | `releases` | ✅ | ✅ | |
-| `CapExternalAssets` | `external-assets` | ✅ | | |
+| `CapExternalAssets` | `external-assets` (`Releases().AddExternalAsset`) | ✅ | | |
 | `CapPullRequests` | `pull-requests` | ✅ | ✅ | ✅ |
 | `CapIssues` | `issues` (also labels, milestones) | ✅ | ✅ | |
 | `CapWebhooks` | `webhooks` | ✅ | ✅ | ✅ |
-| `CapDirectory` | `directory` | ✅ | ✅ | |
-| `CapAdmin` | `admin` | ✅ | | |
-| `CapAccount` | `account` (your own account: `gol.Account`) | ✅ | ✅ | ✅ |
+| `CapDirectory` | `directory` (reading users, organisations, teams: `Users()`, `Orgs()`, `Teams()`) | ✅ | ✅ | `Users().Me` only |
+| `CapAdmin` | `admin` (managing them) | ✅ | | |
+| `CapAccount` | `account` (your own account: `Account()`) | ✅ | ✅ | ✅ |
 | `CapTokens` | `tokens` (`Account().Tokens()`) | ✅ | | |
-| `CapSecrets` | `secrets` (CI secrets and variables: `gol.CI`) | ✅ | ✅ | ✅ |
-| `CapCommits` | `commits` (commit history: `gol.History`) | ✅ | ✅ | ✅ |
-| `CapOrgAvatars` | `org-avatars` (organisation avatars: `gol.OrgAvatars`) | ✅ | | |
-| `CapUserWebhooks` | `user-webhooks` (your own webhooks: `gol.UserHooks`) | ✅ | | |
-| `CapCommitDiffs` | `commit-diffs` (a commit's raw diff: `gol.CommitDiffs`) | ✅ | ✅ | ✅ |
-| `CapPRContents` | `pr-contents` (a pull request's diff, files and commits: `gol.PRContents`) | ✅ | ✅ | ✅ |
-| `CapReviewComments` | `review-comments` (comments on a pull request's lines: `gol.ReviewComments`) | ✅ | ✅ | ✅ |
-| `CapSystemWebhooks` | `system-webhooks` (system and default webhooks: `gol.SiteHooks`) | ✅ | | |
-| `CapCollaborators` | `collaborators` (a repository's collaborators: `gol.Collaborators`) | ✅ | ✅ | ✅ |
-| `CapMirrors` | `mirrors` (push mirrors and syncing mirrors: `gol.Mirrors`) | ✅ | | |
-| `CapGitHooks` | `git-hooks` (server-side git hooks: `gol.GitHooks`) | ✅ | | |
-| `CapHookDeliveries` | `hook-deliveries` (a webhook's delivery history: `gol.HookDeliveries`) | | ✅ | |
-| `CapUserFilters` | `user-filters` (listing users by criteria: `gol.UserFilters`) | ✅ | | |
-| `CapIssueLocks` | `issue-locks` (locking issues: `gol.IssueLocks`) | ✅ from 17 | ✅ | |
-| `CapAdminTokens` | `admin-tokens` (other users' access tokens: `gol.AdminTokens`) | ✅ from 16 | | |
-| `CapOrgLabels` | `org-labels` (an organisation's labels: `gol.OrgLabels`) | ✅ | | |
-| `CapLabelsByID` | `labels-by-id` (repository labels addressed by ID: `gol.LabelsByID`) | ✅ | | |
-| `CapWorkflowRuns` | `workflow-runs` (CI runs, jobs and logs: `gol.WorkflowRuns`) | ✅ | ✅ | |
-| `CapWorkflowArtifacts` | `workflow-artifacts` (CI artifacts: `gol.WorkflowArtifacts`) | ✅ from 16 | ✅ | |
-| `CapRunners` | `runners` (CI runners' records: `gol.Runners`) | ✅ | ✅ | |
-| `CapWorkflowLogFollow` | `workflow-log-follow` (following a job's log: `gol.WorkflowLogFollower`) | ✅ from 17 | ✅ at the end | |
-| `CapCommitStatuses` | `commit-statuses` (a commit's CI state: `gol.CommitStatuses`) | ✅ | ✅ | ✅ |
+| `CapSecrets` | `secrets` (CI secrets and variables: `CI().Secrets()`, `CI().Variables()`) | ✅ | ✅ | ✅ |
+| `CapCommits` | `commits` (commit history: `Commits()`) | ✅ | ✅ | ✅ |
+| `CapOrgAvatars` | `org-avatars` (`Orgs().SetAvatar`) | ✅ | | |
+| `CapUserWebhooks` | `user-webhooks` (your own webhooks: `Account().Webhooks()`) | ✅ | | |
+| `CapCommitDiffs` | `commit-diffs` (`Commits().Diff`) | ✅ | ✅ | ✅ |
+| `CapPRContents` | `pr-contents` (`PullRequests().Diff`, `Files`, `Commits`) | ✅ | ✅ | ✅ |
+| `CapReviewComments` | `review-comments` (`PullRequests().ListReviewComments`…) | ✅ | ✅ | ✅ |
+| `CapSystemWebhooks` | `system-webhooks` (`Site()`) | ✅ | | |
+| `CapCollaborators` | `collaborators` (`Collaborators()`) | ✅ | ✅ | ✅ |
+| `CapMirrors` | `mirrors` (`Mirrors()`) | ✅ | | |
+| `CapGitHooks` | `git-hooks` (`GitHooks()`) | ✅ | | |
+| `CapHookDeliveries` | `hook-deliveries` (`Webhooks().ListDeliveries`…) | | ✅ | |
+| `CapUserFilters` | `user-filters` (`Users().Search`) | ✅ | | |
+| `CapIssueLocks` | `issue-locks` (`Issues().Lock`, `Unlock`) | ✅ from 17 | ✅ | |
+| `CapAdminTokens` | `admin-tokens` (other users' tokens: `Users().Tokens(login)`) | ✅ from 16 | | |
+| `CapOrgLabels` | `org-labels` (`Orgs().Labels()`) | ✅ | | |
+| `CapLabelsByID` | `labels-by-id` (`Labels().EditByID`, `DeleteByID`) | ✅ | | |
+| `CapWorkflowRuns` | `workflow-runs` (`CI().Runs()`) | ✅ | ✅ | |
+| `CapWorkflowArtifacts` | `workflow-artifacts` (`CI().Artifacts()`) | ✅ from 16 | ✅ | |
+| `CapRunners` | `runners` (`CI().Runners()`) | ✅ | ✅ | |
+| `CapWorkflowLogFollow` | `workflow-log-follow` (`CI().Runs().FollowJobLog`) | ✅ from 17 | ✅ at the end | |
+| `CapCommitStatuses` | `commit-statuses` (`Commits().Status`, `SetStatus`) | ✅ | ✅ | ✅ |
 | `CapCIEnvironments` | `ci-environments` (secrets and variables of an environment: `gol.EnvCI`) | | ✅ | ✅ |
-| `CapOrgSecrets` | `org-secrets` (organisation secrets limited to some repositories: `gol.OrgSecrets`) | | ✅ | |
-| `CapCollaboratorInvitations` | `collaborator-invitations` (invitations not yet accepted: `gol.CollaboratorInvitations`) | | ✅ | |
+| `CapOrgSecrets` | `org-secrets` (`CI().Secrets().SetWithAccess`…) | | ✅ | |
+| `CapCollaboratorInvitations` | `collaborator-invitations` (`Collaborators().ListInvitations`) | | ✅ | |
 | `CapMigrate` | reserved for a future feature | | | |
 
 ```go
@@ -335,63 +355,7 @@ if caps.Has(gol.CapReleases | gol.CapIssues) { // Has requires every bit
 }
 ```
 
-Features only some backends have are separate interfaces. Detect them with a type assertion:
-
-```go
-// Users, organisations, teams: Forgejo only.
-if admin, ok := client.(gol.Admin); ok {
-	_ = admin.Users()
-}
-
-// Release assets that link to external files: Forgejo only.
-if ext, ok := client.Releases().(gol.ExternalAssets); ok {
-	_ = ext
-}
-
-// Organisation avatars (§17.2): Forgejo only.
-if avatars, ok := client.(gol.OrgAvatars); ok {
-	_ = avatars
-}
-
-// User, system and default webhooks (§14.5): Forgejo only.
-if h, ok := client.(gol.UserHooks); ok {
-	_ = h.UserWebhooks()
-}
-if h, ok := client.(gol.SiteHooks); ok {
-	_ = h.SystemWebhooks()
-}
-
-// Your own account (§16.5) and CI secrets and variables (§20): all three backends.
-if acct, ok := client.(gol.Account); ok {
-	_ = acct.SSHKeys()
-}
-if ci, ok := client.(gol.CI); ok {
-	_ = ci.Secrets()
-}
-
-// Commit history (§21): all three backends.
-if h, ok := client.(gol.History); ok {
-	_ = h.Commits()
-}
-
-// A webhook's delivery history (§14.6): GitHub only. Git hooks (§14.7): Forgejo only.
-if d, ok := client.(gol.HookDeliveries); ok {
-	_ = d
-}
-if h, ok := client.(gol.GitHooks); ok {
-	_ = h
-}
-
-// Collaborators: all three backends. Mirrors: Forgejo only (§22).
-if c, ok := client.(gol.Collaborators); ok {
-	_ = c
-}
-if m, ok := client.(gol.Mirrors); ok {
-	_ = m
-}
-```
-
-Since 1.0.0, new areas arrive this way rather than as new `Client` methods, so code that implements `gol.Client` (mocks, wrappers) keeps compiling. A wrapper that embeds a client must forward the optional interfaces itself, or type assertions on it fail.
+A capability is a backend's, not its server's: Forgejo announces `CapIssueLocks` on every version, and a Forgejo 16 answers `Lock` with `ErrNotSupported`. Bits are only ever appended, so their values never change.
 
 ### 3.3 Errors
 
@@ -413,7 +377,7 @@ Since 1.0.0, new areas arrive this way rather than as new `Client` methods, so c
 | `gol.ErrIsPullRequest` | `Issues().Delete`, `Issues().Edit` with `State` | The number is a pull request; refused by the library |
 | `gol.ErrNameTaken` | Creating or renaming a label or milestone | GitHub 422 `already_exists`; on Forgejo, which would accept it, the library's own check |
 | `gol.ErrAmbiguousName` | Anything naming a label that several share (Forgejo) | The library's own check; the error lists their IDs |
-| `gol.ErrWorkflowRunActive` | `DeleteWorkflowRun` | The run has not finished; refused by the library, as Forgejo would answer 500 |
+| `gol.ErrWorkflowRunActive` | `CI().Runs().Delete` | The run has not finished; refused by the library, as Forgejo would answer 500 |
 | `gol.ErrBranchProtected` | `Branches().Delete` | Forgejo 403 "branch protected"; GitHub 422 "Repository rule violations found"; Bitbucket 500 "Something went wrong", confirmed by checking the branch's delete restrictions |
 | `gol.ErrInvalidOTP` | any Forgejo call, `forgejo.New` included | 401 "invalid provided OTP": basic authentication of a 2FA account without a valid code |
 | `gol.ErrPasswordRequired` | `Tokens().Create`, `Delete`, `DeleteByName` (Forgejo) | 401 "auth method not allowed": token authentication is refused here |
@@ -422,7 +386,7 @@ Since 1.0.0, new areas arrive this way rather than as new `Client` methods, so c
 Recognition relies on the servers' wording (checked against Forgejo 15.0.11). A refusal the library does not recognise is still returned as a plain `*gol.APIError`.
 
 ```go
-if err := admin.Orgs().Delete(ctx, "acme"); errors.Is(err, gol.ErrOwnsRepos) {
+if err := client.Orgs().Delete(ctx, "acme"); errors.Is(err, gol.ErrOwnsRepos) {
 	fmt.Println("move or delete acme's repositories first")
 }
 ```
@@ -593,7 +557,7 @@ Every public struct (results, option structs, error types and the `webhook` even
 - **`webhook.Event.Payload`** is a `json.RawMessage`, so it is embedded as JSON, not base64.
 
 ```go
-me, err := client.Directory().Me(ctx)
+me, err := client.Users().Me(ctx)
 if err != nil {
 	log.Fatal(err)
 }
@@ -912,7 +876,7 @@ type BranchProtections interface {
 	List(ctx, owner, repo string) ([]BranchProtection, error)
 	Get(ctx, owner, repo, pattern string) (*BranchProtection, error)
 	Create(ctx, owner, repo string, rule BranchProtection) (*BranchProtection, error)
-	Update(ctx, owner, repo, pattern string, rule BranchProtection) (*BranchProtection, error)
+	Edit(ctx, owner, repo, pattern string, rule BranchProtection) (*BranchProtection, error)
 	Delete(ctx, owner, repo, pattern string) error
 }
 ```
@@ -950,7 +914,7 @@ Rules are addressed by **pattern**: a branch name (`main`) or a glob (`release/*
 | `ProtectedFilePatterns string` | Semicolon-separated globs of files that cannot be changed | ✅ | ❌ | ❌ |
 | `UnprotectedFilePatterns string` | Files exempt from push restrictions | ✅ | ❌ | ❌ |
 
-❌ means that setting the field (to `true`, a non-nil allowlist or a non-empty value) makes `Create` or `Update` fail with `ErrNotSupported`. Nothing is sent to the server in that case. Leaving the field at its zero value is always accepted.
+❌ means that setting the field (to `true`, a non-nil allowlist or a non-empty value) makes `Create` or `Edit` fail with `ErrNotSupported`. Nothing is sent to the server in that case. Leaving the field at its zero value is always accepted.
 
 `Allowlist`:
 
@@ -1009,16 +973,16 @@ _, err = bp.Create(ctx, "acme", "widget", gol.BranchProtection{
 })
 ```
 
-`Update` **replaces** the whole rule, so read it first, change it, then write it back:
+`Edit` **replaces** the whole rule, so read it first, change it, then write it back:
 
 ```go
 rule, err := bp.Get(ctx, "acme", "widget", "main")
 rule.RequiredApprovals = 2
-rule, err = bp.Update(ctx, "acme", "widget", "main", *rule)
+rule, err = bp.Edit(ctx, "acme", "widget", "main", *rule)
 ```
 
-- **Forgejo:** a rule cannot be renamed. If `rule.Pattern` differs from the `pattern` argument, `Update` returns `ErrNotSupported`; delete the rule and create a new one instead.
-- **Bitbucket:** `Update` is not atomic. It deletes the pattern's restrictions and then recreates them, so if a call fails halfway through, the branch may be left partly unprotected.
+- **Forgejo:** a rule cannot be renamed. If `rule.Pattern` differs from the `pattern` argument, `Edit` returns `ErrNotSupported`; delete the rule and create a new one instead.
+- **Bitbucket:** `Edit` is not atomic. It deletes the pattern's restrictions and then recreates them, so if a call fails halfway through, the branch may be left partly unprotected.
 
 ```go
 rules, err := bp.List(ctx, "acme", "widget")
@@ -1037,7 +1001,7 @@ type TagProtections interface {
 	List(ctx, owner, repo string) ([]TagProtection, error)
 	Get(ctx, owner, repo, pattern string) (*TagProtection, error)
 	Create(ctx, owner, repo string, rule TagProtection) (*TagProtection, error)
-	Update(ctx, owner, repo, pattern string, rule TagProtection) (*TagProtection, error)
+	Edit(ctx, owner, repo, pattern string, rule TagProtection) (*TagProtection, error)
 	Delete(ctx, owner, repo, pattern string) error
 }
 
@@ -1055,7 +1019,7 @@ tr, err := tp.Create(ctx, "acme", "widget", gol.TagProtection{
 	Pattern:   "v*",
 	Allowlist: gol.Allowlist{Teams: []string{"release-managers"}},
 })
-tr, err = tp.Update(ctx, "acme", "widget", "v*", gol.TagProtection{
+tr, err = tp.Edit(ctx, "acme", "widget", "v*", gol.TagProtection{
 	Pattern:   "v*",
 	Allowlist: gol.Allowlist{Users: []string{"alice"}}, // users: Forgejo only
 })
@@ -1248,17 +1212,15 @@ _, err = io.Copy(out, rc)
 
 ### 9.6 External assets (Forgejo)
 
-`gol.ExternalAssets`, implemented by the Forgejo backend's `Releases()`, adds an asset that only *links* to a file hosted elsewhere:
+`Releases().AddExternalAsset` (`CapExternalAssets`, Forgejo; `ErrNotSupported` elsewhere) adds an asset that only *links* to a file hosted elsewhere:
 
 ```go
-type ExternalAssets interface {
-	AddExternalAsset(ctx, owner, repo string, releaseID int64, name, url string) (*Asset, error)
-}
+AddExternalAsset(ctx, owner, repo string, releaseID int64, name, url string) (*Asset, error)
 ```
 
 ```go
-if ext, ok := client.Releases().(gol.ExternalAssets); ok {
-	a, err := ext.AddExternalAsset(ctx, "acme", "widget", rel.ID, "tool-mirror.tar.gz", "https://mirror.example.com/tool.tar.gz")
+if client.Capabilities().Has(gol.CapExternalAssets) { // Forgejo
+	a, err := client.Releases().AddExternalAsset(ctx, "acme", "widget", rel.ID, "tool-mirror.tar.gz", "https://mirror.example.com/tool.tar.gz")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1463,32 +1425,32 @@ for _, r := range reviews.Items {
 
 On Forgejo, `ListReviews` also reports pending review requests (`ReviewRequested`).
 
-**What a pull request changes** is a separate optional interface, `gol.PRContents` (`CapPRContents`), implemented by all three backends:
+**What a pull request changes** (`CapPRContents`, all three backends):
 
 ```go
-c, ok := client.(gol.PRContents)
+c := client.PullRequests()
 
 // git diff; or gol.DiffPatch for the format-patch form. The caller closes the stream.
-stream, err := c.PullRequestDiff(ctx, "acme", "widget", pr.Number, gol.DiffUnified)
+stream, err := c.Diff(ctx, "acme", "widget", pr.Number, gol.DiffUnified)
 if err == nil {
 	defer stream.Close()
 	io.Copy(os.Stdout, stream)
 }
 
-files, err := c.PullRequestFiles(ctx, "acme", "widget", pr.Number, gol.ListOptions{})
-commits, err := c.PullRequestCommits(ctx, "acme", "widget", pr.Number, gol.ListOptions{}) // newest first, no Files or Stats
+files, err := c.Files(ctx, "acme", "widget", pr.Number, gol.ListOptions{})
+commits, err := c.Commits(ctx, "acme", "widget", pr.Number, gol.ListOptions{}) // newest first, no Files or Stats
 ```
 
 | | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|
 | Size limits | | diffs that are too large are refused (HTTP 406); at most 3000 files, 250 commits | |
-| `PullRequestFiles` pages | ✅ | ✅ | ✅ |
-| `PullRequestCommits` pages | ✅ | ✅ with one more request per page, to read them newest first | ❌ all at once: page tokens cannot be expressed as a `NextPage` number |
+| `PullRequests().Files` pages | ✅ | ✅ | ✅ |
+| `PullRequests().Commits` pages | ✅ | ✅ with one more request per page, to read them newest first | ❌ all at once: page tokens cannot be expressed as a `NextPage` number |
 
-**Comments on lines** are another optional interface, `gol.ReviewComments` (`CapReviewComments`). `ExtraLines` extends a comment to that many lines after `Line` or `OldLine`, on all three forges; Forgejo needs version 16, and takes at most 50:
+**Comments on lines** (`CapReviewComments`). `ExtraLines` extends a comment to that many lines after `Line` or `OldLine`, on all three forges; Forgejo needs version 16, and takes at most 50:
 
 ```go
-rc, ok := client.(gol.ReviewComments)
+rc := client.PullRequests()
 
 // Exactly one of Line (new version of the file) and OldLine (old version, for a removed line).
 comment, err := rc.CreateReviewComment(ctx, "acme", "widget", pr.Number, gol.CreateReviewCommentOptions{
@@ -1547,7 +1509,7 @@ Issues and pull requests share one number sequence. `List` never includes pull r
 | `Assignees []string` | Logins |
 | `Milestone *Milestone` | `nil` when there is none |
 | `Comments int` | Number of comments |
-| `Locked` | Change it with `gol.IssueLocks` |
+| `Locked` | Change it with `Issues().Lock`, `Unlock` |
 | `HTMLURL`, `CreatedAt`, `UpdatedAt`, `ClosedAt` | |
 
 ```go
@@ -1646,12 +1608,12 @@ _, err = issues.CreateComment(ctx, "acme", "widget", pr.Number, "CI is green, me
 ---
 
 
-**Locking an issue.** `gol.IssueLocks` (`CapIssueLocks`) locks and unlocks a conversation, on Forgejo 17 (`ErrNotSupported` on older servers) and GitHub. Locking a locked issue and unlocking an unlocked one succeed. Forgejo requires a reason and takes any text. GitHub accepts no reason, or one of `gol.LockReasonOffTopic`, `LockReasonTooHeated`, `LockReasonResolved` and `LockReasonSpam`.
+**Locking an issue.** `Issues().Lock` and `Unlock` (`CapIssueLocks`) locks and unlocks a conversation, on Forgejo 17 (`ErrNotSupported` on older servers) and GitHub. Locking a locked issue and unlocking an unlocked one succeed. Forgejo requires a reason and takes any text. GitHub accepts no reason, or one of `gol.LockReasonOffTopic`, `LockReasonTooHeated`, `LockReasonResolved` and `LockReasonSpam`.
 
 ```go
-l, ok := client.(gol.IssueLocks)
-err := l.LockIssue(ctx, "acme", "widget", 7, gol.LockReasonResolved)
-err = l.UnlockIssue(ctx, "acme", "widget", 7)
+l := client.Issues()
+err := l.Lock(ctx, "acme", "widget", 7, gol.LockReasonResolved)
+err = l.Unlock(ctx, "acme", "widget", 7)
 ```
 
 ## 12. Labels
@@ -1681,27 +1643,27 @@ type EditLabelOptions struct {
 
 Labels are addressed by **name**. Creating a label or renaming onto a name in use returns `gol.ErrNameTaken`. Forgejo would accept it and keep both, so the library checks first with one more listing, which is not atomic. A repository's label may share a name with its organisation's: it wins.
 
-A name several labels already share returns `gol.ErrAmbiguousName`, from `Get`, `Edit` and `Delete`, and from issue methods naming it, and the error lists their IDs. Repair them on Forgejo with `gol.LabelsByID` (`CapLabelsByID`):
+A name several labels already share returns `gol.ErrAmbiguousName`, from `Get`, `Edit` and `Delete`, and from issue methods naming it, and the error lists their IDs. Repair them on Forgejo with `Labels().EditByID` and `DeleteByID` (`CapLabelsByID`):
 
 ```go
-l, ok := client.(gol.LabelsByID)
-_, err := l.EditLabelByID(ctx, "acme", "widget", 12, gol.EditLabelOptions{Name: gol.Ptr("bug-old")})
-err = l.DeleteLabelByID(ctx, "acme", "widget", 13)
+l := client.Labels()
+_, err := l.EditByID(ctx, "acme", "widget", 12, gol.EditLabelOptions{Name: gol.Ptr("bug-old")})
+err = l.DeleteByID(ctx, "acme", "widget", 13)
 ```
 
-**Organisation labels (Forgejo).** `gol.OrgLabels` (`CapOrgLabels`) manages the labels all of an organisation's repositories can use by name. They are addressed by `Label.ID`. GitHub's organisation default labels only seed new repositories and Bitbucket has no issues, so the type assertion fails on both.
+**Organisation labels (Forgejo).** `client.Orgs().Labels()` (`CapOrgLabels`) manages the labels all of an organisation's repositories can use by name. They are addressed by `Label.ID`. GitHub's organisation default labels only seed new repositories and Bitbucket has no issues, so the type assertion fails on both.
 
 ```go
 type OrgLabels interface {
-	ListOrgLabels(ctx, org string, opts ListOptions) (Page[Label], error)
-	GetOrgLabel(ctx, org string, id int64) (*Label, error)
-	CreateOrgLabel(ctx, org string, label Label) (*Label, error)
-	EditOrgLabel(ctx, org string, id int64, opts EditLabelOptions) (*Label, error)
-	DeleteOrgLabel(ctx, org string, id int64) error
+	List(ctx, org string, opts ListOptions) (Page[Label], error)
+	Get(ctx, org string, id int64) (*Label, error)
+	Create(ctx, org string, label Label) (*Label, error)
+	Edit(ctx, org string, id int64, opts EditLabelOptions) (*Label, error)
+	Delete(ctx, org string, id int64) error
 }
 ```
 
-`ListOrgLabels` on a user returns an empty page, so a repository's owner can be passed as it is; a name that is neither is a 404. Deleting a label that does not exist is a 404, where the server alone would answer 204. `CreateOrgLabel` and renames return `gol.ErrNameTaken` as above.
+`Orgs().Labels().List` on a user returns an empty page, so a repository's owner can be passed as it is; a name that is neither is a 404. Deleting a label that does not exist is a 404, where the server alone would answer 204. `Orgs().Labels().Create` and renames return `gol.ErrNameTaken` as above.
 
 ```go
 labels := client.Labels()
@@ -1930,17 +1892,17 @@ orgHook, err := hooks.Create(ctx, gol.OrgHooks("acme"), gol.CreateWebhookOptions
 
 ### 14.5 User, system and default webhooks (Forgejo)
 
-Beyond repositories and organisations, Forgejo has three more kinds of webhook. They are optional interfaces: the GitHub and Bitbucket clients do not implement them, so the type assertion fails there.
+Beyond repositories and organisations, Forgejo has three more kinds of webhook. GitHub and Bitbucket answer `ErrNotSupported`.
 
 | Kind | Fires for | Access | List | Get, edit, delete | Create |
 |---|---|---|---|---|---|
-| User (`UserHooks`, `CapUserWebhooks`) | the user's repositories | your own only | ✅ | ✅ | ✅ |
-| System (`SiteHooks`, `CapSystemWebhooks`) | every repository of the instance | site admin | ✅ | ✅ | ✅ |
-| Default (`SiteHooks`, `CapSystemWebhooks`) | nothing itself: it is copied into each new repository | site admin | ❌ no API | ✅ | ✅ |
+| User (`Account().Webhooks()`, `CapUserWebhooks`) | the user's repositories | your own only | ✅ | ✅ | ✅ |
+| System (`Site().SystemWebhooks()`, `CapSystemWebhooks`) | every repository of the instance | site admin | ✅ | ✅ | ✅ |
+| Default (`Site().DefaultWebhooks()`, `CapSystemWebhooks`) | nothing itself: it is copied into each new repository | site admin | ❌ no API | ✅ | ✅ |
 
 ```go
-type UserHooks interface{ UserWebhooks() UserWebhooks }
-type SiteHooks interface {
+// client.Account().Webhooks() is a UserWebhooks; client.Site() a Site.
+type Site interface {
 	SystemWebhooks() SystemWebhooks
 	DefaultWebhooks() DefaultWebhooks
 }
@@ -1968,10 +1930,7 @@ type DefaultWebhooks interface { // no List
 ```
 
 ```go
-site, ok := client.(gol.SiteHooks)
-if !ok {
-	log.Fatalf("%s has no system or default webhooks", client.Backend())
-}
+site := client.Site() // ErrNotSupported from its methods but on Forgejo
 
 // Copied into every repository created from now on. Keep the ID: it cannot be listed.
 hook, err := site.DefaultWebhooks().Create(ctx, gol.CreateWebhookOptions{
@@ -1992,27 +1951,27 @@ Notes:
 - **`Ping` has no equivalent here:** Forgejo offers no test delivery for these kinds.
 ### 14.6 Delivery history (GitHub)
 
-GitHub records what it sent to a webhook and how the target answered; the APIs of Forgejo and Bitbucket have no such history. `gol.HookDeliveries` (`CapHookDeliveries`) reads it for repository and organisation webhooks:
+GitHub records what it sent to a webhook and how the target answered; the APIs of Forgejo and Bitbucket have no such history. `Webhooks().ListDeliveries`, `GetDelivery` and `Redeliver` (`CapHookDeliveries`) reads it for repository and organisation webhooks:
 
 ```go
-d, ok := client.(gol.HookDeliveries)
+d := client.Webhooks()
 scope := gol.RepoHooks("acme", "widget")
 
 // This list uses cursors rather than page numbers, so gol.All does not apply.
 opts := gol.ListHookDeliveriesOptions{PerPage: 50}
 for {
-	page, err := d.ListHookDeliveries(ctx, scope, hookID, opts)
+	page, err := d.ListDeliveries(ctx, scope, hookID, opts)
 	if err != nil {
 		return err
 	}
 	for _, item := range page.Items {
 		if item.StatusCode >= 300 { // 502 means GitHub could not reach the target
 			// With the request and response:
-			full, err := d.GetHookDelivery(ctx, scope, hookID, item.ID)
+			full, err := d.GetDelivery(ctx, scope, hookID, item.ID)
 			_, _ = full, err
 
 			// Send it again. It shows up as a new delivery, with Redelivery set and the same GUID.
-			err = d.RedeliverHook(ctx, scope, hookID, item.ID)
+			err = d.Redeliver(ctx, scope, hookID, item.ID)
 		}
 	}
 	if page.NextCursor == "" {
@@ -2029,18 +1988,18 @@ To pass a recorded delivery to the `webhook` package, compact `RequestPayload` w
 Git hooks are scripts the server runs when it receives a push, for instance to refuse it. **A hook runs on the server with the server's rights**, so editing one amounts to running code there. Forgejo therefore answers HTTP 403 to all of these, even for a site admin, unless the instance sets `DISABLE_GIT_HOOKS=false`, and then allows only site admins and users given that right. `gol.GitHooks` (`CapGitHooks`) is Forgejo only:
 
 ```go
-h, ok := client.(gol.GitHooks)
+h := client.GitHooks()
 
-hooks, err := h.ListGitHooks(ctx, "acme", "widget") // pre-receive, update, post-receive, in use or not
+hooks, err := h.List(ctx, "acme", "widget") // pre-receive, update, post-receive, in use or not
 
 // In use at once. A script that exits with an error refuses every push.
-hook, err := h.SetGitHook(ctx, "acme", "widget", "pre-receive", "#!/bin/sh\nexit 0\n")
+hook, err := h.Set(ctx, "acme", "widget", "pre-receive", "#!/bin/sh\nexit 0\n")
 
-one, err := h.GetGitHook(ctx, "acme", "widget", "pre-receive") // one.Active, one.Content
-err = h.DeleteGitHook(ctx, "acme", "widget", "pre-receive")    // takes it out of use
+one, err := h.Get(ctx, "acme", "widget", "pre-receive") // one.Active, one.Content
+err = h.Delete(ctx, "acme", "widget", "pre-receive")    // takes it out of use
 ```
 
-The server takes empty content for a request to delete the hook, so `SetGitHook` refuses it: use `DeleteGitHook`.
+The server takes empty content for a request to delete the hook, so `GitHooks().Set` refuses it: use `GitHooks().Delete`.
 
 ---
 
@@ -2330,41 +2289,34 @@ case "fork":
 
   A Bitbucket push can update several refs in one delivery. `Push()` decodes the first change; the others are in `Payload`. Bitbucket support follows Bitbucket's documentation and has been tested with synthetic fixtures only, not yet against live deliveries.
 
-## 16. Users, organisations and teams (Directory)
+## 16. Users, organisations and teams
 
-`Directory` reads accounts **with whatever rights the token has**. A site admin sees everything. Any other user sees what they could see in the web interface: public profiles, the organisations and teams they belong to, public members of other organisations. Forgejo and GitHub implement it (`CapDirectory`). **Bitbucket** implements `Me` only and returns `ErrNotSupported` for the rest.
+`Users()`, `Orgs()` and `Teams()` read accounts **with whatever rights the token has** (`CapDirectory`); managing them is [§17](#17-administration-forgejo). A site admin sees everything. Any other user sees what they could see in the web interface: public profiles, the organisations and teams they belong to, public members of other organisations. Forgejo and GitHub implement the reads. **Bitbucket** implements `Users().Me` only and returns `ErrNotSupported` for the rest.
 
-```go
-dir := client.Directory()
-```
-
-For managing accounts (creating, editing, deleting) on Forgejo, see [Administration](#17-administration-forgejo). On Forgejo, `Directory` and `Admin` return the same types and the same data.
+The reads:
 
 ```go
-type Directory interface {
-	Me(ctx) (*CurrentUser, error) // the authenticated user; Bitbucket too
+client.Users().Me(ctx) (*CurrentUser, error) // the authenticated user; Bitbucket too
+client.Users().Get(ctx, login string) (*User, error)
+client.Users().Info(ctx, login string) (*UserInfo, error)
 
-	User(ctx, login string) (*User, error)
-	UserInfo(ctx, login string) (*UserInfo, error)
+client.Orgs().Get(ctx, name string) (*Org, error)
+client.Orgs().List(ctx, user string, opts ListOptions) (Page[Org], error) // user "": the authenticated user
+client.Orgs().ListAll(ctx, opts ListOptions) (Page[Org], error)
+client.Orgs().Info(ctx, name string) (*OrgInfo, error)
+client.Orgs().Members(ctx, org string, opts ListOptions) (Page[User], error)
 
-	Org(ctx, name string) (*Org, error)
-	ListOrgs(ctx, user string, opts ListOptions) (Page[Org], error) // user "": the authenticated user
-	ListAllOrgs(ctx, opts ListOptions) (Page[Org], error)
-	OrgInfo(ctx, name string) (*OrgInfo, error)
-	OrgMembers(ctx, org string, opts ListOptions) (Page[User], error)
-
-	ListTeams(ctx, org string, opts ListOptions) (Page[Team], error)
-	Team(ctx, org, name string) (*Team, error)
-	TeamInfo(ctx, org, name string) (*TeamInfo, error)
-	TeamMembers(ctx, org, name string, opts ListOptions) (Page[User], error)
-	TeamRepos(ctx, org, name string, opts ListOptions) (Page[Repo], error)
-}
+client.Teams().List(ctx, org string, opts ListOptions) (Page[Team], error)
+client.Teams().Get(ctx, org, name string) (*Team, error)
+client.Teams().Info(ctx, org, name string) (*TeamInfo, error)
+client.Teams().Members(ctx, org, name string, opts ListOptions) (Page[User], error)
+client.Teams().Repos(ctx, org, name string, opts ListOptions) (Page[Repo], error)
 ```
 
 **Teams are addressed by organisation and name.** This is the only addressing Forgejo and GitHub share: GitHub has no team-ID-only endpoints.
 - On Forgejo, `name` is the team name, matched case-insensitively.
 - On GitHub, `name` is the team **slug** (`"back-end"` for "Back End"). `Team.Slug` always holds the value to pass back.
-- On Forgejo, `TeamMembers` and `TeamRepos` look the team up first, which costs one extra request per call.
+- On Forgejo, every team call but `List` and `Create` looks the team up first, which costs one extra request.
 
 ### 16.1 Account types
 
@@ -2390,7 +2342,7 @@ type Directory interface {
 | `Visibility` | ✅ | always `public` |
 | `HTMLURL` | — | ✅ |
 | `RepoAdminChangeTeamAccess` (whether repository admins may change team access) | ✅ | — |
-| `CreatedAt` | ✅ from 16 | ✅ `Directory().Org` only, not in lists |
+| `CreatedAt` | ✅ from 16 | ✅ `Orgs().Get` only, not in lists |
 
 `Team`:
 
@@ -2405,21 +2357,21 @@ type Directory interface {
 ### 16.2 Single objects and lists
 
 ```go
-u, err := dir.User(ctx, "alice")
+u, err := client.Users().Get(ctx, "alice")
 fmt.Println(u.FullName, u.Followers, u.AvatarURL)
 
-org, err := dir.Org(ctx, "acme")
+org, err := client.Orgs().Get(ctx, "acme")
 
-mine, err := dir.ListOrgs(ctx, "", gol.ListOptions{})     // the authenticated user's organisations, private memberships included
-bobs, err := dir.ListOrgs(ctx, "bob", gol.ListOptions{})  // bob's organisations, as far as the caller can see
-all, err := dir.ListAllOrgs(ctx, gol.ListOptions{})       // every organisation visible to the caller
+mine, err := client.Orgs().List(ctx, "", gol.ListOptions{})    // the authenticated user's organisations, private memberships included
+bobs, err := client.Orgs().List(ctx, "bob", gol.ListOptions{}) // bob's organisations, as far as the caller can see
+all, err := client.Orgs().ListAll(ctx, gol.ListOptions{})      // every organisation visible to the caller
 
-members, err := dir.OrgMembers(ctx, "acme", gol.ListOptions{}) // non-members: public members only
+members, err := client.Orgs().Members(ctx, "acme", gol.ListOptions{}) // non-members: public members only
 
-teams, err := dir.ListTeams(ctx, "acme", gol.ListOptions{})
-team, err := dir.Team(ctx, "acme", "back-end")
-tm, err := dir.TeamMembers(ctx, "acme", team.Slug, gol.ListOptions{})
-tr, err := dir.TeamRepos(ctx, "acme", team.Slug, gol.ListOptions{})
+teams, err := client.Teams().List(ctx, "acme", gol.ListOptions{})
+team, err := client.Teams().Get(ctx, "acme", "back-end")
+tm, err := client.Teams().Members(ctx, "acme", team.Slug, gol.ListOptions{})
+tr, err := client.Teams().Repos(ctx, "acme", team.Slug, gol.ListOptions{})
 ```
 
 Visibility rules applied by the servers:
@@ -2427,7 +2379,7 @@ Visibility rules applied by the servers:
 - **Members.** Callers outside an organisation only see its public members.
 - **Private organisations** (Forgejo) are invisible to non-members and return 404.
 
-**GitHub, `ListAllOrgs`.** This listing uses GitHub's `since` cursor (an organisation ID) instead of page numbers, and the cursor travels in `Page` and `NextPage`. Pass `NextPage` back unchanged, or use `gol.All`. On github.com this lists every organisation on the site, so use it mostly on GitHub Enterprise Server.
+**GitHub, `Orgs().ListAll`.** This listing uses GitHub's `since` cursor (an organisation ID) instead of page numbers, and the cursor travels in `Page` and `NextPage`. Pass `NextPage` back unchanged, or use `gol.All`. On github.com this lists every organisation on the site, so use it mostly on GitHub Enterprise Server.
 
 ### 16.3 Info calls
 
@@ -2480,7 +2432,7 @@ type PartError struct {
 ```
 
 ```go
-info, err := client.Directory().OrgInfo(ctx, "acme")
+info, err := client.Orgs().Info(ctx, "acme")
 if err != nil {
 	log.Fatal(err) // no such organisation, server error, …
 }
@@ -2494,10 +2446,10 @@ if info.Incomplete != nil {
 	log.Printf("partial view: %v", info.Incomplete)
 }
 
-ui, err := client.Directory().UserInfo(ctx, "alice")
+ui, err := client.Users().Info(ctx, "alice")
 fmt.Println(ui.Login, len(ui.Orgs), len(ui.Repos), ui.Incomplete)
 
-ti, err := client.Directory().TeamInfo(ctx, "acme", "back-end")
+ti, err := client.Teams().Info(ctx, "acme", "back-end")
 for _, m := range ti.Members {
 	fmt.Println(m.Login)
 }
@@ -2543,7 +2495,7 @@ type CurrentUser struct {
 ```
 
 ```go
-me, err := client.Directory().Me(ctx)
+me, err := client.Users().Me(ctx)
 if err != nil {
 	log.Fatal(err) // bad credentials, server error, …
 }
@@ -2582,10 +2534,10 @@ On Bitbucket, `Me` needs credentials that belong to a user (API token or app pas
 
 ### 16.5 Managing your own account (`Account`)
 
-`Me` reads the account; `Account` changes it. All three clients implement `gol.Account` (`CapAccount`), found with a type assertion:
+`Me` reads the account; `Account` changes it. All three clients implement it (`CapAccount`):
 
 ```go
-acct, ok := client.(gol.Account)
+acct := client.Account()
 ```
 
 ```go
@@ -2647,7 +2599,7 @@ key, err := acct.GPGKeys().Add(ctx, armoredKey, signature)
 | `Pronouns`, `Language`, `Settings` (theme, diff style, hide e-mail/activity/pronouns, unit hints) | ✅ | ❌ |
 | `Company`, `PublicEmail`, `Hireable`, `TwitterUsername` | ❌ | ✅ |
 
-`Edit` returns the updated `*User`; on Forgejo that costs a second request, and the settings are read back with `Directory().Me()`. Forgejo stores any `Theme` value, even one the instance does not offer.
+`Edit` returns the updated `*User`; on Forgejo that costs a second request, and the settings are read back with `Users().Me()`. Forgejo stores any `Theme` value, even one the instance does not offer.
 
 ```go
 u, err := acct.Profile().Edit(ctx, gol.EditProfileOptions{
@@ -2656,11 +2608,10 @@ u, err := acct.Profile().Edit(ctx, gol.EditProfileOptions{
 })
 ```
 
-**Other users' tokens (Forgejo 16).** `gol.AdminTokens` (`CapAdminTokens`) gives a site admin the same `Tokens` interface for any user, with an ordinary token and no password. Older servers return `ErrNotSupported`:
+**Other users' tokens (Forgejo 16).** `Users().Tokens(login)` (`CapAdminTokens`) gives a site admin the same `Tokens` interface for any user, with an ordinary token and no password. Older servers return `ErrNotSupported`:
 
 ```go
-a, ok := client.(gol.AdminTokens)
-tok, err := a.TokensOf("bob").Create(ctx, gol.CreateTokenOptions{Name: "ci", Scopes: []string{"read:repository"}})
+tok, err := client.Users().Tokens("bob").Create(ctx, gol.CreateTokenOptions{Name: "ci", Scopes: []string{"read:repository"}})
 ```
 
 **Access tokens (Forgejo).** Forgejo lists tokens with any credentials, but creates and deletes them only with username and password: `forgejo.BasicAuth`, or `BasicAuthOTP`/`BasicAuthOTPFunc` with two-factor authentication. With a token, even an administrator's, `Create` and `Delete` fail with HTTP 401 "auth method not allowed", which matches `gol.ErrPasswordRequired`. From Forgejo 16, a site admin can use `gol.AdminTokens` instead.
@@ -2686,22 +2637,7 @@ Notes:
 
 ## 17. Administration (Forgejo)
 
-`gol.Admin` manages accounts: it creates, edits and deletes users, organisations and teams. Only the Forgejo backend implements it. To only *read* accounts, with any token and on GitHub too, use [`Directory`](#16-users-organisations-and-teams-directory).
-
-```go
-type Admin interface {
-	Users() Users
-	Orgs() Orgs
-	Teams() Teams
-}
-```
-
-```go
-admin, ok := client.(gol.Admin)
-if !ok {
-	log.Fatalf("%s has no administration API", client.Backend())
-}
-```
+`Users()`, `Orgs()` and `Teams()` also create, edit and delete users, organisations and teams (`CapAdmin`). Only the Forgejo backend does; GitHub and Bitbucket answer `ErrNotSupported`. Reading is [§16](#16-users-organisations-and-teams), with any token.
 
 Required rights:
 - **User management** (everything except `Users().Get`) needs a **site-admin** token.
@@ -2722,11 +2658,10 @@ type Users interface {
 
 `User` fields are listed in [§16.1](#161-account-types). `Users().List` uses the admin endpoint; the other read calls work with any token.
 
-`gol.UserFilters` (`CapUserFilters`, Forgejo only) lists users by criteria, with a site-admin token. Filtering by two-factor authentication needs Forgejo 16, and returns `ErrNotSupported` below it, as older servers ignore the filter and return everyone:
+`Users().Search` (`CapUserFilters`, Forgejo only) lists users by criteria, with a site-admin token. Filtering by two-factor authentication needs Forgejo 16, and returns `ErrNotSupported` below it, as older servers ignore the filter and return everyone:
 
 ```go
-f, ok := client.(gol.UserFilters)
-page, err := f.ListUsersBy(ctx, gol.UserFilter{TwoFactor: gol.Ptr(false)}, gol.ListOptions{})
+page, err := client.Users().Search(ctx, gol.UserFilter{TwoFactor: gol.Ptr(false)}, gol.ListOptions{})
 ```
 
 ```go
@@ -2753,7 +2688,7 @@ type DeleteUserOptions struct {
 ```
 
 ```go
-users := admin.Users()
+users := client.Users()
 
 u, err := users.Create(ctx, gol.CreateUserOptions{
 	Login:              "alice",
@@ -2801,7 +2736,7 @@ type Orgs interface {
 `Org` fields are listed in [§16.1](#161-account-types).
 
 ```go
-orgs := admin.Orgs()
+orgs := client.Orgs()
 
 org, err := orgs.Create(ctx, gol.CreateOrgOptions{
 	Name:       "acme",
@@ -2825,15 +2760,11 @@ err = orgs.Delete(ctx, "acme-corp")         // fails while it still owns reposit
 
 There is no direct "add member": users join an organisation through one of its teams (`Teams().AddMember`). From Forgejo 16, on an instance with `ADD_MEMBERS_BY_INVITATIONS`, someone outside the organisation is only invited. `AddMember` then returns an error matching `gol.ErrInvitationPending`: the invitation has been sent, and they join by accepting it.
 
-**Avatars** are a separate optional interface, `gol.OrgAvatars` (`CapOrgAvatars`), implemented by the Forgejo client itself:
+**Avatars** (`CapOrgAvatars`, Forgejo):
 
 ```go
-avatars, ok := client.(gol.OrgAvatars)
-if !ok {
-	log.Fatalf("%s cannot set organisation avatars", client.Backend())
-}
-err := avatars.SetOrgAvatar(ctx, "acme", image) // image is an io.Reader
-err = avatars.DeleteOrgAvatar(ctx, "acme")      // back to the default avatar; the old image is gone
+err := client.Orgs().SetAvatar(ctx, "acme", image) // image is an io.Reader
+err = client.Orgs().DeleteAvatar(ctx, "acme") // back to the default avatar; the old image is gone
 ```
 
 - **Rights:** you must own the organisation or be a site admin; anyone else gets HTTP 403. A token also needs the `write:organization` scope.
@@ -2845,24 +2776,23 @@ err = avatars.DeleteOrgAvatar(ctx, "acme")      // back to the default avatar; t
 ```go
 type Teams interface {
 	List(ctx, org string, opts ListOptions) (Page[Team], error)
-	Get(ctx, id int64) (*Team, error)
-	GetByName(ctx, org, name string) (*Team, error) // case-insensitive; 404 *APIError if absent
+	Get(ctx, org, name string) (*Team, error) // case-insensitive on Forgejo; 404 *APIError if absent
+	Info(ctx, org, name string) (*TeamInfo, error)
+	Members(ctx, org, name string, opts ListOptions) (Page[User], error)
+	Repos(ctx, org, name string, opts ListOptions) (Page[Repo], error)
+
 	Create(ctx, org string, opts CreateTeamOptions) (*Team, error)
-	Edit(ctx, id int64, opts EditTeamOptions) (*Team, error)
-	Delete(ctx, id int64) error
-
-	Members(ctx, id int64, opts ListOptions) (Page[User], error)
-	IsMember(ctx, id int64, user string) (bool, error)
-	AddMember(ctx, id int64, user string) error // also makes them an organisation member; see ErrInvitationPending
-	RemoveMember(ctx, id int64, user string) error
-
-	Repos(ctx, id int64, opts ListOptions) (Page[Repo], error)
-	AddRepo(ctx, id int64, owner, repo string) error
-	RemoveRepo(ctx, id int64, owner, repo string) error
+	Edit(ctx, org, name string, opts EditTeamOptions) (*Team, error)
+	Delete(ctx, org, name string) error
+	IsMember(ctx, org, name, user string) (bool, error)
+	AddMember(ctx, org, name, user string) error // also makes them an organisation member; see ErrInvitationPending
+	RemoveMember(ctx, org, name, user string) error
+	AddRepo(ctx, org, name, owner, repo string) error
+	RemoveRepo(ctx, org, name, owner, repo string) error
 }
 ```
 
-Teams are addressed by **ID**. Use `GetByName` to look one up.
+Teams are addressed by **organisation and name**, on every forge. Forgejo's API addresses them by ID, so there each call looks the team up first: one request more. `Team.ID` keeps the ID.
 
 `Team` fields (see also [§16.1](#161-account-types)):
 - `ID`, `Org`, `Name`, `Slug` (the name, on Forgejo), `Description`
@@ -2888,7 +2818,7 @@ Units:
 - `gol.AllTeamUnits` lists them all.
 
 ```go
-teams := admin.Teams()
+teams := client.Teams()
 
 devs, err := teams.Create(ctx, "acme", gol.CreateTeamOptions{
 	Name:        "developers",
@@ -2911,31 +2841,30 @@ ops, err := teams.Create(ctx, "acme", gol.CreateTeamOptions{
 	Name: "ops", Access: gol.TeamAccess{Permission: gol.TeamPermissionAdmin}, IncludesAllRepos: true,
 })
 
-err = teams.AddMember(ctx, devs.ID, "bob")
-err = teams.AddRepo(ctx, devs.ID, "acme", "widget")
-members, err := teams.Members(ctx, devs.ID, gol.ListOptions{})
-repos, err := teams.Repos(ctx, devs.ID, gol.ListOptions{})
-inTeam, err := teams.IsMember(ctx, devs.ID, "bob")
+err = teams.AddMember(ctx, "acme", devs.Name, "bob")
+err = teams.AddRepo(ctx, "acme", devs.Name, "acme", "widget")
+members, err := teams.Members(ctx, "acme", devs.Name, gol.ListOptions{})
+repos, err := teams.Repos(ctx, "acme", devs.Name, gol.ListOptions{})
+inTeam, err := teams.IsMember(ctx, "acme", devs.Name, "bob")
 
-devs, err = teams.Edit(ctx, devs.ID, gol.EditTeamOptions{
+devs, err = teams.Edit(ctx, "acme", devs.Name, gol.EditTeamOptions{
 	Name:   gol.Ptr("engineering"),
 	Access: &gol.TeamAccess{Permission: gol.TeamPermissionWrite},
 })
-err = teams.RemoveRepo(ctx, devs.ID, "acme", "widget")
-err = teams.RemoveMember(ctx, devs.ID, "bob")
-err = teams.Delete(ctx, readers.ID)
+err = teams.RemoveRepo(ctx, "acme", devs.Name, "acme", "widget")
+err = teams.RemoveMember(ctx, "acme", devs.Name, "bob")
+err = teams.Delete(ctx, "acme", readers.Name)
 ```
 
 **The owner team is protected.** Forgejo itself lets you delete an organisation's owner team, which leaves the organisation without owners. The library refuses to delete the owner team, rename it or change its access, and returns `gol.ErrOwnerTeam` instead:
 
 ```go
-owners, err := teams.GetByName(ctx, "acme", "Owners")
-err = teams.Delete(ctx, owners.ID)
+err = teams.Delete(ctx, "acme", "Owners")
 fmt.Println(errors.Is(err, gol.ErrOwnerTeam)) // true
 
 // Changing its description, or its members, is allowed.
-_, err = teams.Edit(ctx, owners.ID, gol.EditTeamOptions{Description: gol.Ptr("Organisation owners")})
-err = teams.AddMember(ctx, owners.ID, "carol")
+_, err = teams.Edit(ctx, "acme", "Owners", gol.EditTeamOptions{Description: gol.Ptr("Organisation owners")})
+err = teams.AddMember(ctx, "acme", "Owners", "carol")
 ```
 
 ---
@@ -3025,17 +2954,13 @@ func copyLabels(ctx context.Context, src, dst gol.Client, srcOwner, srcRepo, dst
 ### 18.4 Onboard a developer (Forgejo)
 
 ```go
-func onboard(ctx context.Context, admin gol.Admin, login, email string) error {
-	if _, err := admin.Users().Create(ctx, gol.CreateUserOptions{
+func onboard(ctx context.Context, client gol.Client, login, email string) error {
+	if _, err := client.Users().Create(ctx, gol.CreateUserOptions{
 		Login: login, Email: email, Password: randomPassword(), SendNotify: true,
 	}); err != nil {
 		return err
 	}
-	devs, err := admin.Teams().GetByName(ctx, "acme", "developers")
-	if err != nil {
-		return err
-	}
-	return admin.Teams().AddMember(ctx, devs.ID, login) // also joins the organisation
+	return client.Teams().AddMember(ctx, "acme", "developers", login) // also joins the organisation
 }
 ```
 
@@ -3085,7 +3010,7 @@ Server-side refusals, such as permissions, conflicts or protected branches, are 
 Named values for CI workflows: Forgejo Actions, GitHub Actions, Bitbucket Pipelines. **Secrets** are write-only: once stored, they can be replaced or deleted, never read back. **Variables** are readable. All three clients implement `gol.CI` (`CapSecrets`):
 
 ```go
-ci, ok := client.(gol.CI)
+ci := client.CI()
 
 scope := gol.RepoCI("acme", "widget") // or gol.EnvCI("acme", "widget", "prod"), gol.OrgCI("acme"), gol.UserCI()
 err := ci.Secrets().Set(ctx, scope, "DEPLOY_TOKEN", token) // creates or replaces
@@ -3097,7 +3022,7 @@ v, err := ci.Variables().Get(ctx, scope, "ENVIRONMENT")
 |---|---|---|---|
 | Repository (`RepoCI`) | ✅ | ✅ | ✅ |
 | Environment (`EnvCI`) | ❌ no environments | ✅ | ✅ deployment variables |
-| Organisation / workspace (`OrgCI`) | ✅ | ✅ visible to all the organisation's repositories, or limited (`OrgSecrets`) | ✅ workspace variables |
+| Organisation / workspace (`OrgCI`) | ✅ | ✅ visible to all the organisation's repositories, or limited (`Secrets().SetWithAccess`) | ✅ workspace variables |
 | User (`UserCI`) | ✅ (secrets can only be listed from Forgejo 17: `ErrNotSupported` below) | ❌ (user secrets are Codespaces') | ❌ refused with API tokens |
 | Names | upper-cased | upper-cased | kept as given |
 | Dates | secrets: created | created, updated | — |
@@ -3148,55 +3073,53 @@ err = ci.Variables().Set(ctx, scope, "REGION", "eu")
 
 ### 20.2 Limiting an organisation secret to some repositories (GitHub)
 
-`gol.OrgSecrets` (`CapOrgSecrets`) is GitHub only. The secrets of a Forgejo organisation or a Bitbucket workspace are available to all its repositories.
+`Secrets().GetAccess`, `SetWithAccess` and `SetRepos` (`CapOrgSecrets`) are GitHub only. The secrets of a Forgejo organisation or a Bitbucket workspace are available to all its repositories.
 
 ```go
-s, ok := client.(gol.OrgSecrets)
+s := client.CI().Secrets()
 
-err := s.SetOrgSecret(ctx, "acme", "DEPLOY_TOKEN", token, gol.SecretAccess{
+err := s.SetWithAccess(ctx, "acme", "DEPLOY_TOKEN", token, gol.SecretAccess{
 	Visibility: gol.SecretVisibleSelected, // or gol.SecretVisibleAll, gol.SecretVisiblePrivate
 	Repos:      []string{"widget", "gadget"}, // names, without the owner
 })
 
-access, err := s.GetOrgSecretAccess(ctx, "acme", "DEPLOY_TOKEN")
+access, err := s.GetAccess(ctx, "acme", "DEPLOY_TOKEN")
 fmt.Println(access.Visibility, access.Repos)
 
 // Replace the list. HTTP 409 unless the visibility is "selected"; an empty list means nobody.
-err = s.SetOrgSecretRepos(ctx, "acme", "DEPLOY_TOKEN", []string{"widget"})
+err = s.SetRepos(ctx, "acme", "DEPLOY_TOKEN", []string{"widget"})
 ```
 
 - Each repository named takes one more request, to find its ID.
-- A secret's value cannot be read back, so changing its visibility takes `SetOrgSecret`, with the value.
+- A secret's value cannot be read back, so changing its visibility takes `CI().Secrets().SetWithAccess`, with the value.
 - These need the `admin:org` scope.
 - Organisation variables can be limited too on GitHub, but the library does not expose that.
 
 ---
 
-## 21. Commit history (`History`)
+## 21. Commit history (`Commits`)
 
-A repository's commits, read from the server like `git log`. No local clone is needed. Only **pushed** commits are seen, so the result can differ from `git log` in a working copy that has commits not yet pushed. All three clients implement `gol.History` (`CapCommits`):
+A repository's commits, read from the server like `git log`. No local clone is needed. Only **pushed** commits are seen, so the result can differ from `git log` in a working copy that has commits not yet pushed. All three clients implement it (`CapCommits`):
 
 ```go
-h, ok := client.(gol.History)
 
 // git log develop -- src/  (newest first, one page)
-page, err := h.Commits().List(ctx, "acme", "widget", gol.ListCommitsOptions{
+page, err := client.Commits().List(ctx, "acme", "widget", gol.ListCommitsOptions{
 	Ref:  "develop", // branch, tag or SHA; empty = default branch
 	Path: "src/",    // optional: commits touching this file or directory
 })
 
 // git log main..develop: the commits of develop that main does not have
-page, err = h.Commits().List(ctx, "acme", "widget", gol.ListCommitsOptions{Ref: "develop", Exclude: "main"})
+page, err = client.Commits().List(ctx, "acme", "widget", gol.ListCommitsOptions{Ref: "develop", Exclude: "main"})
 
 // git show --stat <ref>: one commit with its changed files
-c, err := h.Commits().Get(ctx, "acme", "widget", "develop") // branch head; or a tag, or a (short) SHA
+c, err := client.Commits().Get(ctx, "acme", "widget", "develop") // branch head; or a tag, or a (short) SHA
 for _, f := range c.Files {
 	fmt.Println(f.Status, f.Path, f.PreviousPath, f.Additions, f.Deletions)
 }
 
-// git show <ref>: the raw diff, through a separate optional interface (CapCommitDiffs)
-d, ok := client.(gol.CommitDiffs)
-stream, err := d.CommitDiff(ctx, "acme", "widget", c.SHA, gol.DiffUnified) // or gol.DiffPatch, for git format-patch's form
+// git show <ref>: the raw diff (CapCommitDiffs)
+stream, err := client.Commits().Diff(ctx, "acme", "widget", c.SHA, gol.DiffUnified) // or gol.DiffPatch, for git format-patch's form
 if err == nil {
 	defer stream.Close()
 	io.Copy(os.Stdout, stream)
@@ -3240,39 +3163,39 @@ A `git log --name-status` over many commits costs one `Get` per commit on top of
 The users with their own access to a repository, as opposed to access through a team. All three clients implement `gol.Collaborators` (`CapCollaborators`). Managing them takes admin access to the repository.
 
 ```go
-c, ok := client.(gol.Collaborators)
+c := client.Collaborators()
 
 // Add someone, or change the permission of an existing collaborator.
-invited, err := c.AddCollaborator(ctx, "acme", "widget", "bob", gol.CollaboratorWrite)
+invited, err := c.Add(ctx, "acme", "widget", "bob", gol.CollaboratorWrite)
 if invited {
 	// GitHub only: bob has no access until they accept the invitation.
 }
 
-who, err := c.GetCollaborator(ctx, "acme", "widget", "bob") // gol.IsNotFound(err): not a collaborator
+who, err := c.Get(ctx, "acme", "widget", "bob") // gol.IsNotFound(err): not a collaborator
 fmt.Println(who.Login, who.Permission)
 
-page, err := c.ListCollaborators(ctx, "acme", "widget", gol.ListOptions{})
+page, err := c.List(ctx, "acme", "widget", gol.ListOptions{})
 
-err = c.RemoveCollaborator(ctx, "acme", "widget", "bob") // also withdraws a GitHub invitation
+err = c.Remove(ctx, "acme", "widget", "bob") // also withdraws a GitHub invitation
 ```
 
-`AddCollaborator` always needs a permission: `gol.CollaboratorRead`, `CollaboratorWrite` or `CollaboratorAdmin`, plus `CollaboratorTriage` and `CollaboratorMaintain` on GitHub (`ErrNotSupported` elsewhere). Other values are refused before any request. An unknown user is HTTP 404 on all three, and removing an existing user without access is not an error.
+`Collaborators().Add` always needs a permission: `gol.CollaboratorRead`, `CollaboratorWrite` or `CollaboratorAdmin`, plus `CollaboratorTriage` and `CollaboratorMaintain` on GitHub (`ErrNotSupported` elsewhere). Other values are refused before any request. An unknown user is HTTP 404 on all three, and removing an existing user without access is not an error.
 
 | | Forgejo | GitHub | Bitbucket |
 |---|---|---|---|
 | Who is listed | Direct collaborators, not the owner | Direct collaborators and the owner of a user's repository | Those with their own permission, usually including the workspace owner |
 | Reading a permission | Admins only, or your own: `Permission` is empty otherwise | ✅ | ✅ |
-| `GetCollaborator` | 2 requests | 2 requests; also finds access through the organisation | 1 request, plus the member lookup for a nickname |
-| `ListCollaborators` | 1 more request per collaborator | ✅ can report a custom role's name | ✅ |
+| `Collaborators().Get` | 2 requests | 2 requests; also finds access through the organisation | 1 request, plus the member lookup for a nickname |
+| `Collaborators().List` | 1 more request per collaborator | ✅ can report a custom role's name | ✅ |
 | New collaborator | Access at once | ⚠️ usually an invitation, and listed only once accepted | Access at once |
-| `AddCollaborator` on a repository owned by a user | ✅ | ⚠️ the permission is ignored | — |
+| `Collaborators().Add` on a repository owned by a user | ✅ | ⚠️ the permission is ignored | — |
 | How to name a user | Login | Login | Nickname of a workspace member, account ID or `{UUID}` (the last two for an outsider) |
 
-To see who has been invited and has not accepted yet, GitHub clients also implement `gol.CollaboratorInvitations` (`CapCollaboratorInvitations`). The other forges give access at once:
+To see who has been invited and has not accepted yet, GitHub clients also implement `Collaborators().ListInvitations` (`CapCollaboratorInvitations`). The other forges give access at once:
 
 ```go
-if i, ok := client.(gol.CollaboratorInvitations); ok {
-	page, err := i.ListCollaboratorInvitations(ctx, "acme", "widget", gol.ListOptions{})
+if client.Capabilities().Has(gol.CapCollaboratorInvitations) { // GitHub
+	page, err := client.Collaborators().ListInvitations(ctx, "acme", "widget", gol.ListOptions{})
 	// each: ID, Login, Permission, Expired, HTMLURL, CreatedAt
 	_, _ = page, err
 }
@@ -3283,9 +3206,9 @@ if i, ok := client.(gol.CollaboratorInvitations); ok {
 Forgejo only (`CapMirrors`), and it takes admin access to the repository. A **push mirror** sends a repository to another address. A **pull mirror** is a repository that copies another one; `Repo.Mirror` tells them apart. The library can sync a pull mirror, but cannot create one: that takes a migration (`CapMigrate`, still reserved).
 
 ```go
-m, ok := client.(gol.Mirrors)
+m := client.Mirrors()
 
-pm, err := m.CreatePushMirror(ctx, "acme", "widget", gol.CreatePushMirrorOptions{
+pm, err := m.CreatePush(ctx, "acme", "widget", gol.CreatePushMirrorOptions{
 	RemoteAddress: "https://github.com/acme/widget.git", // no credentials in the address
 	Username:      "acme-bot",
 	Password:      token,
@@ -3295,55 +3218,55 @@ pm, err := m.CreatePushMirror(ctx, "acme", "widget", gol.CreatePushMirrorOptions
 })
 
 // With SSH the server generates a key, which the remote must accept for writing.
-pm, err = m.CreatePushMirror(ctx, "acme", "widget", gol.CreatePushMirrorOptions{
+pm, err = m.CreatePush(ctx, "acme", "widget", gol.CreatePushMirrorOptions{
 	RemoteAddress: "git@github.com:acme/widget.git", UseSSH: true, Interval: 8 * time.Hour,
 })
 fmt.Println(pm.Name, pm.PublicKey)
 
-err = m.SyncPushMirrors(ctx, "acme", "widget") // pushes to all of them
-got, err := m.GetPushMirror(ctx, "acme", "widget", pm.Name)
+err = m.SyncPush(ctx, "acme", "widget") // pushes to all of them
+got, err := m.GetPush(ctx, "acme", "widget", pm.Name)
 fmt.Println(got.LastSync, got.LastError)
 
-err = m.DeletePushMirror(ctx, "acme", "widget", pm.Name)
+err = m.DeletePush(ctx, "acme", "widget", pm.Name)
 
-err = m.SyncMirror(ctx, "acme", "copy") // a pull mirror fetches
+err = m.Sync(ctx, "acme", "copy") // a pull mirror fetches
 ```
 
 Things to know, all checked on Forgejo 15.0.11:
 
 - Creating a mirror does not contact the remote: a wrong address or password shows at the first sync.
-- `SyncPushMirrors` pushes during the call, and cannot be limited to one mirror. The first that fails gives HTTP 500 naming it, and **those after it are not pushed**.
+- `Mirrors().SyncPush` pushes during the call, and cannot be limited to one mirror. The first that fails gives HTTP 500 naming it, and **those after it are not pushed**.
 - `LastSync` is when a push was last tried, even a failed one: check `LastError`.
-- A branch can take a moment to show on a remote that is itself a forge, after `SyncPushMirrors` has returned.
-- `SyncMirror` only queues the fetch, and is HTTP 400 for a repository that is not a mirror.
+- A branch can take a moment to show on a remote that is itself a forge, after `Mirrors().SyncPush` has returned.
+- `Mirrors().Sync` only queues the fetch, and is HTTP 400 for a repository that is not a mirror.
 - A push mirror cannot be edited: delete it and create another. The server chooses `Name`, and rewrites an SSH address as `ssh://host/path`, without the user.
 - A remote address the server refuses is HTTP 400 here, with a message saying so. For a host that does not resolve, Forgejo answers 401 "Permission denied", which would look like a problem with your token. Since Forgejo 17, plain `http://` remotes are refused too.
 
 ## 23. CI workflow runs (`WorkflowRuns`, `WorkflowArtifacts`)
 
-Forgejo Actions and GitHub Actions. These are optional interfaces, found with a type assertion. Bitbucket does not implement them yet, so the assertion fails there.
+Forgejo Actions and GitHub Actions, through `client.CI().Runs()` and `client.CI().Artifacts()`. Bitbucket answers `ErrNotSupported`.
 
 ```go
 type WorkflowRuns interface {
-	ListWorkflowRuns(ctx, owner, repo string, opts ListWorkflowRunsOptions) (Page[WorkflowRun], error)
-	GetWorkflowRun(ctx, owner, repo string, id int64) (*WorkflowRun, error)
-	CancelWorkflowRun(ctx, owner, repo string, id int64) error
-	RerunWorkflowRun(ctx, owner, repo string, id int64) error
-	DeleteWorkflowRun(ctx, owner, repo string, id int64) error
+	List(ctx, owner, repo string, opts ListWorkflowRunsOptions) (Page[WorkflowRun], error)
+	Get(ctx, owner, repo string, id int64) (*WorkflowRun, error)
+	Cancel(ctx, owner, repo string, id int64) error
+	Rerun(ctx, owner, repo string, id int64) error
+	Delete(ctx, owner, repo string, id int64) error
 
-	ListWorkflowJobs(ctx, owner, repo string, runID int64, opts ListOptions) (Page[WorkflowJob], error)
-	GetWorkflowJob(ctx, owner, repo string, jobID int64) (*WorkflowJob, error)
-	RerunWorkflowJob(ctx, owner, repo string, jobID int64) error
-	WorkflowJobLogs(ctx, owner, repo string, jobID int64) (io.ReadCloser, error) // text
-	WorkflowRunLogs(ctx, owner, repo string, runID int64) (io.ReadCloser, error) // ZIP
+	ListJobs(ctx, owner, repo string, runID int64, opts ListOptions) (Page[WorkflowJob], error)
+	GetJob(ctx, owner, repo string, jobID int64) (*WorkflowJob, error)
+	RerunJob(ctx, owner, repo string, jobID int64) error
+	JobLogs(ctx, owner, repo string, jobID int64) (io.ReadCloser, error) // text
+	Logs(ctx, owner, repo string, runID int64) (io.ReadCloser, error) // ZIP
 }
 
 type WorkflowArtifacts interface {
-	ListWorkflowArtifacts(ctx, owner, repo string, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
-	ListWorkflowRunArtifacts(ctx, owner, repo string, runID int64, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
-	GetWorkflowArtifact(ctx, owner, repo string, id int64) (*WorkflowArtifact, error)
-	DeleteWorkflowArtifact(ctx, owner, repo string, id int64) error
-	DownloadWorkflowArtifact(ctx, owner, repo string, id int64) (io.ReadCloser, error) // ZIP
+	List(ctx, owner, repo string, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
+	ListForRun(ctx, owner, repo string, runID int64, opts ListWorkflowArtifactsOptions) (Page[WorkflowArtifact], error)
+	Get(ctx, owner, repo string, id int64) (*WorkflowArtifact, error)
+	Delete(ctx, owner, repo string, id int64) error
+	Download(ctx, owner, repo string, id int64) (io.ReadCloser, error) // ZIP
 }
 ```
 
@@ -3355,21 +3278,21 @@ A capability says the backend has the feature, not that this server's version do
 | Cancel and delete a run; list jobs; job and run logs; artifacts | from 16 | ✅ |
 | Get one job, with its steps; rerun a run or a job | from 17 | ✅ |
 | Filter by `Number` | ✅ | ❌ `ErrNotSupported` |
-| Steps in `ListWorkflowJobs` | ❌ use `GetWorkflowJob` | ✅ |
+| Steps in `CI().Runs().ListJobs` | ❌ use `CI().Runs().GetJob` | ✅ |
 | `WorkflowRun.StoppedAt`; `WorkflowJob.StartedAt`, `CompletedAt` | run only | job only |
 
 ```go
-r, ok := client.(gol.WorkflowRuns)
+r := client.CI().Runs()
 
-failed, err := r.ListWorkflowRuns(ctx, "acme", "widget", gol.ListWorkflowRunsOptions{
+failed, err := r.List(ctx, "acme", "widget", gol.ListWorkflowRunsOptions{
 	Workflow: "build.yml", // the file name
 	Branch:   "main",      // a branch name, not a ref
 	Status:   "failure",
 })
 
-jobs, err := r.ListWorkflowJobs(ctx, "acme", "widget", failed.Items[0].ID, gol.ListOptions{})
+jobs, err := r.ListJobs(ctx, "acme", "widget", failed.Items[0].ID, gol.ListOptions{})
 
-log, err := r.WorkflowJobLogs(ctx, "acme", "widget", jobs.Items[0].ID)
+log, err := r.JobLogs(ctx, "acme", "widget", jobs.Items[0].ID)
 defer log.Close()
 io.Copy(os.Stdout, log)
 ```
@@ -3377,35 +3300,34 @@ io.Copy(os.Stdout, log)
 **Status and conclusion.** `Conclusion` tells how a run, job or step ended, on both forges, and is empty until then: test it to know whether something finished. `Status` stays in the forge's own words, and so does the `Status` filter: `waiting`, `blocked`, `running` and the outcomes on Forgejo, which answers HTTP 400 for an unknown word; `queued`, `in_progress`, `completed` and others on GitHub, which also takes a conclusion there.
 
 **Behaviour worth knowing:**
-- `CancelWorkflowRun` on a run already finished succeeds and changes nothing, on both forges.
-- `DeleteWorkflowRun` on a run still going returns `gol.ErrWorkflowRunActive`, after one more request. Cancel it first.
-- A rerun keeps the run's ID. `RerunWorkflowJob` also reruns the jobs depending on it.
+- `CI().Runs().Cancel` on a run already finished succeeds and changes nothing, on both forges.
+- `CI().Runs().Delete` on a run still going returns `gol.ErrWorkflowRunActive`, after one more request. Cancel it first.
+- A rerun keeps the run's ID. `CI().Runs().RerunJob` also reruns the jobs depending on it.
 - A workflow file that does not exist selects nothing, on both forges.
-- Forgejo's `ListWorkflowJobs` returns all at once. Its `WorkflowRunLogs` archive holds an empty `.MISSING` entry for a job with no log yet.
+- Forgejo's `CI().Runs().ListJobs` returns all at once. Its `CI().Runs().Logs` archive holds an empty `.MISSING` entry for a job with no log yet.
 - GitHub can take a moment to have a finished job's log, and a new branch with a commit can be two pushes, so two runs.
 
 Starting a workflow by hand (a dispatch) is not offered yet.
 
-**Following a job's log.** `gol.WorkflowLogFollower` (`CapWorkflowLogFollow`) writes a job's log to an `io.Writer` as it grows, and returns once the job ended and all of it is written, or when the context is done:
+**Following a job's log.** `CI().Runs().FollowJobLog` (`CapWorkflowLogFollow`) writes a job's log to an `io.Writer` as it grows, and returns once the job ended and all of it is written, or when the context is done:
 
 ```go
-f, ok := client.(gol.WorkflowLogFollower)
-err := f.FollowWorkflowJobLog(ctx, "acme", "widget", jobID, os.Stdout, gol.FollowLogOptions{}) // polls every 2 s
+err := client.CI().Runs().FollowJobLog(ctx, "acme", "widget", jobID, os.Stdout, gol.FollowLogOptions{}) // polls every 2 s
 ```
 
-On Forgejo it needs version 17, and the log comes as it is written: the library asks only for what follows what it already has, with HTTP range requests. GitHub stores a job's log only once the job ended, so the call waits, then writes it all. To page a finished log instead, read `WorkflowJobLogs` into a pager.
+On Forgejo it needs version 17, and the log comes as it is written: the library asks only for what follows what it already has, with HTTP range requests. GitHub stores a job's log only once the job ended, so the call waits, then writes it all. To page a finished log instead, read `CI().Runs().JobLogs` into a pager.
 
 ## 24. CI runners (`Runners`)
 
-The forge's records of CI runners: Forgejo Actions runners and GitHub's self-hosted runners. Installing and starting a runner's program is left to other tools, which take what `RegisterRunner` returns, or a registration token. Bitbucket does not implement it.
+The forge's records of CI runners: Forgejo Actions runners and GitHub's self-hosted runners. Installing and starting a runner's program is left to other tools, which take what `CI().Runners().Register` returns, or a registration token. Bitbucket does not implement it.
 
 ```go
 type Runners interface {
-	ListRunners(ctx, scope RunnerScope, opts ListRunnersOptions) (Page[Runner], error)
-	GetRunner(ctx, scope RunnerScope, id int64) (*Runner, error)
-	RegisterRunner(ctx, scope RunnerScope, opts RegisterRunnerOptions) (*RegisteredRunner, error)
-	DeleteRunner(ctx, scope RunnerScope, id int64) error
-	RunnerRegistrationToken(ctx, scope RunnerScope) (*RunnerToken, error)
+	List(ctx, scope RunnerScope, opts ListRunnersOptions) (Page[Runner], error)
+	Get(ctx, scope RunnerScope, id int64) (*Runner, error)
+	Register(ctx, scope RunnerScope, opts RegisterRunnerOptions) (*RegisteredRunner, error)
+	Delete(ctx, scope RunnerScope, id int64) error
+	RegistrationToken(ctx, scope RunnerScope) (*RunnerToken, error)
 }
 ```
 
@@ -3417,39 +3339,38 @@ type Runners interface {
 | `gol.InstanceRunners()`, for every repository | ✅ site admins | ❌ `ErrNotSupported` |
 
 ```go
-r, ok := client.(gol.Runners)
+r := client.CI().Runners()
 scope := gol.RepoRunners("acme", "widget")
 
-reg, err := r.RegisterRunner(ctx, scope, gol.RegisterRunnerOptions{Name: "builder-1"})
+reg, err := r.Register(ctx, scope, gol.RegisterRunnerOptions{Name: "builder-1"})
 // Forgejo: reg.ID, reg.UUID and reg.Token go in the runner's ".runner" file.
 // GitHub: reg.JITConfig goes to the runner's run.sh --jitconfig.
 
-tok, err := r.RunnerRegistrationToken(ctx, scope) // for forgejo-runner register, or GitHub's config.sh
+tok, err := r.RegistrationToken(ctx, scope) // for forgejo-runner register, or GitHub's config.sh
 
-page, err := r.ListRunners(ctx, scope, gol.ListRunnersOptions{Inherited: true}) // with the organisation's, on Forgejo
-err = r.DeleteRunner(ctx, scope, reg.ID)
+page, err := r.List(ctx, scope, gol.ListRunnersOptions{Inherited: true}) // with the organisation's, on Forgejo
+err = r.Delete(ctx, scope, reg.ID)
 ```
 
 - `Runner.Online` and `Busy` read the same on both forges. `Status` keeps the forge's word: `offline`, `idle` or `active` on Forgejo, `online` or `offline` on GitHub.
 - Names need not be unique: registering the same name twice gives two runners.
-- **GitHub only registers single-use runners** through its API (a just-in-time configuration), so `RegisterRunner` there needs `Ephemeral`, and returns `ErrNotSupported` otherwise: a lasting runner registers itself with `RunnerRegistrationToken`. Its labels default to `self-hosted`. A GitHub registration token expires within the hour (`ExpiresAt`); Forgejo's does not.
+- **GitHub only registers single-use runners** through its API (a just-in-time configuration), so `CI().Runners().Register` there needs `Ephemeral`, and returns `ErrNotSupported` otherwise: a lasting runner registers itself with `CI().Runners().RegistrationToken`. Its labels default to `self-hosted`. A GitHub registration token expires within the hour (`ExpiresAt`); Forgejo's does not.
 - A Forgejo runner declares its own labels, so `Labels` there returns `ErrNotSupported`.
-- Each scope only reaches its own runners: deleting the organisation's through a repository is a 404. `DeleteRunner` on a runner that does not exist is a 404 on both forges, where GitHub alone answers 204.
+- Each scope only reaches its own runners: deleting the organisation's through a repository is a 404. `CI().Runners().Delete` on a runner that does not exist is a 404 on both forges, where GitHub alone answers 204.
 - `RegisteredRunner` and `RunnerToken` hold secrets and are never serialised.
 
-## 25. A commit's CI state (`CommitStatuses`)
+## 25. A commit's CI state (`Commits().Status`)
 
-What CI systems reported on a commit, combined into one state. Optional (`CapCommitStatuses`), on all three forges.
+What CI systems reported on a commit, combined into one state (`CapCommitStatuses`), on all three forges.
 
 ```go
-s, ok := client.(gol.CommitStatuses)
-cs, err := s.CommitStatus(ctx, "acme", "widget", "main") // a branch, tag or SHA
+cs, err := client.Commits().Status(ctx, "acme", "widget", "main") // a branch, tag or SHA
 fmt.Println(cs.State)                                     // "" when nothing reported
 for _, st := range cs.Statuses {
 	fmt.Println(st.Context, st.State, st.TargetURL)
 }
 
-err = s.SetCommitStatus(ctx, "acme", "widget", sha, gol.CommitStatus{
+err = s.SetStatus(ctx, "acme", "widget", sha, gol.CommitStatus{
 	Context: "ci/build", State: gol.StatusPending, TargetURL: "https://ci.example.com/run/12",
 })
 ```
@@ -3460,8 +3381,8 @@ err = s.SetCommitStatus(ctx, "acme", "widget", sha, gol.CommitStatus{
   answers those, and missing refs, with an empty success.
 - **GitHub** keeps two kinds, and both are read: commit statuses, and check runs, which is how GitHub Actions reports
   (`CommitStatus.Check`). A check run still queued or running is pending; cancelled is an error. Its combined status
-  can lag a second behind a write. `SetCommitStatus` sets a commit status: check runs belong to GitHub Apps.
-- **Bitbucket:** build statuses, as Pipelines and other CI systems report them, keyed by `Context`. `SetCommitStatus`
+  can lag a second behind a write. `Commits().SetStatus` sets a commit status: check runs belong to GitHub Apps.
+- **Bitbucket:** build statuses, as Pipelines and other CI systems report them, keyed by `Context`. `Commits().SetStatus`
   needs a `TargetURL` there; stopped builds read as errors.
 - Setting a status with an existing `Context` replaces it.
 
@@ -3530,7 +3451,7 @@ for _, b := range res.Branches {
 | Last commit | free | free on Forgejo and Bitbucket; one request per branch on GitHub |
 | Branch it was created from | reflogs, else a guess | a guess: one request per pair of branches |
 | Open pull requests from the branch | — | one list for the repository (forks left out) |
-| CI state of the head | — | `CommitStatuses`: one to three requests per branch |
+| CI state of the head | — | `Commits().Status`: one to three requests per branch |
 
 - A local branch is paired with the server branch it tracks on `Options.Remote` (default `origin`), else with the one
   of the same name. `Default` defaults to the server's default branch, else the remote's as the clone recorded it.

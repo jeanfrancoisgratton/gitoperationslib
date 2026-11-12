@@ -61,10 +61,10 @@ func TestRawDiffsBitbucket(t *testing.T) {
 			t.Errorf("body = %q", data)
 		}
 	}
-	read(c.CommitDiff(ctx, "acme", "widget", "topic", gitoperationslib.DiffUnified))
-	read(c.CommitDiff(ctx, "acme", "widget", "topic", gitoperationslib.DiffPatch))
-	read(c.PullRequestDiff(ctx, "acme", "widget", 5, gitoperationslib.DiffUnified))
-	read(c.PullRequestDiff(ctx, "acme", "widget", 5, gitoperationslib.DiffPatch))
+	read(c.Commits().Diff(ctx, "acme", "widget", "topic", gitoperationslib.DiffUnified))
+	read(c.Commits().Diff(ctx, "acme", "widget", "topic", gitoperationslib.DiffPatch))
+	read(c.PullRequests().Diff(ctx, "acme", "widget", 5, gitoperationslib.DiffUnified))
+	read(c.PullRequests().Diff(ctx, "acme", "widget", 5, gitoperationslib.DiffPatch))
 	want := []string{
 		"/2.0/repositories/acme/widget/commit/topic", "/2.0/repositories/acme/widget/diff/024004fe",
 		"/2.0/repositories/acme/widget/commit/topic", "/2.0/repositories/acme/widget/patch/024004fe",
@@ -75,19 +75,19 @@ func TestRawDiffsBitbucket(t *testing.T) {
 	}
 
 	requests = nil
-	if _, err := c.CommitDiff(ctx, "acme", "widget", "", gitoperationslib.DiffUnified); err == nil {
+	if _, err := c.Commits().Diff(ctx, "acme", "widget", "", gitoperationslib.DiffUnified); err == nil {
 		t.Error("empty ref accepted")
 	}
-	if _, err := c.CommitDiff(ctx, "acme", "widget", "a", "html"); err == nil {
+	if _, err := c.Commits().Diff(ctx, "acme", "widget", "a", "html"); err == nil {
 		t.Error("invalid format accepted")
 	}
-	if _, err := c.PullRequestDiff(ctx, "acme", "widget", 5, "html"); err == nil {
+	if _, err := c.PullRequests().Diff(ctx, "acme", "widget", 5, "html"); err == nil {
 		t.Error("invalid format accepted")
 	}
 	if len(requests) != 0 {
 		t.Errorf("requests sent: %q", requests)
 	}
-	if _, err := c.CommitDiff(ctx, "acme", "widget", "gone", gitoperationslib.DiffUnified); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Commits().Diff(ctx, "acme", "widget", "gone", gitoperationslib.DiffUnified); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown commit: err = %v, want 404", err)
 	}
 }
@@ -112,12 +112,12 @@ func TestPullRequestFilesAndCommitsBitbucket(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	files, err := c.PullRequestFiles(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{})
+	files, err := c.PullRequests().Files(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{})
 	want := []gitoperationslib.ChangedFile{{Path: "new.txt", PreviousPath: "old.txt", Status: gitoperationslib.FileRenamed, Additions: 1, Deletions: 2}}
 	if err != nil || files.NextPage != 2 || !reflect.DeepEqual(files.Items, want) {
 		t.Errorf("files = %+v, %v", files, err)
 	}
-	page, err := c.PullRequestCommits(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{PerPage: 1})
+	page, err := c.PullRequests().Commits(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{PerPage: 1})
 	if err != nil || len(page.Items) != 2 || page.NextPage != 0 || page.Items[0].SHA != "024004fe" {
 		t.Errorf("commits = %+v, %v", page, err)
 	}
@@ -150,7 +150,7 @@ func TestReviewCommentsBitbucket(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	page, err := c.ListReviewComments(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{PerPage: 1})
+	page, err := c.PullRequests().ListReviewComments(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{PerPage: 1})
 	if err != nil || len(page.Items) != 2 || page.NextPage != 0 {
 		t.Fatalf("list = %+v, %v; want the live line comments only", page, err)
 	}
@@ -161,7 +161,7 @@ func TestReviewCommentsBitbucket(t *testing.T) {
 		t.Errorf("old line = %+v", got)
 	}
 
-	rc, err := c.CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt", Body: "b", OldLine: 3})
+	rc, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt", Body: "b", OldLine: 3})
 	if err != nil || rc.ID != 9 || rc.OldLine != 3 {
 		t.Fatalf("create = %+v, %v", rc, err)
 	}
@@ -169,7 +169,7 @@ func TestReviewCommentsBitbucket(t *testing.T) {
 	if !reflect.DeepEqual(created, want) {
 		t.Errorf("body = %v, want %v", created, want)
 	}
-	if _, err := c.CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt", Body: "b", Line: 2}); err != nil {
+	if _, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt", Body: "b", Line: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if inline := created["inline"].(map[string]any); inline["to"] != float64(2) || inline["from"] != nil {
@@ -177,16 +177,16 @@ func TestReviewCommentsBitbucket(t *testing.T) {
 	}
 
 	requests = nil
-	if _, err := c.CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt", Body: "b", Line: 2, CommitID: "c"}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt", Body: "b", Line: 2, CommitID: "c"}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("CommitID: err = %v, want ErrNotSupported", err)
 	}
-	if _, err := c.CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt"}); err == nil {
+	if _, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt"}); err == nil {
 		t.Error("invalid options accepted")
 	}
 	if len(requests) != 0 {
 		t.Errorf("requests sent: %q", requests)
 	}
-	if err := c.DeleteReviewComment(ctx, "acme", "widget", 5, 9); err != nil {
+	if err := c.PullRequests().DeleteReviewComment(ctx, "acme", "widget", 5, 9); err != nil {
 		t.Error(err)
 	}
 }

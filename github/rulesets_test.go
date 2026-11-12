@@ -104,7 +104,7 @@ func TestBranchRulesetMapping(t *testing.T) {
 	// ApplyToAdmins drops the admin bypass; allowing deletion drops the rule.
 	got.ApplyToAdmins, got.AllowDeletion, got.PushAllowlist = true, true, nil
 	got.RequiredApprovals, got.DismissStaleApprovals = 0, false
-	updated, err := bp.Update(ctx, "acme", "widget", "main", *got)
+	updated, err := bp.Edit(ctx, "acme", "widget", "main", *got)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestTagRulesetMapping(t *testing.T) {
 		t.Errorf("created = %+v", created)
 	}
 
-	moved, err := tp.Update(ctx, "acme", "widget", "v*", gitoperationslib.TagProtection{Pattern: "release-*"})
+	moved, err := tp.Edit(ctx, "acme", "widget", "v*", gitoperationslib.TagProtection{Pattern: "release-*"})
 	if err != nil || moved.Pattern != "release-*" {
 		t.Fatalf("Update = %+v, %v", moved, err)
 	}

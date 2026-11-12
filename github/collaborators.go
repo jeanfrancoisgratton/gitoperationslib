@@ -13,9 +13,13 @@ import (
 )
 
 var (
-	_ gitoperationslib.Collaborators           = (*Client)(nil)
-	_ gitoperationslib.CollaboratorInvitations = (*Client)(nil)
+	_ gitoperationslib.Collaborators = collaborators{}
 )
+
+// Collaborators implements gitoperationslib.Client.
+func (c *Client) Collaborators() gitoperationslib.Collaborators { return collaborators{c} }
+
+type collaborators struct{ c *Client }
 
 // collaboratorPermissions translates to the names GitHub's requests take, which
 // are not those its responses give.
@@ -27,10 +31,11 @@ var collaboratorPermissions = map[gitoperationslib.CollaboratorPermission]string
 	gitoperationslib.CollaboratorAdmin:    "admin",
 }
 
-// ListCollaborators implements gitoperationslib.Collaborators. It asks for
+// List implements gitoperationslib.Collaborators. It asks for
 // direct collaborators: GitHub's default adds everyone with access through the
 // organisation, whom the other forges do not list.
-func (c *Client) ListCollaborators(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Collaborator], error) {
+func (svc collaborators) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Collaborator], error) {
+	c := svc.c
 	users, resp, err := c.gh.Repositories.ListCollaborators(ctx, owner, repo, &gh.ListCollaboratorsOptions{Affiliation: "direct", ListOptions: ghList(opts)})
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Collaborator]{}, convertError(err)
@@ -40,9 +45,10 @@ func (c *Client) ListCollaborators(ctx context.Context, owner, repo string, opts
 	}), nil
 }
 
-// GetCollaborator implements gitoperationslib.Collaborators. The permission
+// Get implements gitoperationslib.Collaborators. The permission
 // endpoint alone answers for anybody, with none for a stranger.
-func (c *Client) GetCollaborator(ctx context.Context, owner, repo, user string) (*gitoperationslib.Collaborator, error) {
+func (svc collaborators) Get(ctx context.Context, owner, repo, user string) (*gitoperationslib.Collaborator, error) {
+	c := svc.c
 	if user == "" {
 		return nil, errors.New("github: repos.get_collaborator: user is required")
 	}
@@ -63,9 +69,10 @@ func (c *Client) GetCollaborator(ctx context.Context, owner, repo, user string) 
 	return &gitoperationslib.Collaborator{Login: user, Permission: gitoperationslib.CollaboratorPermission(level.GetRoleName())}, nil
 }
 
-// AddCollaborator implements gitoperationslib.Collaborators. GitHub answers
+// Add implements gitoperationslib.Collaborators. GitHub answers
 // HTTP 201 with an invitation, and 204 when the user got access at once.
-func (c *Client) AddCollaborator(ctx context.Context, owner, repo, user string, permission gitoperationslib.CollaboratorPermission) (bool, error) {
+func (svc collaborators) Add(ctx context.Context, owner, repo, user string, permission gitoperationslib.CollaboratorPermission) (bool, error) {
+	c := svc.c
 	if user == "" {
 		return false, errors.New("github: repos.add_collaborator: user is required")
 	}
@@ -80,8 +87,9 @@ func (c *Client) AddCollaborator(ctx context.Context, owner, repo, user string, 
 	return resp.StatusCode == http.StatusCreated, nil
 }
 
-// ListCollaboratorInvitations implements gitoperationslib.CollaboratorInvitations.
-func (c *Client) ListCollaboratorInvitations(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.CollaboratorInvitation], error) {
+// ListInvitations implements gitoperationslib.Collaborators.
+func (svc collaborators) ListInvitations(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.CollaboratorInvitation], error) {
+	c := svc.c
 	lo := ghList(opts)
 	list, resp, err := c.gh.Repositories.ListInvitations(ctx, owner, repo, &lo)
 	if err != nil {
@@ -95,9 +103,10 @@ func (c *Client) ListCollaboratorInvitations(ctx context.Context, owner, repo st
 	}), nil
 }
 
-// RemoveCollaborator implements gitoperationslib.Collaborators. The removal does
+// Remove implements gitoperationslib.Collaborators. The removal does
 // not touch an invitation, which the user could still accept afterwards.
-func (c *Client) RemoveCollaborator(ctx context.Context, owner, repo, user string) error {
+func (svc collaborators) Remove(ctx context.Context, owner, repo, user string) error {
+	c := svc.c
 	if user == "" {
 		return errors.New("github: repos.remove_collaborator: user is required")
 	}

@@ -15,9 +15,13 @@ import (
 )
 
 var (
-	_ gitoperationslib.WorkflowRuns      = (*Client)(nil)
-	_ gitoperationslib.WorkflowArtifacts = (*Client)(nil)
+	_ gitoperationslib.WorkflowRuns      = runs{}
+	_ gitoperationslib.WorkflowArtifacts = artifacts{}
 )
+
+type runs struct{ c *Client }
+
+type artifacts struct{ c *Client }
 
 func toWorkflowRun(r *gh.WorkflowRun) gitoperationslib.WorkflowRun {
 	return gitoperationslib.WorkflowRun{
@@ -48,7 +52,8 @@ func toWorkflowArtifact(a *gh.Artifact) gitoperationslib.WorkflowArtifact {
 	}
 }
 
-func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo string, opts gitoperationslib.ListWorkflowRunsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowRun], error) {
+func (svc runs) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListWorkflowRunsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowRun], error) {
+	c := svc.c
 	empty := gitoperationslib.Page[gitoperationslib.WorkflowRun]{Items: []gitoperationslib.WorkflowRun{}}
 	if opts.Number != 0 {
 		return empty, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, "workflows.list", "filtering runs by number")
@@ -86,7 +91,8 @@ func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo string, opts 
 	return page, nil
 }
 
-func (c *Client) GetWorkflowRun(ctx context.Context, owner, repo string, id int64) (*gitoperationslib.WorkflowRun, error) {
+func (svc runs) Get(ctx context.Context, owner, repo string, id int64) (*gitoperationslib.WorkflowRun, error) {
+	c := svc.c
 	r, _, err := c.gh.Actions.GetWorkflowRunByID(ctx, owner, repo, id)
 	if err != nil {
 		return nil, convertError(err)
@@ -104,9 +110,10 @@ func accepted(err error) error {
 	return convertError(err)
 }
 
-// CancelWorkflowRun takes GitHub's 409 for a run already finished as success, as
+// Cancel takes GitHub's 409 for a run already finished as success, as
 // Forgejo answers.
-func (c *Client) CancelWorkflowRun(ctx context.Context, owner, repo string, id int64) error {
+func (svc runs) Cancel(ctx context.Context, owner, repo string, id int64) error {
+	c := svc.c
 	_, err := c.gh.Actions.CancelWorkflowRunByID(ctx, owner, repo, id)
 	err = accepted(err)
 	if gitoperationslib.StatusCode(err) == http.StatusConflict {
@@ -115,13 +122,15 @@ func (c *Client) CancelWorkflowRun(ctx context.Context, owner, repo string, id i
 	return err
 }
 
-func (c *Client) RerunWorkflowRun(ctx context.Context, owner, repo string, id int64) error {
+func (svc runs) Rerun(ctx context.Context, owner, repo string, id int64) error {
+	c := svc.c
 	_, err := c.gh.Actions.RerunWorkflowByID(ctx, owner, repo, id)
 	return accepted(err)
 }
 
-func (c *Client) DeleteWorkflowRun(ctx context.Context, owner, repo string, id int64) error {
-	run, err := c.GetWorkflowRun(ctx, owner, repo, id)
+func (svc runs) Delete(ctx context.Context, owner, repo string, id int64) error {
+	c := svc.c
+	run, err := runs{c}.Get(ctx, owner, repo, id)
 	if err != nil {
 		return err
 	}
@@ -132,7 +141,8 @@ func (c *Client) DeleteWorkflowRun(ctx context.Context, owner, repo string, id i
 	return convertError(err)
 }
 
-func (c *Client) ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.WorkflowJob], error) {
+func (svc runs) ListJobs(ctx context.Context, owner, repo string, runID int64, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.WorkflowJob], error) {
+	c := svc.c
 	list, resp, err := c.gh.Actions.ListWorkflowJobs(ctx, owner, repo, runID, &gh.ListWorkflowJobsOptions{ListOptions: gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage}})
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.WorkflowJob]{}, convertError(err)
@@ -144,7 +154,8 @@ func (c *Client) ListWorkflowJobs(ctx context.Context, owner, repo string, runID
 	return page, nil
 }
 
-func (c *Client) GetWorkflowJob(ctx context.Context, owner, repo string, jobID int64) (*gitoperationslib.WorkflowJob, error) {
+func (svc runs) GetJob(ctx context.Context, owner, repo string, jobID int64) (*gitoperationslib.WorkflowJob, error) {
+	c := svc.c
 	j, _, err := c.gh.Actions.GetWorkflowJobByID(ctx, owner, repo, jobID)
 	if err != nil {
 		return nil, convertError(err)
@@ -153,7 +164,8 @@ func (c *Client) GetWorkflowJob(ctx context.Context, owner, repo string, jobID i
 	return &job, nil
 }
 
-func (c *Client) RerunWorkflowJob(ctx context.Context, owner, repo string, jobID int64) error {
+func (svc runs) RerunJob(ctx context.Context, owner, repo string, jobID int64) error {
+	c := svc.c
 	_, err := c.gh.Actions.RerunJobByID(ctx, owner, repo, jobID)
 	return accepted(err)
 }
@@ -185,12 +197,14 @@ func (c *Client) fetchRedirected(ctx context.Context, target *url.URL, resp *gh.
 	return got.Body, nil
 }
 
-func (c *Client) WorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (io.ReadCloser, error) {
+func (svc runs) JobLogs(ctx context.Context, owner, repo string, jobID int64) (io.ReadCloser, error) {
+	c := svc.c
 	target, resp, err := c.gh.Actions.GetWorkflowJobLogs(ctx, owner, repo, jobID, 2)
 	return c.fetchRedirected(ctx, target, resp, err)
 }
 
-func (c *Client) WorkflowRunLogs(ctx context.Context, owner, repo string, runID int64) (io.ReadCloser, error) {
+func (svc runs) Logs(ctx context.Context, owner, repo string, runID int64) (io.ReadCloser, error) {
+	c := svc.c
 	target, resp, err := c.gh.Actions.GetWorkflowRunLogs(ctx, owner, repo, runID, 2)
 	return c.fetchRedirected(ctx, target, resp, err)
 }
@@ -203,7 +217,8 @@ func toArtifactPage(list *gh.ArtifactList, resp *gh.Response) gitoperationslib.P
 	return page
 }
 
-func (c *Client) ListWorkflowArtifacts(ctx context.Context, owner, repo string, opts gitoperationslib.ListWorkflowArtifactsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowArtifact], error) {
+func (svc artifacts) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListWorkflowArtifactsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowArtifact], error) {
+	c := svc.c
 	query := &gh.ListArtifactsOptions{ListOptions: gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage}}
 	if opts.Name != "" {
 		query.Name = &opts.Name
@@ -215,9 +230,10 @@ func (c *Client) ListWorkflowArtifacts(ctx context.Context, owner, repo string, 
 	return toArtifactPage(list, resp), nil
 }
 
-// ListWorkflowRunArtifacts filters by name itself, per page: the SDK's call for a
+// ListForRun filters by name itself, per page: the SDK's call for a
 // run takes no name. A page can hold fewer items than PerPage.
-func (c *Client) ListWorkflowRunArtifacts(ctx context.Context, owner, repo string, runID int64, opts gitoperationslib.ListWorkflowArtifactsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowArtifact], error) {
+func (svc artifacts) ListForRun(ctx context.Context, owner, repo string, runID int64, opts gitoperationslib.ListWorkflowArtifactsOptions) (gitoperationslib.Page[gitoperationslib.WorkflowArtifact], error) {
+	c := svc.c
 	list, resp, err := c.gh.Actions.ListWorkflowRunArtifacts(ctx, owner, repo, runID, &gh.ListOptions{Page: opts.Page, PerPage: opts.PerPage})
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.WorkflowArtifact]{}, convertError(err)
@@ -235,7 +251,8 @@ func (c *Client) ListWorkflowRunArtifacts(ctx context.Context, owner, repo strin
 	return page, nil
 }
 
-func (c *Client) GetWorkflowArtifact(ctx context.Context, owner, repo string, id int64) (*gitoperationslib.WorkflowArtifact, error) {
+func (svc artifacts) Get(ctx context.Context, owner, repo string, id int64) (*gitoperationslib.WorkflowArtifact, error) {
+	c := svc.c
 	a, _, err := c.gh.Actions.GetArtifact(ctx, owner, repo, id)
 	if err != nil {
 		return nil, convertError(err)
@@ -244,12 +261,14 @@ func (c *Client) GetWorkflowArtifact(ctx context.Context, owner, repo string, id
 	return &artifact, nil
 }
 
-func (c *Client) DeleteWorkflowArtifact(ctx context.Context, owner, repo string, id int64) error {
+func (svc artifacts) Delete(ctx context.Context, owner, repo string, id int64) error {
+	c := svc.c
 	_, err := c.gh.Actions.DeleteArtifact(ctx, owner, repo, id)
 	return convertError(err)
 }
 
-func (c *Client) DownloadWorkflowArtifact(ctx context.Context, owner, repo string, id int64) (io.ReadCloser, error) {
+func (svc artifacts) Download(ctx context.Context, owner, repo string, id int64) (io.ReadCloser, error) {
+	c := svc.c
 	target, resp, err := c.gh.Actions.DownloadArtifact(ctx, owner, repo, id, 2)
 	return c.fetchRedirected(ctx, target, resp, err)
 }

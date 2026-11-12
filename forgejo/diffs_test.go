@@ -60,10 +60,10 @@ func TestRawDiffs(t *testing.T) {
 			t.Errorf("body = %q", data)
 		}
 	}
-	read(c.CommitDiff(ctx, "acme", "widget", "abc123", gitoperationslib.DiffUnified))
-	read(c.CommitDiff(ctx, "acme", "widget", "feature/log", gitoperationslib.DiffPatch))
-	read(c.PullRequestDiff(ctx, "acme", "widget", 5, gitoperationslib.DiffUnified))
-	read(c.PullRequestDiff(ctx, "acme", "widget", 5, gitoperationslib.DiffPatch))
+	read(c.Commits().Diff(ctx, "acme", "widget", "abc123", gitoperationslib.DiffUnified))
+	read(c.Commits().Diff(ctx, "acme", "widget", "feature/log", gitoperationslib.DiffPatch))
+	read(c.PullRequests().Diff(ctx, "acme", "widget", 5, gitoperationslib.DiffUnified))
+	read(c.PullRequests().Diff(ctx, "acme", "widget", 5, gitoperationslib.DiffPatch))
 	want := []string{
 		"/api/v1/repos/acme/widget/git/commits/abc123.diff",
 		"/api/v1/repos/acme/widget/git/commits/feature%2Flog.patch",
@@ -75,19 +75,19 @@ func TestRawDiffs(t *testing.T) {
 	}
 
 	requests = nil
-	if _, err := c.CommitDiff(ctx, "acme", "widget", "", gitoperationslib.DiffUnified); err == nil {
+	if _, err := c.Commits().Diff(ctx, "acme", "widget", "", gitoperationslib.DiffUnified); err == nil {
 		t.Error("empty ref accepted")
 	}
-	if _, err := c.CommitDiff(ctx, "acme", "widget", "a", "html"); err == nil {
+	if _, err := c.Commits().Diff(ctx, "acme", "widget", "a", "html"); err == nil {
 		t.Error("invalid commit format accepted")
 	}
-	if _, err := c.PullRequestDiff(ctx, "acme", "widget", 5, "html"); err == nil {
+	if _, err := c.PullRequests().Diff(ctx, "acme", "widget", 5, "html"); err == nil {
 		t.Error("invalid pull request format accepted")
 	}
 	if len(requests) != 0 {
 		t.Errorf("requests sent for invalid arguments: %q", requests)
 	}
-	if _, err := c.CommitDiff(ctx, "acme", "widget", "gone", gitoperationslib.DiffUnified); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Commits().Diff(ctx, "acme", "widget", "gone", gitoperationslib.DiffUnified); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown commit: err = %v, want 404", err)
 	}
 }
@@ -111,7 +111,7 @@ func TestPullRequestFilesAndCommits(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	files, err := c.PullRequestFiles(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{})
+	files, err := c.PullRequests().Files(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestPullRequestFilesAndCommits(t *testing.T) {
 	if !reflect.DeepEqual(files.Items, want) {
 		t.Errorf("files = %+v, want %+v", files.Items, want)
 	}
-	page, err := c.PullRequestCommits(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{PerPage: 1})
+	page, err := c.PullRequests().Commits(ctx, "acme", "widget", 5, gitoperationslib.ListOptions{PerPage: 1})
 	if err != nil || len(page.Items) != 1 || page.NextPage != 2 {
 		t.Fatalf("commits = %+v, %v", page, err)
 	}
@@ -168,7 +168,7 @@ func reviewCommentServer(t *testing.T) (*Client, *[]string, *map[string]any) {
 
 func TestListReviewComments(t *testing.T) {
 	c, _, _ := reviewCommentServer(t)
-	page, err := c.ListReviewComments(context.Background(), "acme", "widget", 5, gitoperationslib.ListOptions{PerPage: 1})
+	page, err := c.PullRequests().ListReviewComments(context.Background(), "acme", "widget", 5, gitoperationslib.ListOptions{PerPage: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestListReviewComments(t *testing.T) {
 func TestCreateReviewComment(t *testing.T) {
 	c, _, created := reviewCommentServer(t)
 	ctx := context.Background()
-	rc, err := c.CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt", Body: "old", OldLine: 3, CommitID: "c9"})
+	rc, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt", Body: "old", OldLine: 3, CommitID: "c9"})
 	if err != nil || rc.ID != 12 || rc.OldLine != 3 {
 		t.Fatalf("Create = %+v, %v", rc, err)
 	}
@@ -198,7 +198,7 @@ func TestCreateReviewComment(t *testing.T) {
 	if !reflect.DeepEqual(*created, want) {
 		t.Errorf("body = %v, want %v", *created, want)
 	}
-	if _, err := c.CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt"}); err == nil {
+	if _, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 5, gitoperationslib.CreateReviewCommentOptions{Path: "a.txt"}); err == nil {
 		t.Error("invalid options accepted")
 	}
 }
@@ -206,7 +206,7 @@ func TestCreateReviewComment(t *testing.T) {
 func TestDeleteReviewComment(t *testing.T) {
 	c, writes, _ := reviewCommentServer(t)
 	ctx := context.Background()
-	if err := c.DeleteReviewComment(ctx, "acme", "widget", 5, 11); err != nil {
+	if err := c.PullRequests().DeleteReviewComment(ctx, "acme", "widget", 5, 11); err != nil {
 		t.Fatal(err)
 	}
 	// Through its review: DELETE /issues/comments/{id} answers 204 and keeps it.
@@ -214,7 +214,7 @@ func TestDeleteReviewComment(t *testing.T) {
 		t.Errorf("writes = %q, want %q", *writes, want)
 	}
 	*writes = nil
-	if err := c.DeleteReviewComment(ctx, "acme", "widget", 5, 99); !gitoperationslib.IsNotFound(err) {
+	if err := c.PullRequests().DeleteReviewComment(ctx, "acme", "widget", 5, 99); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown comment: err = %v, want 404", err)
 	}
 	if len(*writes) != 0 {

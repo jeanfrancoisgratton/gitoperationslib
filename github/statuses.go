@@ -9,8 +9,6 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 )
 
-var _ gitoperationslib.CommitStatuses = (*Client)(nil)
-
 // checkState maps a check run's status and conclusion.
 func checkState(status, conclusion string) gitoperationslib.StatusState {
 	if status != "completed" {
@@ -25,10 +23,11 @@ func checkState(status, conclusion string) gitoperationslib.StatusState {
 	return gitoperationslib.StatusFailure // failure, timed_out, action_required, startup_failure
 }
 
-// CommitStatus implements gitoperationslib.CommitStatuses. GitHub keeps two
+// Status implements gitoperationslib.Commits. GitHub keeps two
 // kinds: commit statuses, and check runs, which is how GitHub Actions reports;
 // both are read (two requests, more for over 100 of either), and combined.
-func (c *Client) CommitStatus(ctx context.Context, owner, repo, ref string) (*gitoperationslib.CombinedStatus, error) {
+func (m commits) Status(ctx context.Context, owner, repo, ref string) (*gitoperationslib.CombinedStatus, error) {
+	c := m.c
 	out := &gitoperationslib.CombinedStatus{}
 	var states []gitoperationslib.StatusState
 	for opts := (&gh.ListOptions{PerPage: 100}); ; {
@@ -82,9 +81,10 @@ func (c *Client) CommitStatus(ctx context.Context, owner, repo, ref string) (*gi
 	return out, nil
 }
 
-// SetCommitStatus implements gitoperationslib.CommitStatuses. It sets a commit
+// SetStatus implements gitoperationslib.Commits. It sets a commit
 // status, not a check run: those belong to GitHub Apps.
-func (c *Client) SetCommitStatus(ctx context.Context, owner, repo, sha string, s gitoperationslib.CommitStatus) error {
+func (m commits) SetStatus(ctx context.Context, owner, repo, sha string, s gitoperationslib.CommitStatus) error {
+	c := m.c
 	if s.Context == "" || s.State == "" {
 		return errors.New("github: a commit status needs a context and a state")
 	}

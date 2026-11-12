@@ -46,34 +46,34 @@ func TestCIBitbucket(t *testing.T) {
 	repo, ws := gitoperationslib.RepoCI("acme", "widget"), gitoperationslib.OrgCI("acme")
 
 	// New name: one POST, secured.
-	if err := c.Secrets().Set(ctx, repo, "NEW", "x"); err != nil || !bodies[0].Secured || requests[0] != "POST /2.0/repositories/acme/widget/pipelines_config/variables" {
+	if err := c.CI().Secrets().Set(ctx, repo, "NEW", "x"); err != nil || !bodies[0].Secured || requests[0] != "POST /2.0/repositories/acme/widget/pipelines_config/variables" {
 		t.Errorf("Set new secret: %v, %v %+v", err, requests, bodies)
 	}
 	// Existing secret: POST 409, list, PUT by UUID.
 	requests, bodies = nil, nil
-	if err := c.Secrets().Set(ctx, repo, "TOKEN", "y"); err != nil || len(requests) != 3 || !bodies[2].Secured || bodies[2].Value != "y" {
+	if err := c.CI().Secrets().Set(ctx, repo, "TOKEN", "y"); err != nil || len(requests) != 3 || !bodies[2].Secured || bodies[2].Value != "y" {
 		t.Errorf("overwrite secret: %v, %v %+v", err, requests, bodies)
 	}
 	// A variable cannot take a secret's name.
-	if err := c.Variables().Set(ctx, repo, "TOKEN", "z"); err == nil || !strings.Contains(err.Error(), "is a secret") {
+	if err := c.CI().Variables().Set(ctx, repo, "TOKEN", "z"); err == nil || !strings.Contains(err.Error(), "is a secret") {
 		t.Errorf("variable named like a secret: err = %v", err)
 	}
 
-	secrets, err := c.Secrets().List(ctx, repo, gitoperationslib.ListOptions{})
+	secrets, err := c.CI().Secrets().List(ctx, repo, gitoperationslib.ListOptions{})
 	if err != nil || len(secrets.Items) != 1 || secrets.Items[0].Name != "TOKEN" {
 		t.Errorf("Secrets.List = %+v, %v", secrets, err)
 	}
-	vars, err := c.Variables().List(ctx, ws, gitoperationslib.ListOptions{})
+	vars, err := c.CI().Variables().List(ctx, ws, gitoperationslib.ListOptions{})
 	if err != nil || len(vars.Items) != 1 || vars.Items[0].Value != "prod" {
 		t.Errorf("Variables.List = %+v, %v", vars, err)
 	}
-	if v, err := c.Variables().Get(ctx, ws, "ENV"); err != nil || v.Value != "prod" {
+	if v, err := c.CI().Variables().Get(ctx, ws, "ENV"); err != nil || v.Value != "prod" {
 		t.Errorf("Get = %+v, %v", v, err)
 	}
-	if err := c.Variables().Delete(ctx, ws, "ENV"); err != nil {
+	if err := c.CI().Variables().Delete(ctx, ws, "ENV"); err != nil {
 		t.Error(err)
 	}
-	if err := c.Secrets().Set(ctx, gitoperationslib.UserCI(), "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.CI().Secrets().Set(ctx, gitoperationslib.UserCI(), "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("user scope: err = %v, want ErrNotSupported", err)
 	}
 }
@@ -87,7 +87,7 @@ func TestCIBitbucketNotFound(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := c.Variables().Get(ctx, gitoperationslib.RepoCI("acme", "widget"), "NOPE"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.CI().Variables().Get(ctx, gitoperationslib.RepoCI("acme", "widget"), "NOPE"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("err = %v, want 404", err)
 	}
 	if lists != findAttempts {

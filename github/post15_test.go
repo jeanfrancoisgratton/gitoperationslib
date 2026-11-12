@@ -34,7 +34,7 @@ func TestReviewCommentOnSeveralLines(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(&sent)
 		fmt.Fprint(w, `{"id":3,"path":"a.go","side":"RIGHT","start_line":2,"line":4,"original_start_line":2,"original_line":4}`)
 	})
-	got, err := c.CreateReviewComment(context.Background(), "acme", "widget", 1, gitoperationslib.CreateReviewCommentOptions{Path: "a.go", Body: "b", Line: 2, ExtraLines: 2, CommitID: "abc"})
+	got, err := c.PullRequests().CreateReviewComment(context.Background(), "acme", "widget", 1, gitoperationslib.CreateReviewCommentOptions{Path: "a.go", Body: "b", Line: 2, ExtraLines: 2, CommitID: "abc"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,13 +57,13 @@ func TestIssueLocks(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	ctx := context.Background()
-	if err := c.LockIssue(ctx, "acme", "widget", 3, gitoperationslib.LockReasonTooHeated); err != nil || reason != "too heated" {
+	if err := c.Issues().Lock(ctx, "acme", "widget", 3, gitoperationslib.LockReasonTooHeated); err != nil || reason != "too heated" {
 		t.Errorf("Lock: %v, reason %v", err, reason)
 	}
-	if err := c.LockIssue(ctx, "acme", "widget", 3, ""); err != nil || reason != nil {
+	if err := c.Issues().Lock(ctx, "acme", "widget", 3, ""); err != nil || reason != nil {
 		t.Errorf("Lock without a reason: %v, reason %v", err, reason)
 	}
-	if err := c.UnlockIssue(ctx, "acme", "widget", 3); err != nil {
+	if err := c.Issues().Unlock(ctx, "acme", "widget", 3); err != nil {
 		t.Error(err)
 	}
 	if len(requests) != 3 || requests[2] != "DELETE /api/v3/repos/acme/widget/issues/3/lock" {

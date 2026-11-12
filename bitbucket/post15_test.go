@@ -37,7 +37,7 @@ func TestReviewCommentOnSeveralLines(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(&sent)
 		io.WriteString(w, `{"id":3,"inline":{"path":"a.go","start_to":2,"to":4}}`)
 	})
-	got, err := c.CreateReviewComment(context.Background(), "acme", "widget", 1, gitoperationslib.CreateReviewCommentOptions{Path: "a.go", Body: "b", Line: 2, ExtraLines: 2})
+	got, err := c.PullRequests().CreateReviewComment(context.Background(), "acme", "widget", 1, gitoperationslib.CreateReviewCommentOptions{Path: "a.go", Body: "b", Line: 2, ExtraLines: 2})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
 // Bitbucket event keys for each HookEvent. Events missing here (create,
@@ -108,9 +109,14 @@ func (h *hookJSON) toWebhook() gitoperationslib.Webhook {
 
 // Webhooks implements gitoperationslib.Client. Webhook IDs are derived from
 // Bitbucket's UUIDs. Hook URLs must resolve in DNS.
-func (c *Client) Webhooks() gitoperationslib.Webhooks { return webhooks{c} }
+func (c *Client) Webhooks() gitoperationslib.Webhooks {
+	return webhooks{c, unsupported.Webhooks{Backend: gitoperationslib.BackendBitbucket, Reason: "Bitbucket's API keeps no delivery history"}}
+}
 
-type webhooks struct{ c *Client }
+type webhooks struct {
+	c *Client
+	unsupported.Webhooks
+}
 
 func hooksPath(scope gitoperationslib.HookScope) (string, error) {
 	switch {

@@ -186,8 +186,7 @@ func TestUserWebhooks(t *testing.T) {
 	if !c.Capabilities().Has(gitoperationslib.CapUserWebhooks) {
 		t.Error("CapUserWebhooks not announced")
 	}
-	var h gitoperationslib.UserHooks = c
-	hooks := h.UserWebhooks()
+	hooks := c.Account().Webhooks()
 
 	for _, opts := range []gitoperationslib.ListOptions{{}, {PerPage: 1}, {PerPage: 2}, {PerPage: 5}, {PerPage: 100}} {
 		var ids []int64
@@ -251,7 +250,7 @@ func TestSystemWebhooksKind(t *testing.T) {
 	if !c.Capabilities().Has(gitoperationslib.CapSystemWebhooks) {
 		t.Error("CapSystemWebhooks not announced")
 	}
-	var h gitoperationslib.SiteHooks = c
+	h := c.Site()
 	hooks := h.SystemWebhooks()
 	edit := gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(false)}
 
@@ -287,7 +286,7 @@ func TestSystemWebhooksKind(t *testing.T) {
 func TestDefaultWebhooksKind(t *testing.T) {
 	c, writes := fakeSiteHooks(t)
 	ctx := context.Background()
-	hooks := c.DefaultWebhooks()
+	hooks := c.Site().DefaultWebhooks()
 	edit := gitoperationslib.EditWebhookOptions{Active: gitoperationslib.Ptr(false)}
 
 	// 3 is a system hook, on the second page of the listing.
@@ -334,10 +333,10 @@ func TestSiteHooksForbidden(t *testing.T) {
 		io.WriteString(w, `{"message":"forbidden"}`)
 	})
 	ctx := context.Background()
-	if err := c.SystemWebhooks().Delete(ctx, 1); !gitoperationslib.IsForbidden(err) {
+	if err := c.Site().SystemWebhooks().Delete(ctx, 1); !gitoperationslib.IsForbidden(err) {
 		t.Errorf("system: err = %v, want 403", err)
 	}
-	if err := c.DefaultWebhooks().Delete(ctx, 1); !gitoperationslib.IsForbidden(err) {
+	if err := c.Site().DefaultWebhooks().Delete(ctx, 1); !gitoperationslib.IsForbidden(err) {
 		t.Errorf("default: err = %v, want 403", err)
 	}
 	if len(writes) != 0 {
@@ -359,7 +358,7 @@ func TestWebhookWildcard(t *testing.T) {
 
 func TestEditRefusesWhatForgejoIgnores(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected request %s %s", r.Method, r.URL) })
-	hooks := c.UserWebhooks()
+	hooks := c.Account().Webhooks()
 	for name, opts := range map[string]gitoperationslib.EditWebhookOptions{
 		"secret":     {Secret: gitoperationslib.Ptr("new")},
 		"clear auth": {AuthorizationHeader: gitoperationslib.Ptr("")},
@@ -376,7 +375,7 @@ func TestCreateHookTypes(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(&body)
 		io.WriteString(w, `{"id":1,"type":"slack","url":"https://h","events":["push"],"active":true,"authorization_header":"Bearer x","metadata":{"channel":"#c","username":"u","icon_url":"","color":""}}`)
 	})
-	hooks := c.UserWebhooks()
+	hooks := c.Account().Webhooks()
 	ctx := context.Background()
 	push := []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}
 	hook, err := hooks.Create(ctx, gitoperationslib.CreateWebhookOptions{
@@ -428,7 +427,7 @@ func TestSystemWebhookCreate(t *testing.T) {
 		}
 	})
 	opts := gitoperationslib.CreateWebhookOptions{URL: "https://h", Events: []gitoperationslib.HookEvent{gitoperationslib.HookEventPush}}
-	hook, err := c.SystemWebhooks().Create(context.Background(), opts)
+	hook, err := c.Site().SystemWebhooks().Create(context.Background(), opts)
 	if err != nil || hook.ID != 3 || deleted {
 		t.Errorf("Create = %+v, %v, deleted %v", hook, err, deleted)
 	}
@@ -437,7 +436,7 @@ func TestSystemWebhookCreate(t *testing.T) {
 	}
 	// Should the flag stop working, no default hook is left behind.
 	listed = false
-	if hook, err = c.SystemWebhooks().Create(context.Background(), opts); err == nil || hook != nil || !deleted {
+	if hook, err = c.Site().SystemWebhooks().Create(context.Background(), opts); err == nil || hook != nil || !deleted {
 		t.Errorf("Create = %+v, %v, deleted %v", hook, err, deleted)
 	}
 }

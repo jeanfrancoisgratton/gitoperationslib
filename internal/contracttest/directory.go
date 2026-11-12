@@ -13,10 +13,9 @@ import (
 // creates nothing.
 func Directory(t *testing.T, env Env) {
 	ctx := testContext(t)
-	dir := env.Client.Directory()
 
 	// Every backend implements Me.
-	me, err := dir.Me(ctx)
+	me, err := env.Client.Users().Me(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,13 +29,13 @@ func Directory(t *testing.T, env Env) {
 		me.Login, len(me.Emails), len(me.Orgs), len(me.Teams), len(me.Repos), len(me.SSHKeys), len(me.GPGKeys))
 
 	if unsupported(t, env, gitoperationslib.CapDirectory, func() error {
-		_, err := dir.User(ctx, env.Login)
+		_, err := env.Client.Users().Get(ctx, env.Login)
 		return err
 	}) {
 		return
 	}
 
-	user, err := dir.UserInfo(ctx, env.Login)
+	user, err := env.Client.Users().Info(ctx, env.Login)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +47,7 @@ func Directory(t *testing.T, env Env) {
 	}
 	t.Logf("user %s: %d organisations, %d repositories", user.Login, len(user.Orgs), len(user.Repos))
 
-	org, err := dir.Org(ctx, env.Org)
+	org, err := env.Client.Orgs().Get(ctx, env.Org)
 	if gitoperationslib.IsNotFound(err) {
 		t.Skipf("%s is not an organisation; skipping organisation and team checks", env.Org)
 	}
@@ -63,7 +62,7 @@ func Directory(t *testing.T, env Env) {
 	var mine []string
 	for o, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: 50},
 		func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
-			return dir.ListOrgs(ctx, "", o)
+			return env.Client.Orgs().List(ctx, "", o)
 		}) {
 		if err != nil {
 			t.Fatal(err)
@@ -74,7 +73,7 @@ func Directory(t *testing.T, env Env) {
 		t.Errorf("ListOrgs(\"\") = %v, missing %s", mine, env.Org)
 	}
 
-	info, err := dir.OrgInfo(ctx, env.Org)
+	info, err := env.Client.Orgs().Info(ctx, env.Org)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,14 +90,14 @@ func Directory(t *testing.T, env Env) {
 		return
 	}
 	first := info.Teams[0]
-	team, err := dir.TeamInfo(ctx, env.Org, first.Slug)
+	team, err := env.Client.Teams().Info(ctx, env.Org, first.Slug)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if team.ID != first.ID || team.Name != first.Name || !strings.EqualFold(team.Org, env.Org) || team.Incomplete != nil {
 		t.Errorf("TeamInfo(%s) = %+v", first.Slug, team)
 	}
-	members, err := dir.TeamMembers(ctx, env.Org, first.Slug, gitoperationslib.ListOptions{})
+	members, err := env.Client.Teams().Members(ctx, env.Org, first.Slug, gitoperationslib.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

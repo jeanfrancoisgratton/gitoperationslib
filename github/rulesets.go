@@ -306,7 +306,7 @@ func (b branchRulesets) Create(ctx context.Context, owner, repo string, rule git
 	return &p, nil
 }
 
-func (b branchRulesets) Update(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.BranchProtection) (*gitoperationslib.BranchProtection, error) {
+func (b branchRulesets) Edit(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.BranchProtection) (*gitoperationslib.BranchProtection, error) {
 	if rule.Pattern == "" {
 		rule.Pattern = pattern
 	}
@@ -392,7 +392,7 @@ func (t tagRulesets) Create(ctx context.Context, owner, repo string, rule gitope
 	return &p, nil
 }
 
-func (t tagRulesets) Update(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.TagProtection) (*gitoperationslib.TagProtection, error) {
+func (t tagRulesets) Edit(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.TagProtection) (*gitoperationslib.TagProtection, error) {
 	if rule.Pattern == "" {
 		rule.Pattern = pattern
 	}

@@ -61,7 +61,7 @@ func toCurrentUser(u *gh.User) *gitoperationslib.CurrentUser {
 	}
 }
 
-func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error) {
+func (d users) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error) {
 	u, _, err := d.c.gh.Users.Get(ctx, "")
 	if err != nil {
 		return nil, convertError(err)
@@ -81,7 +81,7 @@ func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error
 		return nil, err
 	}
 	me.Orgs, err = partial.Collect(ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
-		return d.ListOrgs(ctx, "", o)
+		return d.c.Orgs().List(ctx, "", o)
 	})
 	if err := res.Add("organisations", err); err != nil {
 		return nil, err

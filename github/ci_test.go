@@ -46,10 +46,10 @@ func TestSecretsGitHub(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	if err := c.Secrets().Set(ctx, gitoperationslib.RepoCI("acme", "widget"), "TOKEN", "s3cr3t"); err != nil {
+	if err := c.CI().Secrets().Set(ctx, gitoperationslib.RepoCI("acme", "widget"), "TOKEN", "s3cr3t"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Secrets().Set(ctx, gitoperationslib.OrgCI("acme"), "TOKEN", "s3cr3t"); err != nil {
+	if err := c.CI().Secrets().Set(ctx, gitoperationslib.OrgCI("acme"), "TOKEN", "s3cr3t"); err != nil {
 		t.Fatal(err)
 	}
 	for path, body := range stored {
@@ -62,14 +62,14 @@ func TestSecretsGitHub(t *testing.T) {
 	if v := stored["/api/v3/orgs/acme/actions/secrets/TOKEN"]["visibility"]; v != "all" {
 		t.Errorf("org secret visibility = %v, want all", v)
 	}
-	page, err := c.Secrets().List(ctx, gitoperationslib.RepoCI("acme", "widget"), gitoperationslib.ListOptions{})
+	page, err := c.CI().Secrets().List(ctx, gitoperationslib.RepoCI("acme", "widget"), gitoperationslib.ListOptions{})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Name != "TOKEN" || page.Items[0].UpdatedAt.IsZero() {
 		t.Errorf("List = %+v, %v", page, err)
 	}
-	if err := c.Secrets().Delete(ctx, gitoperationslib.OrgCI("acme"), "TOKEN"); err != nil {
+	if err := c.CI().Secrets().Delete(ctx, gitoperationslib.OrgCI("acme"), "TOKEN"); err != nil {
 		t.Error(err)
 	}
-	if err := c.Secrets().Set(ctx, gitoperationslib.UserCI(), "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.CI().Secrets().Set(ctx, gitoperationslib.UserCI(), "X", "x"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("user scope: err = %v, want ErrNotSupported", err)
 	}
 	if _, err := seal("not base64!", "x"); err == nil {
@@ -107,10 +107,10 @@ func TestVariablesGitHub(t *testing.T) {
 	repo, org := gitoperationslib.RepoCI("acme", "widget"), gitoperationslib.OrgCI("acme")
 
 	// Unknown: PATCH 404, then POST. Known: PATCH only.
-	if err := c.Variables().Set(ctx, org, "ENV", "prod"); err != nil {
+	if err := c.CI().Variables().Set(ctx, org, "ENV", "prod"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Variables().Set(ctx, org, "ENV", "staging"); err != nil {
+	if err := c.CI().Variables().Set(ctx, org, "ENV", "staging"); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
@@ -127,16 +127,16 @@ func TestVariablesGitHub(t *testing.T) {
 	if b := bodies[2]; len(b) != 1 || b["value"] != "staging" {
 		t.Errorf("update body %v: an update must not change the visibility", b)
 	}
-	if v, err := c.Variables().Get(ctx, repo, "ENV"); err != nil || v.Value != "prod" || v.CreatedAt.IsZero() {
+	if v, err := c.CI().Variables().Get(ctx, repo, "ENV"); err != nil || v.Value != "prod" || v.CreatedAt.IsZero() {
 		t.Errorf("Get = %+v, %v", v, err)
 	}
-	if page, err := c.Variables().List(ctx, org, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
+	if page, err := c.CI().Variables().List(ctx, org, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
 		t.Errorf("List = %+v, %v", page, err)
 	}
-	if err := c.Variables().Delete(ctx, repo, "ENV"); err != nil {
+	if err := c.CI().Variables().Delete(ctx, repo, "ENV"); err != nil {
 		t.Error(err)
 	}
-	if _, err := c.Variables().Get(ctx, gitoperationslib.UserCI(), "ENV"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.CI().Variables().Get(ctx, gitoperationslib.UserCI(), "ENV"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("user scope: err = %v, want ErrNotSupported", err)
 	}
 }

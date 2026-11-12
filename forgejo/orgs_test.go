@@ -163,24 +163,24 @@ func TestOrgAvatars(t *testing.T) {
 	if !c.Capabilities().Has(gitoperationslib.CapOrgAvatars) {
 		t.Error("CapOrgAvatars not announced")
 	}
-	if err := c.SetOrgAvatar(ctx, "acme", strings.NewReader("PNGDATA")); err != nil || avatar["image"] != "UE5HREFUQQ==" {
+	if err := c.Orgs().SetAvatar(ctx, "acme", strings.NewReader("PNGDATA")); err != nil || avatar["image"] != "UE5HREFUQQ==" {
 		t.Errorf("SetOrgAvatar: %v, body %v", err, avatar)
 	}
-	if err := c.DeleteOrgAvatar(ctx, "acme"); err != nil {
+	if err := c.Orgs().DeleteAvatar(ctx, "acme"); err != nil {
 		t.Error(err)
 	}
 
 	n := len(requests)
-	if err := c.SetOrgAvatar(ctx, "acme", strings.NewReader("")); err == nil {
+	if err := c.Orgs().SetAvatar(ctx, "acme", strings.NewReader("")); err == nil {
 		t.Error("empty avatar accepted")
 	}
-	if err := c.SetOrgAvatar(ctx, "acme", io.LimitReader(zeros{}, gitoperationslib.MaxAvatarSize+1)); err == nil {
+	if err := c.Orgs().SetAvatar(ctx, "acme", io.LimitReader(zeros{}, gitoperationslib.MaxAvatarSize+1)); err == nil {
 		t.Error("oversized avatar accepted")
 	}
-	if err := c.SetOrgAvatar(ctx, "", strings.NewReader("PNGDATA")); err == nil {
+	if err := c.Orgs().SetAvatar(ctx, "", strings.NewReader("PNGDATA")); err == nil {
 		t.Error("SetOrgAvatar: empty organisation accepted")
 	}
-	if err := c.DeleteOrgAvatar(ctx, ""); err == nil {
+	if err := c.Orgs().DeleteAvatar(ctx, ""); err == nil {
 		t.Error("DeleteOrgAvatar: empty organisation accepted")
 	}
 	if len(requests) != n {

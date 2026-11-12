@@ -11,8 +11,6 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
 )
 
-var _ gitoperationslib.CommitStatuses = (*Client)(nil)
-
 type commitStatusJSON struct {
 	Key         string    `json:"key"`
 	Name        string    `json:"name"`
@@ -35,10 +33,11 @@ func statusState(s string) gitoperationslib.StatusState {
 	return gitoperationslib.StatusError // STOPPED
 }
 
-// CommitStatus implements gitoperationslib.CommitStatuses. Bitbucket Pipelines
+// Status implements gitoperationslib.Commits. Bitbucket Pipelines
 // and other CI systems report build statuses; the combined state is the
 // library's, as Bitbucket has none. A branch or tag costs one more request.
-func (c *Client) CommitStatus(ctx context.Context, owner, repo, ref string) (*gitoperationslib.CombinedStatus, error) {
+func (m commits) Status(ctx context.Context, owner, repo, ref string) (*gitoperationslib.CombinedStatus, error) {
+	c := m.c
 	sha, err := c.resolveCommit(ctx, owner, repo, ref)
 	if err != nil {
 		return nil, err
@@ -65,9 +64,10 @@ func (c *Client) CommitStatus(ctx context.Context, owner, repo, ref string) (*gi
 	return out, nil
 }
 
-// SetCommitStatus implements gitoperationslib.CommitStatuses: a build status,
+// SetStatus implements gitoperationslib.Commits: a build status,
 // keyed by Context.
-func (c *Client) SetCommitStatus(ctx context.Context, owner, repo, sha string, s gitoperationslib.CommitStatus) error {
+func (m commits) SetStatus(ctx context.Context, owner, repo, sha string, s gitoperationslib.CommitStatus) error {
+	c := m.c
 	if s.Context == "" || s.State == "" || s.TargetURL == "" {
 		return errors.New("bitbucket: a commit status needs a context, a state and a target URL")
 	}

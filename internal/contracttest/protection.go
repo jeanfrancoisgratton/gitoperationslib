@@ -91,7 +91,7 @@ func Protections(t *testing.T, env Env) {
 
 	// Update replaces the rule.
 	got.RequiredApprovals, got.RequiredStatusChecks, got.RequireUpToDate = 2, nil, false
-	updated, err := bp.Update(ctx, owner, *repo, def, *got)
+	updated, err := bp.Edit(ctx, owner, *repo, def, *got)
 	check(err)
 	if updated.RequiredApprovals != 2 || len(updated.RequiredStatusChecks) != 0 || updated.RequireUpToDate {
 		t.Errorf("updated = %+v", updated)
@@ -160,7 +160,7 @@ func Protections(t *testing.T, env Env) {
 		t.Error("creating a protected tag succeeded")
 	}
 
-	moved, err := tp.Update(ctx, owner, *repo, "v*", gitoperationslib.TagProtection{Pattern: "release-*", Allowlist: allow})
+	moved, err := tp.Edit(ctx, owner, *repo, "v*", gitoperationslib.TagProtection{Pattern: "release-*", Allowlist: allow})
 	check(err)
 	if moved.Pattern != "release-*" {
 		t.Errorf("updated tag rule = %+v", moved)

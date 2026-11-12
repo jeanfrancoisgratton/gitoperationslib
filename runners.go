@@ -2,29 +2,26 @@ package gitoperationslib
 
 import (
 	"context"
-	"io"
 	"time"
 )
 
 // Runners manages the records of CI runners on the forge: Forgejo Actions and
 // GitHub Actions self-hosted runners (CapRunners). Find it with a type assertion:
 //
-//	r, ok := client.(gitoperationslib.Runners)
-//
 // Only the forge's side: installing and starting a runner's program is left to
-// other tools, which take the token or configuration RegisterRunner returns, or
+// other tools, which take the token or configuration Register returns, or
 // the registration token.
 type Runners interface {
-	ListRunners(ctx context.Context, scope RunnerScope, opts ListRunnersOptions) (Page[Runner], error)
-	GetRunner(ctx context.Context, scope RunnerScope, id int64) (*Runner, error)
-	// RegisterRunner creates a runner's record, and returns what its program needs
+	List(ctx context.Context, scope RunnerScope, opts ListRunnersOptions) (Page[Runner], error)
+	Get(ctx context.Context, scope RunnerScope, id int64) (*Runner, error)
+	// Register creates a runner's record, and returns what its program needs
 	// to connect. GitHub only registers single-use runners (Ephemeral), and returns
-	// ErrNotSupported otherwise: use RunnerRegistrationToken and the runner's
+	// ErrNotSupported otherwise: use RegistrationToken and the runner's
 	// configuration script for a lasting one.
-	RegisterRunner(ctx context.Context, scope RunnerScope, opts RegisterRunnerOptions) (*RegisteredRunner, error)
-	DeleteRunner(ctx context.Context, scope RunnerScope, id int64) error
-	// RunnerRegistrationToken returns a token a runner's program registers with.
-	RunnerRegistrationToken(ctx context.Context, scope RunnerScope) (*RunnerToken, error)
+	Register(ctx context.Context, scope RunnerScope, opts RegisterRunnerOptions) (*RegisteredRunner, error)
+	Delete(ctx context.Context, scope RunnerScope, id int64) error
+	// RegistrationToken returns a token a runner's program registers with.
+	RegistrationToken(ctx context.Context, scope RunnerScope) (*RunnerToken, error)
 }
 
 // RunnerScope says whose runners: a repository's, an organisation's (Repo empty),
@@ -103,21 +100,4 @@ type RegisteredRunner struct {
 type RunnerToken struct {
 	Token     string    `json:"-"`
 	ExpiresAt time.Time `json:"expiresAt,omitzero"` // GitHub only; Forgejo's does not expire
-}
-
-// WorkflowLogFollower writes a job's log while it runs (CapWorkflowLogFollow).
-// Find it with a type assertion:
-//
-//	f, ok := client.(gitoperationslib.WorkflowLogFollower)
-type WorkflowLogFollower interface {
-	// FollowWorkflowJobLog writes the job's log to out as it grows, and returns once
-	// the job ended and all of it is written, or when ctx is done. Forgejo needs
-	// version 17, and sends the log as it comes. GitHub only has it once the job
-	// ended: the call waits, then writes it all.
-	FollowWorkflowJobLog(ctx context.Context, owner, repo string, jobID int64, out io.Writer, opts FollowLogOptions) error
-}
-
-// FollowLogOptions tunes FollowWorkflowJobLog.
-type FollowLogOptions struct {
-	Interval time.Duration `json:"interval,omitzero"` // between polls; zero: two seconds
 }

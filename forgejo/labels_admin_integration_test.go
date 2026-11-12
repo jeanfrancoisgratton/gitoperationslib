@@ -26,43 +26,43 @@ func TestIntegrationAdminOrgLabels(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = c.Orgs().Delete(context.Background(), org) })
 
-	empty, err := c.ListOrgLabels(ctx, org, gitoperationslib.ListOptions{})
+	empty, err := c.Orgs().Labels().List(ctx, org, gitoperationslib.ListOptions{})
 	if err != nil || len(empty.Items) != 0 {
 		t.Errorf("no labels yet: %+v, %v", empty, err)
 	}
-	bug, err := c.CreateOrgLabel(ctx, org, gitoperationslib.Label{Name: "bug", Color: "#D73A4A", Description: "broken"})
+	bug, err := c.Orgs().Labels().Create(ctx, org, gitoperationslib.Label{Name: "bug", Color: "#D73A4A", Description: "broken"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bug.ID == 0 || bug.Color != "d73a4a" || bug.Description != "broken" {
 		t.Errorf("created = %+v", bug)
 	}
-	if _, err := c.CreateOrgLabel(ctx, org, gitoperationslib.Label{Name: "bug"}); !errors.Is(err, gitoperationslib.ErrNameTaken) {
+	if _, err := c.Orgs().Labels().Create(ctx, org, gitoperationslib.Label{Name: "bug"}); !errors.Is(err, gitoperationslib.ErrNameTaken) {
 		t.Errorf("name in use: %v", err)
 	}
-	other, err := c.CreateOrgLabel(ctx, org, gitoperationslib.Label{Name: "other"})
+	other, err := c.Orgs().Labels().Create(ctx, org, gitoperationslib.Label{Name: "other"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if other.Color != "ededed" {
 		t.Errorf("default colour = %+v", other)
 	}
-	if got, err := c.GetOrgLabel(ctx, org, bug.ID); err != nil || got.Name != "bug" {
+	if got, err := c.Orgs().Labels().Get(ctx, org, bug.ID); err != nil || got.Name != "bug" {
 		t.Errorf("Get = %+v, %v", got, err)
 	}
-	if _, err := c.GetOrgLabel(ctx, org, 99999); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Orgs().Labels().Get(ctx, org, 99999); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get(missing): %v", err)
 	}
-	if _, err := c.EditOrgLabel(ctx, org, other.ID, gitoperationslib.EditLabelOptions{Name: gitoperationslib.Ptr("bug")}); !errors.Is(err, gitoperationslib.ErrNameTaken) {
+	if _, err := c.Orgs().Labels().Edit(ctx, org, other.ID, gitoperationslib.EditLabelOptions{Name: gitoperationslib.Ptr("bug")}); !errors.Is(err, gitoperationslib.ErrNameTaken) {
 		t.Errorf("rename onto a name in use: %v", err)
 	}
-	edited, err := c.EditOrgLabel(ctx, org, other.ID, gitoperationslib.EditLabelOptions{Name: gitoperationslib.Ptr("other"), Color: gitoperationslib.Ptr("FBCA04")})
+	edited, err := c.Orgs().Labels().Edit(ctx, org, other.ID, gitoperationslib.EditLabelOptions{Name: gitoperationslib.Ptr("other"), Color: gitoperationslib.Ptr("FBCA04")})
 	if err != nil || edited.Color != "fbca04" {
 		t.Errorf("Edit keeping its name = %+v, %v", edited, err)
 	}
 	seen := 0
 	for _, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: 1}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Label], error) {
-		return c.ListOrgLabels(ctx, org, o)
+		return c.Orgs().Labels().List(ctx, org, o)
 	}) {
 		if err != nil {
 			t.Fatal(err)
@@ -74,10 +74,10 @@ func TestIntegrationAdminOrgLabels(t *testing.T) {
 	}
 
 	// A user has none; a name that is neither is a 404.
-	if page, err := c.ListOrgLabels(ctx, admin, gitoperationslib.ListOptions{}); err != nil || page.Items == nil || len(page.Items) != 0 {
+	if page, err := c.Orgs().Labels().List(ctx, admin, gitoperationslib.ListOptions{}); err != nil || page.Items == nil || len(page.Items) != 0 {
 		t.Errorf("a user: %+v, %v", page, err)
 	}
-	if _, err := c.ListOrgLabels(ctx, "no-such-owner-at-all", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Orgs().Labels().List(ctx, "no-such-owner-at-all", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("nobody: %v", err)
 	}
 
@@ -120,10 +120,10 @@ func TestIntegrationAdminOrgLabels(t *testing.T) {
 		t.Errorf("filter on both, which no issue carries = %v", got)
 	}
 
-	if err := c.DeleteOrgLabel(ctx, org, other.ID); err != nil {
+	if err := c.Orgs().Labels().Delete(ctx, org, other.ID); err != nil {
 		t.Error(err)
 	}
-	if err := c.DeleteOrgLabel(ctx, org, other.ID); !gitoperationslib.IsNotFound(err) {
+	if err := c.Orgs().Labels().Delete(ctx, org, other.ID); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("delete a missing label: %v", err)
 	}
 }
@@ -164,19 +164,19 @@ func TestIntegrationAdminDuplicateLabels(t *testing.T) {
 	}
 
 	// Repairing: rename one, delete the other.
-	if _, err := c.EditLabelByID(ctx, admin, repo, ids[0], gitoperationslib.EditLabelOptions{Name: gitoperationslib.Ptr("kept")}); err != nil {
+	if _, err := c.Labels().EditByID(ctx, admin, repo, ids[0], gitoperationslib.EditLabelOptions{Name: gitoperationslib.Ptr("kept")}); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := labels.Get(ctx, admin, repo, "dup"); err != nil || got.ID != ids[1] {
 		t.Errorf("after the rename: %+v, %v", got, err)
 	}
-	if err := c.DeleteLabelByID(ctx, admin, repo, ids[1]); err != nil {
+	if err := c.Labels().DeleteByID(ctx, admin, repo, ids[1]); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.DeleteLabelByID(ctx, admin, repo, ids[1]); !gitoperationslib.IsNotFound(err) {
+	if err := c.Labels().DeleteByID(ctx, admin, repo, ids[1]); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("delete a missing label: %v", err)
 	}
-	if _, err := c.EditLabelByID(ctx, admin, repo, ids[0], gitoperationslib.EditLabelOptions{Color: gitoperationslib.Ptr("000000")}); err != nil {
+	if _, err := c.Labels().EditByID(ctx, admin, repo, ids[0], gitoperationslib.EditLabelOptions{Color: gitoperationslib.Ptr("000000")}); err != nil {
 		t.Errorf("edit without renaming: %v", err)
 	}
 }

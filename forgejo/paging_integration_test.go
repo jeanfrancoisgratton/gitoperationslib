@@ -34,10 +34,10 @@ func TestIntegrationAllWithoutLinkHeader(t *testing.T) {
 		if _, err := c.Milestones().Create(ctx, login, repo, gitoperationslib.CreateMilestoneOptions{Title: fmt.Sprintf("m%d", i)}); err != nil {
 			t.Fatal(err)
 		}
-		if err := c.Secrets().Set(ctx, scope, fmt.Sprintf("S%d", i), "v"); err != nil {
+		if err := c.CI().Secrets().Set(ctx, scope, fmt.Sprintf("S%d", i), "v"); err != nil {
 			t.Fatal(err)
 		}
-		if err := c.Variables().Set(ctx, scope, fmt.Sprintf("V%d", i), fmt.Sprintf("value%d", i)); err != nil {
+		if err := c.CI().Variables().Set(ctx, scope, fmt.Sprintf("V%d", i), fmt.Sprintf("value%d", i)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -54,13 +54,13 @@ func TestIntegrationAllWithoutLinkHeader(t *testing.T) {
 		t.Errorf("milestones: All returned %d, want %d", got, total)
 	}
 	if got := collect(t, one, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Secret], error) {
-		return c.Secrets().List(ctx, scope, o)
+		return c.CI().Secrets().List(ctx, scope, o)
 	}); got != total {
 		t.Errorf("secrets: All returned %d, want %d", got, total)
 	}
 	values := map[string]string{}
 	for v, err := range gitoperationslib.All(ctx, one, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Variable], error) {
-		return c.Variables().List(ctx, scope, o)
+		return c.CI().Variables().List(ctx, scope, o)
 	}) {
 		if err != nil {
 			t.Fatal(err)

@@ -91,16 +91,16 @@ func (k *gpgKeyJSON) toGPGKey() gitoperationslib.GPGKey {
 	return key
 }
 
-func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error) {
+func (svc users) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error) {
 	var u meJSON
-	if _, err := d.c.api.Do(ctx, http.MethodGet, "user", nil, nil, &u); err != nil {
+	if _, err := svc.c.api.Do(ctx, http.MethodGet, "user", nil, nil, &u); err != nil {
 		return nil, err
 	}
 	me := &gitoperationslib.CurrentUser{User: u.toUser(), LoginName: u.LoginName, AuthSourceID: u.SourceID}
 	var res partial.Result
 
 	var settings settingsJSON
-	_, err := d.c.api.Do(ctx, http.MethodGet, "user/settings", nil, nil, &settings)
+	_, err := svc.c.api.Do(ctx, http.MethodGet, "user/settings", nil, nil, &settings)
 	if err == nil {
 		me.Settings = &gitoperationslib.UserSettings{
 			Theme:               settings.Theme,
@@ -117,7 +117,7 @@ func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error
 
 	// Not paginated.
 	var emails []emailJSON
-	_, err = d.c.api.Do(ctx, http.MethodGet, "user/emails", nil, nil, &emails)
+	_, err = svc.c.api.Do(ctx, http.MethodGet, "user/emails", nil, nil, &emails)
 	if err == nil {
 		me.Emails = make([]gitoperationslib.Email, len(emails))
 		for i, e := range emails {
@@ -129,24 +129,24 @@ func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error
 	}
 
 	me.Orgs, err = partial.Collect(ctx, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Org], error) {
-		return d.ListOrgs(ctx, "", o)
+		return orgs{svc.c}.List(ctx, "", o)
 	})
 	if err := res.Add("organisations", err); err != nil {
 		return nil, err
 	}
-	me.Teams, err = partial.Collect(ctx, listAt(d.c, "user/teams", (*teamJSON).toTeam))
+	me.Teams, err = partial.Collect(ctx, listAt(svc.c, "user/teams", (*teamJSON).toTeam))
 	if err := res.Add("teams", err); err != nil {
 		return nil, err
 	}
-	me.Repos, err = partial.Collect(ctx, d.repoLister("user/repos"))
+	me.Repos, err = partial.Collect(ctx, repoLister(svc.c, "user/repos"))
 	if err := res.Add("repositories", err); err != nil {
 		return nil, err
 	}
-	me.SSHKeys, err = partial.Collect(ctx, listAt(d.c, "user/keys", (*sshKeyJSON).toSSHKey))
+	me.SSHKeys, err = partial.Collect(ctx, listAt(svc.c, "user/keys", (*sshKeyJSON).toSSHKey))
 	if err := res.Add("SSH keys", err); err != nil {
 		return nil, err
 	}
-	me.GPGKeys, err = partial.Collect(ctx, listAt(d.c, "user/gpg_keys", (*gpgKeyJSON).toGPGKey))
+	me.GPGKeys, err = partial.Collect(ctx, listAt(svc.c, "user/gpg_keys", (*gpgKeyJSON).toGPGKey))
 	if err := res.Add("GPG keys", err); err != nil {
 		return nil, err
 	}

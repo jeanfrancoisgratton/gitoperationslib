@@ -48,38 +48,23 @@ type CollaboratorInvitation struct {
 	CreatedAt time.Time `json:"createdAt,omitzero"`
 }
 
-// CollaboratorInvitations lists who has been invited to a repository and has not
-// accepted yet, which takes admin access to it. Only the GitHub backend implements
-// it (CapCollaboratorInvitations): the other forges give access at once. Find it
-// with a type assertion:
-//
-//	i, ok := client.(gitoperationslib.CollaboratorInvitations)
-//
-// To withdraw an invitation, use Collaborators.RemoveCollaborator.
-type CollaboratorInvitations interface {
-	ListCollaboratorInvitations(ctx context.Context, owner, repo string, opts ListOptions) (Page[CollaboratorInvitation], error)
-}
-
 // Collaborators manages the users with their own access to a repository, which
-// takes admin access to it. The Forgejo, GitHub and Bitbucket clients implement
-// it (CapCollaborators); find it with a type assertion:
-//
-//	c, ok := client.(gitoperationslib.Collaborators)
+// takes admin access to it (CapCollaborators).
 //
 // On Bitbucket, a user is a nickname of a member of the workspace, an account
 // ID or a {UUID}. To add someone from outside the workspace, use one of the
 // last two.
 type Collaborators interface {
-	// ListCollaborators lists those who were given access directly, not
+	// List lists those who were given access directly, not
 	// through a team. GitHub and Bitbucket usually include the repository's
 	// owner, Forgejo does not. Forgejo takes one more request per collaborator
 	// to read their permission.
-	ListCollaborators(ctx context.Context, owner, repo string, opts ListOptions) (Page[Collaborator], error)
-	// GetCollaborator returns a collaborator; the error is HTTP 404 for
+	List(ctx context.Context, owner, repo string, opts ListOptions) (Page[Collaborator], error)
+	// Get returns a collaborator; the error is HTTP 404 for
 	// anybody else. On GitHub it also finds those with access through the
 	// organisation, and it takes two requests on Forgejo and GitHub.
-	GetCollaborator(ctx context.Context, owner, repo, user string) (*Collaborator, error)
-	// AddCollaborator gives user access to the repository, or changes the
+	Get(ctx context.Context, owner, repo, user string) (*Collaborator, error)
+	// Add gives user access to the repository, or changes the
 	// permission of an existing collaborator. invited is true when GitHub sent
 	// an invitation instead: the user has no access, and is not listed, until
 	// they accept it.
@@ -87,9 +72,14 @@ type Collaborators interface {
 	// Forgejo and Bitbucket only take read, write and admin, and return
 	// ErrNotSupported for the others. GitHub ignores the permission on a
 	// repository owned by a user, as opposed to an organisation.
-	AddCollaborator(ctx context.Context, owner, repo, user string, permission CollaboratorPermission) (invited bool, err error)
-	// RemoveCollaborator removes user's access; on GitHub it also withdraws a
+	Add(ctx context.Context, owner, repo, user string, permission CollaboratorPermission) (invited bool, err error)
+	// Remove removes user's access; on GitHub it also withdraws a
 	// pending invitation, which takes more requests. Removing an existing user
 	// who has no access is not an error.
-	RemoveCollaborator(ctx context.Context, owner, repo, user string) error
+	Remove(ctx context.Context, owner, repo, user string) error
+
+	// ListInvitations lists who has been invited and has not accepted yet. GitHub
+	// only (CapCollaboratorInvitations): the other forges give access at once. To
+	// withdraw an invitation, use Remove.
+	ListInvitations(ctx context.Context, owner, repo string, opts ListOptions) (Page[CollaboratorInvitation], error)
 }

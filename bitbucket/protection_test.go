@@ -53,7 +53,7 @@ func TestUpdateProtectionBitbucket(t *testing.T) {
 
 	// The old restrictions go first; an empty Pattern keeps the rule's pattern;
 	// the other rule is left alone.
-	rule, err := c.BranchProtections().Update(ctx, "acme", "widget", "main", gitoperationslib.BranchProtection{AllowForcePush: true})
+	rule, err := c.BranchProtections().Edit(ctx, "acme", "widget", "main", gitoperationslib.BranchProtection{AllowForcePush: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestUpdateProtectionBitbucket(t *testing.T) {
 
 	// A new Pattern moves the rule.
 	*writes = nil
-	moved, err := c.BranchProtections().Update(ctx, "acme", "widget", "dev", gitoperationslib.BranchProtection{Pattern: "develop", AllowForcePush: true})
+	moved, err := c.BranchProtections().Edit(ctx, "acme", "widget", "dev", gitoperationslib.BranchProtection{Pattern: "develop", AllowForcePush: true})
 	if err != nil || moved.Pattern != "develop" {
 		t.Errorf("moved = %+v, %v", moved, err)
 	}
@@ -82,13 +82,13 @@ func TestUpdateProtectionRefusedBitbucket(t *testing.T) {
 	ctx := context.Background()
 	bp := c.BranchProtections()
 
-	if _, err := bp.Update(ctx, "acme", "widget", "main", gitoperationslib.BranchProtection{RequireSignedCommits: true}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := bp.Edit(ctx, "acme", "widget", "main", gitoperationslib.BranchProtection{RequireSignedCommits: true}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("unsupported option: err = %v", err)
 	}
-	if _, err := bp.Update(ctx, "acme", "widget", "main", gitoperationslib.BranchProtection{AllowDeletion: true, AllowForcePush: true}); err == nil || !strings.Contains(err.Error(), "restricts nothing") {
+	if _, err := bp.Edit(ctx, "acme", "widget", "main", gitoperationslib.BranchProtection{AllowDeletion: true, AllowForcePush: true}); err == nil || !strings.Contains(err.Error(), "restricts nothing") {
 		t.Errorf("empty rule: err = %v", err)
 	}
-	if _, err := bp.Update(ctx, "acme", "widget", "none", gitoperationslib.BranchProtection{}); !gitoperationslib.IsNotFound(err) {
+	if _, err := bp.Edit(ctx, "acme", "widget", "none", gitoperationslib.BranchProtection{}); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown pattern: err = %v, want 404", err)
 	}
 	if len(*writes) != 0 {

@@ -14,14 +14,9 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
 )
 
-var (
-	_ gitoperationslib.CommitDiffs    = (*Client)(nil)
-	_ gitoperationslib.PRContents     = (*Client)(nil)
-	_ gitoperationslib.ReviewComments = (*Client)(nil)
-)
-
-// CommitDiff implements gitoperationslib.CommitDiffs.
-func (c *Client) CommitDiff(ctx context.Context, owner, repo, ref string, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+// Diff implements gitoperationslib.Commits.
+func (m commits) Diff(ctx context.Context, owner, repo, ref string, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+	c := m.c
 	if ref == "" {
 		return nil, errors.New("forgejo: commits.diff: ref is required")
 	}
@@ -31,8 +26,9 @@ func (c *Client) CommitDiff(ctx context.Context, owner, repo, ref string, format
 	return c.api.Stream(ctx, repoPath(owner, repo, "git", "commits", ref+"."+string(format)))
 }
 
-// PullRequestDiff implements gitoperationslib.PRContents.
-func (c *Client) PullRequestDiff(ctx context.Context, owner, repo string, number int, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+// Diff implements gitoperationslib.PullRequests.
+func (p pulls) Diff(ctx context.Context, owner, repo string, number int, format gitoperationslib.DiffFormat) (io.ReadCloser, error) {
+	c := p.c
 	if !format.Valid() {
 		return nil, fmt.Errorf("forgejo: pulls.diff: invalid format %q", format)
 	}
@@ -59,13 +55,15 @@ func (f *prFileJSON) toChangedFile() gitoperationslib.ChangedFile {
 	}
 }
 
-// PullRequestFiles implements gitoperationslib.PRContents.
-func (c *Client) PullRequestFiles(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ChangedFile], error) {
+// Files implements gitoperationslib.PullRequests.
+func (p pulls) Files(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ChangedFile], error) {
+	c := p.c
 	return listAt(c, pullsPath(owner, repo, strconv.Itoa(number), "files"), (*prFileJSON).toChangedFile)(ctx, opts)
 }
 
-// PullRequestCommits implements gitoperationslib.PRContents.
-func (c *Client) PullRequestCommits(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+// Commits implements gitoperationslib.PullRequests.
+func (p pulls) Commits(ctx context.Context, owner, repo string, number int, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Commit], error) {
+	c := p.c
 	q := forgejoapi.ListQuery(opts)
 	q.Set("files", "false")
 	q.Set("verification", "false")
@@ -114,9 +112,10 @@ func (c *Client) reviewComments(ctx context.Context, owner, repo string, number 
 	return out, nil
 }
 
-// ListReviewComments implements gitoperationslib.ReviewComments. Forgejo only
+// ListReviewComments implements gitoperationslib.PullRequests. Forgejo only
 // lists comments review by review, so they all come at once.
-func (c *Client) ListReviewComments(ctx context.Context, owner, repo string, number int, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ReviewComment], error) {
+func (p pulls) ListReviewComments(ctx context.Context, owner, repo string, number int, _ gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.ReviewComment], error) {
+	c := p.c
 	type review struct {
 		ID       int64 `json:"id"`
 		Comments int   `json:"comments_count"`
@@ -146,9 +145,10 @@ func (c *Client) ListReviewComments(ctx context.Context, owner, repo string, num
 // ones ignore it.
 var multiLineCommentsVersion = Version{16, 0, 0}
 
-// CreateReviewComment implements gitoperationslib.ReviewComments: comments
+// CreateReviewComment implements gitoperationslib.PullRequests: comments
 // only exist within a review, so it creates one.
-func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, number int, opts gitoperationslib.CreateReviewCommentOptions) (*gitoperationslib.ReviewComment, error) {
+func (p pulls) CreateReviewComment(ctx context.Context, owner, repo string, number int, opts gitoperationslib.CreateReviewCommentOptions) (*gitoperationslib.ReviewComment, error) {
+	c := p.c
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("forgejo: pulls.create_review_comment: %w", err)
 	}
@@ -184,12 +184,13 @@ func (c *Client) CreateReviewComment(ctx context.Context, owner, repo string, nu
 	return &rc, nil
 }
 
-// DeleteReviewComment implements gitoperationslib.ReviewComments. The path
+// DeleteReviewComment implements gitoperationslib.PullRequests. The path
 // needs the comment's review, so it lists the comments first. DELETE
 // /issues/comments/{id} is no shortcut: it answers 204 for a line comment and
 // leaves it in place (checked on 15.0.11).
-func (c *Client) DeleteReviewComment(ctx context.Context, owner, repo string, number int, id int64) error {
-	page, err := c.ListReviewComments(ctx, owner, repo, number, gitoperationslib.ListOptions{})
+func (p pulls) DeleteReviewComment(ctx context.Context, owner, repo string, number int, id int64) error {
+	c := p.c
+	page, err := pulls{c}.ListReviewComments(ctx, owner, repo, number, gitoperationslib.ListOptions{})
 	if err != nil {
 		return err
 	}

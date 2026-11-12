@@ -9,8 +9,6 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 )
 
-var _ gitoperationslib.History = (*Client)(nil)
-
 // Commits reads commit history. Get reads every page of a commit's files
 // (GitHub returns 300 per page, and at most 3000 in all).
 func (c *Client) Commits() gitoperationslib.Commits { return commits{c} }

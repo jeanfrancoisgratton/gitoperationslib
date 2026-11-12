@@ -45,11 +45,11 @@ func TestIntegrationAdminPost15Fields(t *testing.T) {
 		_ = binary.Write(&blob, binary.BigEndian, uint32(len(part)))
 		blob.Write(part)
 	}
-	key, err := c.SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: name, Key: "ssh-ed25519 " + base64.StdEncoding.EncodeToString(blob.Bytes())})
+	key, err := c.Account().SSHKeys().Add(ctx, gitoperationslib.AddSSHKeyOptions{Title: name, Key: "ssh-ed25519 " + base64.StdEncoding.EncodeToString(blob.Bytes())})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = c.SSHKeys().Delete(context.Background(), key.ID) })
+	t.Cleanup(func() { _ = c.Account().SSHKeys().Delete(context.Background(), key.ID) })
 	if key.UpdatedAt.IsZero() == has {
 		t.Errorf("key.UpdatedAt = %v on %s", key.UpdatedAt, c.Version())
 	}
@@ -62,7 +62,7 @@ func TestIntegrationAdminUserFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	logins := func(enabled bool) ([]string, error) {
-		page, err := c.ListUsersBy(ctx, gitoperationslib.UserFilter{TwoFactor: &enabled}, gitoperationslib.ListOptions{PerPage: 50})
+		page, err := c.Users().Search(ctx, gitoperationslib.UserFilter{TwoFactor: &enabled}, gitoperationslib.ListOptions{PerPage: 50})
 		var out []string
 		for _, u := range page.Items {
 			out = append(out, u.Login)
@@ -86,7 +86,7 @@ func TestIntegrationAdminUserFilters(t *testing.T) {
 	if !slices.Contains(without, admin) || slices.Contains(with, admin) {
 		t.Errorf("with 2FA %v, without %v; admin %s has none", with, without, admin)
 	}
-	all, err := c.ListUsersBy(ctx, gitoperationslib.UserFilter{}, gitoperationslib.ListOptions{PerPage: 50})
+	all, err := c.Users().Search(ctx, gitoperationslib.UserFilter{}, gitoperationslib.ListOptions{PerPage: 50})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,10 +114,10 @@ func TestIntegrationAdminAddMemberJoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Teams().AddMember(ctx, team.ID, login); err != nil {
+	if err := c.Teams().AddMember(ctx, name, team.Name, login); err != nil {
 		t.Fatal(err)
 	}
-	if member, err := c.Teams().IsMember(ctx, team.ID, login); err != nil || !member {
+	if member, err := c.Teams().IsMember(ctx, name, team.Name, login); err != nil || !member {
 		t.Errorf("IsMember = %v, %v", member, err)
 	}
 }
@@ -131,7 +131,7 @@ func TestIntegrationAdminTokensOf(t *testing.T) {
 	if _, err := c.Users().Create(ctx, gitoperationslib.CreateUserOptions{Login: login, Email: login + "@example.invalid", Password: "Passw0rd-long-1", MustChangePassword: gitoperationslib.Ptr(false)}); err != nil {
 		t.Fatal(err)
 	}
-	tokens := c.TokensOf(login)
+	tokens := c.Users().Tokens(login)
 	if c.Version().Compare(adminTokensVersion) < 0 {
 		if _, err := tokens.List(ctx, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 			t.Errorf("before 16: %v", err)

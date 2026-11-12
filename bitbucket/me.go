@@ -65,7 +65,7 @@ const noMeTeams = "Bitbucket Cloud groups are not exposed by the REST API 2.0"
 
 // Me reports workspaces as organisations. Teams are recorded in Incomplete
 // as not supported.
-func (d directory) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error) {
+func (d users) Me(ctx context.Context) (*gitoperationslib.CurrentUser, error) {
 	var u meJSON
 	if _, err := d.c.api.Do(ctx, http.MethodGet, "user", nil, nil, &u); err != nil {
 		return nil, err

@@ -52,7 +52,7 @@ func TestIntegrationMirrors(t *testing.T) {
 	}
 
 	t.Run("not a mirror", func(t *testing.T) {
-		if err := c.SyncMirror(ctx, me, source); gitoperationslib.StatusCode(err) != http.StatusBadRequest {
+		if err := c.Mirrors().Sync(ctx, me, source); gitoperationslib.StatusCode(err) != http.StatusBadRequest {
 			t.Errorf("SyncMirror = %v, want 400", err)
 		}
 	})
@@ -63,7 +63,7 @@ func TestIntegrationMirrors(t *testing.T) {
 			"host":           {RemoteAddress: "https://gitopslib.invalid/x.git", Interval: time.Hour},
 			"credentials":    {RemoteAddress: "https://u:p@example.com/x.git", Interval: time.Hour},
 		} {
-			if _, err := c.CreatePushMirror(ctx, me, source, opts); gitoperationslib.StatusCode(err) != http.StatusBadRequest {
+			if _, err := c.Mirrors().CreatePush(ctx, me, source, opts); gitoperationslib.StatusCode(err) != http.StatusBadRequest {
 				t.Errorf("%s: err = %v, want 400", name, err)
 			} else {
 				t.Logf("%s: %v", name, err)
@@ -72,21 +72,21 @@ func TestIntegrationMirrors(t *testing.T) {
 	})
 
 	t.Run("ssh", func(t *testing.T) {
-		m, err := c.CreatePushMirror(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{RemoteAddress: "git@example.com:x/y.git", UseSSH: true})
+		m, err := c.Mirrors().CreatePush(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{RemoteAddress: "git@example.com:x/y.git", UseSSH: true})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if m.PublicKey == "" || m.Interval != 0 {
 			t.Errorf("mirror = %+v", m)
 		}
-		if err := c.DeletePushMirror(ctx, me, source, m.Name); err != nil {
+		if err := c.Mirrors().DeletePush(ctx, me, source, m.Name); err != nil {
 			t.Error(err)
 		}
 	})
 
 	t.Run("push", func(t *testing.T) {
 		needsPlainHTTP(t)
-		m, err := c.CreatePushMirror(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{
+		m, err := c.Mirrors().CreatePush(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{
 			RemoteAddress: local + me + "/" + target + ".git", Username: me, Password: token,
 			Interval: 8 * time.Hour, SyncOnCommit: true, BranchFilter: "main",
 		})
@@ -96,14 +96,14 @@ func TestIntegrationMirrors(t *testing.T) {
 		if m.Name == "" || m.Interval != 8*time.Hour || !m.SyncOnCommit || m.BranchFilter != "main" || !m.LastSync.IsZero() || m.CreatedAt.IsZero() {
 			t.Errorf("mirror = %+v", m)
 		}
-		other, err := c.CreatePushMirror(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{RemoteAddress: "https://example.com/x/y.git", Interval: time.Hour})
+		other, err := c.Mirrors().CreatePush(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{RemoteAddress: "https://example.com/x/y.git", Interval: time.Hour})
 		if err != nil {
 			t.Fatal(err)
 		}
 		// Paging, as both fit on a page otherwise.
 		var names []string
 		for item, err := range gitoperationslib.All(ctx, gitoperationslib.ListOptions{PerPage: 1}, func(ctx context.Context, o gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.PushMirror], error) {
-			return c.ListPushMirrors(ctx, me, source, o)
+			return c.Mirrors().ListPush(ctx, me, source, o)
 		}) {
 			if err != nil {
 				t.Fatal(err)
@@ -113,15 +113,15 @@ func TestIntegrationMirrors(t *testing.T) {
 		if len(names) != 2 || names[0] == names[1] {
 			t.Errorf("listed %v", names)
 		}
-		if err := c.DeletePushMirror(ctx, me, source, other.Name); err != nil {
+		if err := c.Mirrors().DeletePush(ctx, me, source, other.Name); err != nil {
 			t.Error(err)
 		}
 
-		if err := c.SyncPushMirrors(ctx, me, source); err != nil {
+		if err := c.Mirrors().SyncPush(ctx, me, source); err != nil {
 			t.Fatal(err)
 		}
 		eventually("the push", func() bool {
-			got, err := c.GetPushMirror(ctx, me, source, m.Name)
+			got, err := c.Mirrors().GetPush(ctx, me, source, m.Name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -135,13 +135,13 @@ func TestIntegrationMirrors(t *testing.T) {
 			return err == nil
 		})
 
-		if err := c.DeletePushMirror(ctx, me, source, m.Name); err != nil {
+		if err := c.Mirrors().DeletePush(ctx, me, source, m.Name); err != nil {
 			t.Error(err)
 		}
-		if err := c.DeletePushMirror(ctx, me, source, m.Name); !gitoperationslib.IsNotFound(err) {
+		if err := c.Mirrors().DeletePush(ctx, me, source, m.Name); !gitoperationslib.IsNotFound(err) {
 			t.Errorf("second delete = %v", err)
 		}
-		if _, err := c.GetPushMirror(ctx, me, source, m.Name); !gitoperationslib.IsNotFound(err) {
+		if _, err := c.Mirrors().GetPush(ctx, me, source, m.Name); !gitoperationslib.IsNotFound(err) {
 			t.Errorf("Get after delete = %v", err)
 		}
 	})
@@ -151,7 +151,7 @@ func TestIntegrationMirrors(t *testing.T) {
 		needsPlainHTTP(t)
 		good := func() *gitoperationslib.PushMirror {
 			t.Helper()
-			m, err := c.CreatePushMirror(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{
+			m, err := c.Mirrors().CreatePush(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{
 				RemoteAddress: local + me + "/" + target + ".git", Username: me, Password: token, Interval: time.Hour,
 			})
 			if err != nil {
@@ -160,7 +160,7 @@ func TestIntegrationMirrors(t *testing.T) {
 			return m
 		}
 		first := good()
-		bad, err := c.CreatePushMirror(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{
+		bad, err := c.Mirrors().CreatePush(ctx, me, source, gitoperationslib.CreatePushMirrorOptions{
 			RemoteAddress: local + me + "/" + target + ".git", Username: me, Password: "wrong", Interval: time.Hour,
 		})
 		if err != nil {
@@ -168,16 +168,16 @@ func TestIntegrationMirrors(t *testing.T) {
 		}
 		last := good()
 		for _, m := range []*gitoperationslib.PushMirror{first, bad, last} {
-			t.Cleanup(func() { c.DeletePushMirror(context.Background(), me, source, m.Name) })
+			t.Cleanup(func() { c.Mirrors().DeletePush(context.Background(), me, source, m.Name) })
 		}
 
-		err = c.SyncPushMirrors(ctx, me, source)
+		err = c.Mirrors().SyncPush(ctx, me, source)
 		if gitoperationslib.StatusCode(err) != http.StatusInternalServerError || !strings.Contains(err.Error(), bad.Name) {
 			t.Errorf("SyncPushMirrors = %v, want 500 naming %s", err, bad.Name)
 		}
 		get := func(name string) *gitoperationslib.PushMirror {
 			t.Helper()
-			m, err := c.GetPushMirror(ctx, me, source, name)
+			m, err := c.Mirrors().GetPush(ctx, me, source, name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -217,7 +217,7 @@ func TestIntegrationMirrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := c.SyncMirror(ctx, me, pull); err != nil {
+		if err := c.Mirrors().Sync(ctx, me, pull); err != nil {
 			t.Fatal(err)
 		}
 		eventually("the fetch", func() bool {

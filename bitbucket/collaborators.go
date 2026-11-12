@@ -9,9 +9,21 @@ import (
 
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/bitbucketapi"
+	"github.com/jeanfrancoisgratton/gitoperationslib/internal/unsupported"
 )
 
-var _ gitoperationslib.Collaborators = (*Client)(nil)
+var _ gitoperationslib.Collaborators = collaborators{}
+
+// Collaborators implements gitoperationslib.Client. Bitbucket gives access at
+// once: there are no invitations to list.
+func (c *Client) Collaborators() gitoperationslib.Collaborators {
+	return collaborators{c, unsupported.Collaborators{Backend: gitoperationslib.BackendBitbucket, Reason: "Bitbucket gives access at once"}}
+}
+
+type collaborators struct {
+	c *Client
+	unsupported.Collaborators
+}
 
 type userPermissionJSON struct {
 	Permission string   `json:"permission"`
@@ -39,8 +51,9 @@ func (c *Client) collaboratorPath(ctx context.Context, owner, repo, user string)
 	return repoPath(owner, repo, "permissions-config", "users", user), nil
 }
 
-// ListCollaborators implements gitoperationslib.Collaborators.
-func (c *Client) ListCollaborators(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Collaborator], error) {
+// List implements gitoperationslib.Collaborators.
+func (svc collaborators) List(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Collaborator], error) {
+	c := svc.c
 	values, next, err := bitbucketapi.ListPaged[userPermissionJSON](ctx, c.api, repoPath(owner, repo, "permissions-config", "users"), bitbucketapi.ListQuery(opts))
 	if err != nil {
 		return gitoperationslib.Page[gitoperationslib.Collaborator]{}, err
@@ -52,10 +65,11 @@ func (c *Client) ListCollaborators(ctx context.Context, owner, repo string, opts
 	return out, nil
 }
 
-// GetCollaborator implements gitoperationslib.Collaborators. Bitbucket answers
+// Get implements gitoperationslib.Collaborators. Bitbucket answers
 // HTTP 200 with the permission none for a user without access (checked
 // 2026-11-05).
-func (c *Client) GetCollaborator(ctx context.Context, owner, repo, user string) (*gitoperationslib.Collaborator, error) {
+func (svc collaborators) Get(ctx context.Context, owner, repo, user string) (*gitoperationslib.Collaborator, error) {
+	c := svc.c
 	path, err := c.collaboratorPath(ctx, owner, repo, user)
 	if err != nil {
 		return nil, err
@@ -74,8 +88,9 @@ func (c *Client) GetCollaborator(ctx context.Context, owner, repo, user string) 
 	return &collaborator, nil
 }
 
-// AddCollaborator implements gitoperationslib.Collaborators.
-func (c *Client) AddCollaborator(ctx context.Context, owner, repo, user string, permission gitoperationslib.CollaboratorPermission) (bool, error) {
+// Add implements gitoperationslib.Collaborators.
+func (svc collaborators) Add(ctx context.Context, owner, repo, user string, permission gitoperationslib.CollaboratorPermission) (bool, error) {
+	c := svc.c
 	switch permission {
 	case gitoperationslib.CollaboratorRead, gitoperationslib.CollaboratorWrite, gitoperationslib.CollaboratorAdmin:
 	case gitoperationslib.CollaboratorTriage, gitoperationslib.CollaboratorMaintain:
@@ -92,8 +107,9 @@ func (c *Client) AddCollaborator(ctx context.Context, owner, repo, user string, 
 	return false, err
 }
 
-// RemoveCollaborator implements gitoperationslib.Collaborators.
-func (c *Client) RemoveCollaborator(ctx context.Context, owner, repo, user string) error {
+// Remove implements gitoperationslib.Collaborators.
+func (svc collaborators) Remove(ctx context.Context, owner, repo, user string) error {
+	c := svc.c
 	path, err := c.collaboratorPath(ctx, owner, repo, user)
 	if err != nil {
 		return err

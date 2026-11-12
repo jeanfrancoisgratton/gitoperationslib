@@ -44,7 +44,7 @@ func TestEnvironmentSecretsGitHub(t *testing.T) {
 	})
 	ctx := context.Background()
 	scope := gitoperationslib.EnvCI("acme", "widget", "Prod EU")
-	if err := c.Secrets().Set(ctx, scope, "TOKEN", "s3cr3t"); err != nil {
+	if err := c.CI().Secrets().Set(ctx, scope, "TOKEN", "s3cr3t"); err != nil {
 		t.Fatal(err)
 	}
 	sealed, _ := base64.StdEncoding.DecodeString(stored["encrypted_value"].(string))
@@ -54,11 +54,11 @@ func TestEnvironmentSecretsGitHub(t *testing.T) {
 	if _, ok := stored["visibility"]; ok {
 		t.Errorf("an environment secret has no visibility: %v", stored)
 	}
-	page, err := c.Secrets().List(ctx, scope, gitoperationslib.ListOptions{})
+	page, err := c.CI().Secrets().List(ctx, scope, gitoperationslib.ListOptions{})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Name != "TOKEN" {
 		t.Errorf("List = %+v, %v", page, err)
 	}
-	if err := c.Secrets().Delete(ctx, scope, "TOKEN"); err != nil {
+	if err := c.CI().Secrets().Delete(ctx, scope, "TOKEN"); err != nil {
 		t.Error(err)
 	}
 	if len(requests) != 4 {
@@ -97,7 +97,7 @@ func TestEnvironmentVariablesGitHub(t *testing.T) {
 	ctx := context.Background()
 	scope := gitoperationslib.EnvCI("acme", "widget", "prod")
 	for range 2 { // creates, then updates
-		if err := c.Variables().Set(ctx, scope, "ENV", "v1"); err != nil {
+		if err := c.CI().Variables().Set(ctx, scope, "ENV", "v1"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -105,13 +105,13 @@ func TestEnvironmentVariablesGitHub(t *testing.T) {
 	if !slices.Equal(requests, want) {
 		t.Errorf("requests = %q, want %q", requests, want)
 	}
-	if v, err := c.Variables().Get(ctx, scope, "ENV"); err != nil || v.Value != "v1" {
+	if v, err := c.CI().Variables().Get(ctx, scope, "ENV"); err != nil || v.Value != "v1" {
 		t.Errorf("Get = %+v, %v", v, err)
 	}
-	if page, err := c.Variables().List(ctx, scope, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
+	if page, err := c.CI().Variables().List(ctx, scope, gitoperationslib.ListOptions{}); err != nil || len(page.Items) != 1 {
 		t.Errorf("List = %+v, %v", page, err)
 	}
-	if err := c.Variables().Delete(ctx, scope, "ENV"); err != nil {
+	if err := c.CI().Variables().Delete(ctx, scope, "ENV"); err != nil {
 		t.Error(err)
 	}
 }
@@ -119,7 +119,7 @@ func TestEnvironmentVariablesGitHub(t *testing.T) {
 func TestEnvironmentScopeNeedsARepositoryGitHub(t *testing.T) {
 	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("request sent: %s", r.URL) })
 	for _, scope := range []gitoperationslib.CIScope{{Owner: "acme", Environment: "prod"}, {Environment: "prod"}} {
-		if err := c.Secrets().Set(context.Background(), scope, "X", "x"); err == nil {
+		if err := c.CI().Secrets().Set(context.Background(), scope, "X", "x"); err == nil {
 			t.Errorf("Set(%+v) succeeded", scope)
 		}
 	}
@@ -190,7 +190,7 @@ func TestSetKeepsOrgSecretAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, stored, _ := orgSecretServer(t, tt.current)
-			if err := c.Secrets().Set(context.Background(), gitoperationslib.OrgCI("acme"), "TOKEN", "new value"); err != nil {
+			if err := c.CI().Secrets().Set(context.Background(), gitoperationslib.OrgCI("acme"), "TOKEN", "new value"); err != nil {
 				t.Fatal(err)
 			}
 			if got := (*stored)["visibility"]; got != tt.wantVisibility {
@@ -206,20 +206,20 @@ func TestSetKeepsOrgSecretAccess(t *testing.T) {
 func TestGetOrgSecretAccess(t *testing.T) {
 	ctx := context.Background()
 	c, _, _ := orgSecretServer(t, "selected")
-	got, err := c.GetOrgSecretAccess(ctx, "acme", "TOKEN")
+	got, err := c.CI().Secrets().GetAccess(ctx, "acme", "TOKEN")
 	if err != nil || got.Visibility != gitoperationslib.SecretVisibleSelected || !slices.Equal(got.Repos, []string{"one", "two"}) {
 		t.Errorf("selected = %+v, %v", got, err)
 	}
 	c, _, requests := orgSecretServer(t, "private")
-	got, err = c.GetOrgSecretAccess(ctx, "acme", "TOKEN")
+	got, err = c.CI().Secrets().GetAccess(ctx, "acme", "TOKEN")
 	if err != nil || got.Visibility != gitoperationslib.SecretVisiblePrivate || got.Repos != nil || len(*requests) != 1 {
 		t.Errorf("private = %+v, %v after %q", got, err, *requests)
 	}
 	c, _, _ = orgSecretServer(t, "")
-	if _, err := c.GetOrgSecretAccess(ctx, "acme", "TOKEN"); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.CI().Secrets().GetAccess(ctx, "acme", "TOKEN"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown secret: err = %v", err)
 	}
-	if _, err := c.GetOrgSecretAccess(ctx, "acme", ""); err == nil {
+	if _, err := c.CI().Secrets().GetAccess(ctx, "acme", ""); err == nil {
 		t.Error("no name accepted")
 	}
 }
@@ -228,19 +228,19 @@ func TestSetOrgSecret(t *testing.T) {
 	ctx := context.Background()
 	c, stored, _ := orgSecretServer(t, "")
 	selected := gitoperationslib.SecretAccess{Visibility: gitoperationslib.SecretVisibleSelected, Repos: []string{"one", "two"}}
-	if err := c.SetOrgSecret(ctx, "acme", "TOKEN", "v", selected); err != nil {
+	if err := c.CI().Secrets().SetWithAccess(ctx, "acme", "TOKEN", "v", selected); err != nil {
 		t.Fatal(err)
 	}
 	if (*stored)["visibility"] != "selected" || ids((*stored)["selected_repository_ids"]) != "[11 22]" || (*stored)["encrypted_value"] == nil {
 		t.Errorf("stored = %v", *stored)
 	}
-	if err := c.SetOrgSecret(ctx, "acme", "TOKEN", "v", gitoperationslib.SecretAccess{Visibility: gitoperationslib.SecretVisibleAll}); err != nil {
+	if err := c.CI().Secrets().SetWithAccess(ctx, "acme", "TOKEN", "v", gitoperationslib.SecretAccess{Visibility: gitoperationslib.SecretVisibleAll}); err != nil {
 		t.Fatal(err)
 	}
 	if (*stored)["visibility"] != "all" || (*stored)["selected_repository_ids"] != nil {
 		t.Errorf("stored = %v", *stored)
 	}
-	if err := c.SetOrgSecret(ctx, "acme", "TOKEN", "v", gitoperationslib.SecretAccess{Visibility: gitoperationslib.SecretVisibleSelected, Repos: []string{"gone"}}); !gitoperationslib.IsNotFound(err) {
+	if err := c.CI().Secrets().SetWithAccess(ctx, "acme", "TOKEN", "v", gitoperationslib.SecretAccess{Visibility: gitoperationslib.SecretVisibleSelected, Repos: []string{"gone"}}); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown repository: err = %v", err)
 	}
 }
@@ -254,11 +254,11 @@ func TestSetOrgSecretRefused(t *testing.T) {
 		{Visibility: gitoperationslib.SecretVisibleAll, Repos: []string{"one"}},
 		{Visibility: gitoperationslib.SecretVisiblePrivate, Repos: []string{"one"}},
 	} {
-		if err := c.SetOrgSecret(ctx, "acme", "TOKEN", "v", access); err == nil {
+		if err := c.CI().Secrets().SetWithAccess(ctx, "acme", "TOKEN", "v", access); err == nil {
 			t.Errorf("SetOrgSecret(%+v) succeeded", access)
 		}
 	}
-	if err := c.SetOrgSecret(ctx, "", "TOKEN", "v", gitoperationslib.SecretAccess{Visibility: gitoperationslib.SecretVisibleAll}); err == nil {
+	if err := c.CI().Secrets().SetWithAccess(ctx, "", "TOKEN", "v", gitoperationslib.SecretAccess{Visibility: gitoperationslib.SecretVisibleAll}); err == nil {
 		t.Error("no organisation accepted")
 	}
 	if len(*requests) != 0 {
@@ -269,23 +269,23 @@ func TestSetOrgSecretRefused(t *testing.T) {
 func TestSetOrgSecretRepos(t *testing.T) {
 	ctx := context.Background()
 	c, stored, _ := orgSecretServer(t, "selected")
-	if err := c.SetOrgSecretRepos(ctx, "acme", "TOKEN", []string{"two"}); err != nil {
+	if err := c.CI().Secrets().SetRepos(ctx, "acme", "TOKEN", []string{"two"}); err != nil {
 		t.Fatal(err)
 	}
 	if ids((*stored)["selected_repository_ids"]) != "[22]" {
 		t.Errorf("stored = %v", *stored)
 	}
 	// No repositories: nobody can use it, which must reach the server.
-	if err := c.SetOrgSecretRepos(ctx, "acme", "TOKEN", nil); err != nil {
+	if err := c.CI().Secrets().SetRepos(ctx, "acme", "TOKEN", nil); err != nil {
 		t.Fatal(err)
 	}
 	if ids((*stored)["selected_repository_ids"]) != "[]" {
 		t.Errorf("stored = %v", *stored)
 	}
-	if err := c.SetOrgSecretRepos(ctx, "acme", "TOKEN", []string{"gone"}); !gitoperationslib.IsNotFound(err) {
+	if err := c.CI().Secrets().SetRepos(ctx, "acme", "TOKEN", []string{"gone"}); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("unknown repository: err = %v", err)
 	}
-	if err := c.SetOrgSecretRepos(ctx, "", "TOKEN", nil); err == nil {
+	if err := c.CI().Secrets().SetRepos(ctx, "", "TOKEN", nil); err == nil {
 		t.Error("no organisation accepted")
 	}
 }

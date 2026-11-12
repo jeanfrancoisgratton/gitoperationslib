@@ -6,14 +6,9 @@ import (
 	"time"
 )
 
-// Account manages the authenticated user's own account. The Forgejo, GitHub
-// and Bitbucket clients implement it (CapAccount); find it with a type
-// assertion:
-//
-//	acct, ok := client.(gitoperationslib.Account)
-//
-// Parts a forge lacks return ErrNotSupported. Directory().Me() reads the same
-// e-mail addresses and keys in one call, along with the rest of the account.
+// Account manages the authenticated user's own account (CapAccount). Parts a
+// forge lacks return ErrNotSupported. Users().Me() reads the same e-mail
+// addresses and keys in one call, along with the rest of the account.
 type Account interface {
 	Emails() Emails
 	SSHKeys() SSHKeys
@@ -21,6 +16,9 @@ type Account interface {
 	Profile() Profile
 	// Tokens manages access tokens; Forgejo only (CapTokens).
 	Tokens() Tokens
+	// Webhooks are the user's own webhooks, which fire for events in their
+	// repositories; Forgejo only (CapUserWebhooks).
+	Webhooks() UserWebhooks
 }
 
 // Emails manages the authenticated user's e-mail addresses. Bitbucket only
@@ -99,7 +97,7 @@ type Profile interface {
 	DeleteAvatar(ctx context.Context) error
 }
 
-// MaxAvatarSize is the largest image SetAvatar and SetOrgAvatar send; larger
+// MaxAvatarSize is the largest image Profile().SetAvatar and Orgs().SetAvatar send; larger
 // ones are refused before any request.
 const MaxAvatarSize = 10 << 20
 
@@ -156,17 +154,6 @@ type Tokens interface {
 	DeleteByName(ctx context.Context, name string) error
 }
 
-// AdminTokens lets a site admin manage other users' access tokens with an ordinary
-// token, where Account.Tokens needs the user's password. The Forgejo backend
-// implements it (CapAdminTokens), from version 16 (ErrNotSupported on older
-// servers). Find it with a type assertion:
-//
-//	a, ok := client.(gitoperationslib.AdminTokens)
-type AdminTokens interface {
-	// TokensOf returns the tokens of the user called login.
-	TokensOf(login string) Tokens
-}
-
 // AccessToken is a personal access token.
 type AccessToken struct {
 	ID     int64    `json:"id"`
@@ -191,4 +178,18 @@ type CreateTokenOptions struct {
 	Scopes []string `json:"scopes"`
 	// Repositories ("owner/name") limits the token to those repositories.
 	Repositories []string `json:"repositories,omitzero"`
+}
+
+// UserWebhooks manages the webhooks of the authenticated user, which fire for
+// events in that user's repositories. They are always the caller's own: a site
+// admin gets a 404 for another user's hook.
+type UserWebhooks interface {
+	List(ctx context.Context, opts ListOptions) (Page[Webhook], error)
+	Get(ctx context.Context, id int64) (*Webhook, error)
+	// Create adds a webhook. Forgejo silently drops event names it does not
+	// know; Create then returns the webhook together with an error.
+	Create(ctx context.Context, opts CreateWebhookOptions) (*Webhook, error)
+	// Edit changes a webhook; dropped events are reported as in Create.
+	Edit(ctx context.Context, id int64, opts EditWebhookOptions) (*Webhook, error)
+	Delete(ctx context.Context, id int64) error
 }

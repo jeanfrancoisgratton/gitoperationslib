@@ -216,23 +216,22 @@ func TestDirectoryListAllOrgsAndTeamReposForgejo(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	dir := c.Directory()
-	orgs, err := dir.ListAllOrgs(ctx, gitoperationslib.ListOptions{PerPage: 5})
+	orgs, err := c.Orgs().ListAll(ctx, gitoperationslib.ListOptions{PerPage: 5})
 	if err != nil || len(orgs.Items) != 1 || orgs.Items[0].Name != "acme" || requests[0] != "/api/v1/orgs?limit=5&page=1" {
 		t.Errorf("ListAllOrgs = %+v, %v, %v", orgs, err, requests)
 	}
-	repos, err := dir.TeamRepos(ctx, "acme", "devs", gitoperationslib.ListOptions{})
+	repos, err := c.Teams().Repos(ctx, "acme", "devs", gitoperationslib.ListOptions{})
 	if err != nil || len(repos.Items) != 1 {
 		t.Errorf("TeamRepos = %+v, %v", repos, err)
 	}
-	if _, err := dir.TeamRepos(ctx, "acme", "nobody", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Teams().Repos(ctx, "acme", "nobody", gitoperationslib.ListOptions{}); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("TeamRepos(nobody): err = %v, want 404", err)
 	}
 }
 
 func TestListSystemWebhooksForgejo(t *testing.T) {
 	c, _ := fakeSiteHooks(t)
-	page, err := c.SystemWebhooks().List(context.Background(), gitoperationslib.ListOptions{})
+	page, err := c.Site().SystemWebhooks().List(context.Background(), gitoperationslib.ListOptions{})
 	if err != nil || len(page.Items) != 2 || page.NextPage != 2 {
 		t.Errorf("List = %+v, %v", page, err)
 	}

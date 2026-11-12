@@ -11,7 +11,12 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib"
 )
 
-var _ gitoperationslib.Mirrors = (*Client)(nil)
+var _ gitoperationslib.Mirrors = mirrors{}
+
+// Mirrors implements gitoperationslib.Client.
+func (c *Client) Mirrors() gitoperationslib.Mirrors { return mirrors{c} }
+
+type mirrors struct{ c *Client }
 
 type pushMirrorJSON struct {
 	RemoteName    string    `json:"remote_name"`
@@ -72,13 +77,15 @@ func createError(err error, address string) error {
 	return err
 }
 
-// ListPushMirrors implements gitoperationslib.Mirrors.
-func (c *Client) ListPushMirrors(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.PushMirror], error) {
+// ListPush implements gitoperationslib.Mirrors.
+func (svc mirrors) ListPush(ctx context.Context, owner, repo string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.PushMirror], error) {
+	c := svc.c
 	return listAt(c, repoPath(owner, repo, "push_mirrors"), (*pushMirrorJSON).toPushMirror)(ctx, opts)
 }
 
-// GetPushMirror implements gitoperationslib.Mirrors.
-func (c *Client) GetPushMirror(ctx context.Context, owner, repo, name string) (*gitoperationslib.PushMirror, error) {
+// GetPush implements gitoperationslib.Mirrors.
+func (svc mirrors) GetPush(ctx context.Context, owner, repo, name string) (*gitoperationslib.PushMirror, error) {
+	c := svc.c
 	if name == "" {
 		return nil, errors.New("forgejo: mirrors.get: name is required")
 	}
@@ -90,8 +97,9 @@ func (c *Client) GetPushMirror(ctx context.Context, owner, repo, name string) (*
 	return &m, nil
 }
 
-// CreatePushMirror implements gitoperationslib.Mirrors.
-func (c *Client) CreatePushMirror(ctx context.Context, owner, repo string, opts gitoperationslib.CreatePushMirrorOptions) (*gitoperationslib.PushMirror, error) {
+// CreatePush implements gitoperationslib.Mirrors.
+func (svc mirrors) CreatePush(ctx context.Context, owner, repo string, opts gitoperationslib.CreatePushMirrorOptions) (*gitoperationslib.PushMirror, error) {
+	c := svc.c
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("forgejo: mirrors.create: %w", err)
 	}
@@ -112,8 +120,9 @@ func (c *Client) CreatePushMirror(ctx context.Context, owner, repo string, opts 
 	return &m, nil
 }
 
-// DeletePushMirror implements gitoperationslib.Mirrors.
-func (c *Client) DeletePushMirror(ctx context.Context, owner, repo, name string) error {
+// DeletePush implements gitoperationslib.Mirrors.
+func (svc mirrors) DeletePush(ctx context.Context, owner, repo, name string) error {
+	c := svc.c
 	if name == "" {
 		return errors.New("forgejo: mirrors.delete: name is required")
 	}
@@ -121,14 +130,16 @@ func (c *Client) DeletePushMirror(ctx context.Context, owner, repo, name string)
 	return describeMissing(err, name)
 }
 
-// SyncPushMirrors implements gitoperationslib.Mirrors.
-func (c *Client) SyncPushMirrors(ctx context.Context, owner, repo string) error {
+// SyncPush implements gitoperationslib.Mirrors.
+func (svc mirrors) SyncPush(ctx context.Context, owner, repo string) error {
+	c := svc.c
 	_, err := c.api.Do(ctx, http.MethodPost, repoPath(owner, repo, "push_mirrors-sync"), nil, nil, nil)
 	return err
 }
 
-// SyncMirror implements gitoperationslib.Mirrors.
-func (c *Client) SyncMirror(ctx context.Context, owner, repo string) error {
+// Sync implements gitoperationslib.Mirrors.
+func (svc mirrors) Sync(ctx context.Context, owner, repo string) error {
+	c := svc.c
 	_, err := c.api.Do(ctx, http.MethodPost, repoPath(owner, repo, "mirror-sync"), nil, nil, nil)
 	return err
 }

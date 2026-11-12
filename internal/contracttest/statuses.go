@@ -11,10 +11,10 @@ import (
 // CommitStatuses reports statuses on a new repository's first commit, and reads
 // them back combined.
 func CommitStatuses(t *testing.T, env Env) {
-	s, ok := env.Client.(gitoperationslib.CommitStatuses)
-	if !ok {
-		t.Skip("CommitStatuses is not implemented")
+	if !env.Client.Capabilities().Has(gitoperationslib.CapCommitStatuses) {
+		t.Skip("commit statuses are not supported")
 	}
+	s := env.Client.Commits()
 	ctx := testContext(t)
 	r, repo := create(t, ctx, env, gitoperationslib.CreateRepoOptions{Owner: env.Org, AutoInit: true})
 	b, err := env.Client.Branches().Get(ctx, env.Org, *repo, r.DefaultBranch)
@@ -25,7 +25,7 @@ func CommitStatuses(t *testing.T, env Env) {
 		t.Helper()
 		// GitHub's combined status can lag a second or two behind a write.
 		for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(time.Second) {
-			cs, err := s.CommitStatus(ctx, env.Org, *repo, r.DefaultBranch) // by branch name
+			cs, err := s.Status(ctx, env.Org, *repo, r.DefaultBranch) // by branch name
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -39,7 +39,7 @@ func CommitStatuses(t *testing.T, env Env) {
 	}
 	set := func(context string, state gitoperationslib.StatusState) {
 		t.Helper()
-		err := s.SetCommitStatus(ctx, env.Org, *repo, b.SHA, gitoperationslib.CommitStatus{
+		err := s.SetStatus(ctx, env.Org, *repo, b.SHA, gitoperationslib.CommitStatus{
 			Context: context, State: state, Description: "gitopslib " + string(state), TargetURL: "https://example.com/build/1",
 		})
 		if err != nil {
@@ -61,14 +61,14 @@ func CommitStatuses(t *testing.T, env Env) {
 	set("gitopslib/b", gitoperationslib.StatusFailure)
 	read(gitoperationslib.StatusFailure, 2)
 
-	err = s.SetCommitStatus(ctx, env.Org, *repo, b.SHA, gitoperationslib.CommitStatus{
+	err = s.SetStatus(ctx, env.Org, *repo, b.SHA, gitoperationslib.CommitStatus{
 		Context: "gitopslib/w", State: gitoperationslib.StatusWarning, TargetURL: "https://example.com/build/1",
 	})
 	if forgejo := env.Client.Backend() == gitoperationslib.BackendForgejo; forgejo != (err == nil) ||
 		!forgejo && !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("a warning: err = %v", err)
 	}
-	if _, err := s.CommitStatus(ctx, env.Org, *repo, "no-such-branch"); !gitoperationslib.IsNotFound(err) {
+	if _, err := s.Status(ctx, env.Org, *repo, "no-such-branch"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("a missing ref: err = %v, want a 404", err)
 	}
 }

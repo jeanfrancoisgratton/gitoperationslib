@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// PartError is a part of an info call that could not be read.
+type PartError struct {
+	Part    string `json:"part"`            // "organisations", "teams", "e-mail addresses"…
+	Status  int    `json:"status,omitzero"` // HTTP status of the refusal; 0 when the backend cannot read the part
+	Message string `json:"message"`
+}
+
 // ErrNotSupported is matched (via errors.Is) by every error returned when a
 // backend cannot perform an operation, instead of silently degrading.
 var ErrNotSupported = errors.New("operation not supported")
@@ -154,4 +161,5 @@ func IsNotFound(err error) bool {
 }
 
 func IsUnauthorized(err error) bool { return StatusCode(err) == http.StatusUnauthorized }
-func IsForbidden(err error) bool    { return StatusCode(err) == http.StatusForbidden }
+
+func IsForbidden(err error) bool { return StatusCode(err) == http.StatusForbidden }

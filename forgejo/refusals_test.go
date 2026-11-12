@@ -48,7 +48,7 @@ func TestRefusals(t *testing.T) {
 	}{
 		{"org owning repos", c.Orgs().Delete(ctx, "acme"), gitoperationslib.ErrOwnsRepos, 500},
 		{"last owner, org", c.Orgs().RemoveMember(ctx, "acme", "alice"), gitoperationslib.ErrLastOwner, 500},
-		{"last owner, team", c.Teams().RemoveMember(ctx, 7, "alice"), gitoperationslib.ErrLastOwner, 500},
+		{"last owner, team", teams{c}.removeMemberByID(ctx, 7, "alice"), gitoperationslib.ErrLastOwner, 500},
 		{"user owning repos", c.Users().Delete(ctx, "owner1", gitoperationslib.DeleteUserOptions{}), gitoperationslib.ErrOwnsRepos, 422},
 		{"user in orgs", c.Users().Delete(ctx, "owner2", gitoperationslib.DeleteUserOptions{}), gitoperationslib.ErrOrgMember, 422},
 		{"protected branch", c.Branches().Delete(ctx, "acme", "r1", "keep"), gitoperationslib.ErrBranchProtected, 403},

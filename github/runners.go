@@ -13,9 +13,10 @@ import (
 )
 
 var (
-	_ gitoperationslib.Runners             = (*Client)(nil)
-	_ gitoperationslib.WorkflowLogFollower = (*Client)(nil)
+	_ gitoperationslib.Runners = runners{}
 )
+
+type runners struct{ c *Client }
 
 func toRunner(r *gh.Runner) gitoperationslib.Runner {
 	runner := gitoperationslib.Runner{
@@ -40,7 +41,8 @@ func runnerScope(scope gitoperationslib.RunnerScope, op string) (org bool, err e
 	return scope.Repo == "", nil
 }
 
-func (c *Client) ListRunners(ctx context.Context, scope gitoperationslib.RunnerScope, opts gitoperationslib.ListRunnersOptions) (gitoperationslib.Page[gitoperationslib.Runner], error) {
+func (svc runners) List(ctx context.Context, scope gitoperationslib.RunnerScope, opts gitoperationslib.ListRunnersOptions) (gitoperationslib.Page[gitoperationslib.Runner], error) {
+	c := svc.c
 	const op = "runners.list"
 	org, err := runnerScope(scope, op)
 	if err != nil {
@@ -67,7 +69,8 @@ func (c *Client) ListRunners(ctx context.Context, scope gitoperationslib.RunnerS
 	return page, nil
 }
 
-func (c *Client) GetRunner(ctx context.Context, scope gitoperationslib.RunnerScope, id int64) (*gitoperationslib.Runner, error) {
+func (svc runners) Get(ctx context.Context, scope gitoperationslib.RunnerScope, id int64) (*gitoperationslib.Runner, error) {
+	c := svc.c
 	org, err := runnerScope(scope, "runners.get")
 	if err != nil {
 		return nil, err
@@ -85,9 +88,10 @@ func (c *Client) GetRunner(ctx context.Context, scope gitoperationslib.RunnerSco
 	return &runner, nil
 }
 
-// RegisterRunner makes a just-in-time configuration, which is single-use: the only
+// Register makes a just-in-time configuration, which is single-use: the only
 // registration GitHub's API offers.
-func (c *Client) RegisterRunner(ctx context.Context, scope gitoperationslib.RunnerScope, opts gitoperationslib.RegisterRunnerOptions) (*gitoperationslib.RegisteredRunner, error) {
+func (svc runners) Register(ctx context.Context, scope gitoperationslib.RunnerScope, opts gitoperationslib.RegisterRunnerOptions) (*gitoperationslib.RegisteredRunner, error) {
+	c := svc.c
 	const op = "runners.register"
 	org, err := runnerScope(scope, op)
 	if err != nil {
@@ -97,7 +101,7 @@ func (c *Client) RegisterRunner(ctx context.Context, scope gitoperationslib.Runn
 	case opts.Name == "":
 		return nil, errors.New("github: runners.register: name is required")
 	case !opts.Ephemeral:
-		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "lasting runners: use RunnerRegistrationToken with the runner's configuration script")
+		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "lasting runners: use RegistrationToken with the runner's configuration script")
 	case opts.Description != "":
 		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendGitHub, op, "runner descriptions")
 	}
@@ -119,10 +123,11 @@ func (c *Client) RegisterRunner(ctx context.Context, scope gitoperationslib.Runn
 	return &gitoperationslib.RegisteredRunner{ID: jit.GetRunner().GetID(), JITConfig: jit.GetEncodedJITConfig()}, nil
 }
 
-// DeleteRunner reads the runner first: GitHub answers 204 for one that does not
+// Delete reads the runner first: GitHub answers 204 for one that does not
 // exist.
-func (c *Client) DeleteRunner(ctx context.Context, scope gitoperationslib.RunnerScope, id int64) error {
-	if _, err := c.GetRunner(ctx, scope, id); err != nil {
+func (svc runners) Delete(ctx context.Context, scope gitoperationslib.RunnerScope, id int64) error {
+	c := svc.c
+	if _, err := svc.Get(ctx, scope, id); err != nil {
 		return err
 	}
 	var err error
@@ -134,7 +139,8 @@ func (c *Client) DeleteRunner(ctx context.Context, scope gitoperationslib.Runner
 	return convertError(err)
 }
 
-func (c *Client) RunnerRegistrationToken(ctx context.Context, scope gitoperationslib.RunnerScope) (*gitoperationslib.RunnerToken, error) {
+func (svc runners) RegistrationToken(ctx context.Context, scope gitoperationslib.RunnerScope) (*gitoperationslib.RunnerToken, error) {
+	c := svc.c
 	org, err := runnerScope(scope, "runners.registration_token")
 	if err != nil {
 		return nil, err
@@ -151,10 +157,11 @@ func (c *Client) RunnerRegistrationToken(ctx context.Context, scope gitoperation
 	return &gitoperationslib.RunnerToken{Token: t.GetToken(), ExpiresAt: t.GetExpiresAt().Time}, nil
 }
 
-// FollowWorkflowJobLog waits for the job to end: GitHub stores a job's log only
+// FollowJobLog waits for the job to end: GitHub stores a job's log only
 // then (checked on 2026-11-11: while it runs, the log's address answers 404). It
 // then writes it all, waiting a little more if it is not stored yet.
-func (c *Client) FollowWorkflowJobLog(ctx context.Context, owner, repo string, jobID int64, out io.Writer, opts gitoperationslib.FollowLogOptions) error {
+func (svc runs) FollowJobLog(ctx context.Context, owner, repo string, jobID int64, out io.Writer, opts gitoperationslib.FollowLogOptions) error {
+	c := svc.c
 	interval := cmp.Or(opts.Interval, 2*time.Second)
 	wait := func() error {
 		select {
@@ -165,7 +172,7 @@ func (c *Client) FollowWorkflowJobLog(ctx context.Context, owner, repo string, j
 		}
 	}
 	for {
-		job, err := c.GetWorkflowJob(ctx, owner, repo, jobID)
+		job, err := runs{c}.GetJob(ctx, owner, repo, jobID)
 		if err != nil {
 			return err
 		}
@@ -178,7 +185,7 @@ func (c *Client) FollowWorkflowJobLog(ctx context.Context, owner, repo string, j
 	}
 	deadline := time.Now().Add(time.Minute)
 	for {
-		log, err := c.WorkflowJobLogs(ctx, owner, repo, jobID)
+		log, err := runs{c}.JobLogs(ctx, owner, repo, jobID)
 		if err == nil {
 			defer log.Close()
 			_, err = io.Copy(out, log)

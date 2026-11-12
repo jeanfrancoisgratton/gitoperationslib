@@ -21,12 +21,14 @@ func TestUnsupportedAreasBitbucket(t *testing.T) {
 	errorType := reflect.TypeFor[error]()
 	for name, area := range map[string]any{
 		"Releases": c.Releases(), "TagProtections": c.TagProtections(), "Issues": c.Issues(),
-		"Labels": c.Labels(), "Milestones": c.Milestones(), "Directory": c.Directory(),
+		"Labels": c.Labels(), "Milestones": c.Milestones(), "Users": c.Users(), "Orgs": c.Orgs(),
+		"Teams": c.Teams(), "Mirrors": c.Mirrors(), "GitHooks": c.GitHooks(), "Runs": c.CI().Runs(),
+		"Artifacts": c.CI().Artifacts(), "Runners": c.CI().Runners(),
 	} {
 		v := reflect.ValueOf(area)
 		for i := range v.NumMethod() {
 			method := v.Type().Method(i)
-			if name == "Directory" && method.Name == "Me" { // Bitbucket has this one
+			if name == "Users" && method.Name == "Me" { // Bitbucket has this one
 				continue
 			}
 			ft := v.Method(i).Type()
@@ -36,6 +38,9 @@ func TestUnsupportedAreasBitbucket(t *testing.T) {
 			}
 			out := v.Method(i).Call(args)
 			last := out[len(out)-1]
+			if last.Kind() == reflect.Interface && !last.Type().Implements(errorType) {
+				continue // an accessor, such as Orgs.Labels: its own methods are generated alike
+			}
 			if !last.Type().Implements(errorType) {
 				t.Errorf("%s.%s does not return an error last", name, method.Name)
 				continue
@@ -50,7 +55,7 @@ func TestUnsupportedAreasBitbucket(t *testing.T) {
 
 func TestGPGVerifyNotSupportedBitbucket(t *testing.T) {
 	c := fakeBitbucket(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("unexpected request %s", r.URL) })
-	if _, err := c.GPGKeys().Verify(context.Background(), "k", "s"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Account().GPGKeys().Verify(context.Background(), "k", "s"); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("err = %v", err)
 	}
 }

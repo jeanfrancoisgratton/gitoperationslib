@@ -1,5 +1,51 @@
 package gitoperationslib
 
+import (
+	"context"
+)
+
+// Teams reads and manages an organisation's teams, their members and
+// repositories. Teams are addressed by organisation and name (case-insensitive
+// on Forgejo, the slug on GitHub), the only addressing the forges share;
+// Team.ID keeps Forgejo's ID. The reads (List, Get, Info, Members, Repos) work
+// with whatever rights the token has (CapDirectory): Forgejo shows teams to
+// organisation members only, GitHub hides secret teams from non-members. The
+// rest is Forgejo's (CapAdmin); there each call looks the team up first.
+type Teams interface {
+	List(ctx context.Context, org string, opts ListOptions) (Page[Team], error)
+	Get(ctx context.Context, org, name string) (*Team, error)
+	// Info returns a team with its members and repositories.
+	Info(ctx context.Context, org, name string) (*TeamInfo, error)
+	Members(ctx context.Context, org, name string, opts ListOptions) (Page[User], error)
+	Repos(ctx context.Context, org, name string, opts ListOptions) (Page[Repo], error)
+
+	Create(ctx context.Context, org string, opts CreateTeamOptions) (*Team, error)
+	// Edit changes a team. Renaming the owner team or changing its access
+	// returns ErrOwnerTeam.
+	Edit(ctx context.Context, org, name string, opts EditTeamOptions) (*Team, error)
+	// Delete removes a team. Deleting the owner team returns ErrOwnerTeam.
+	Delete(ctx context.Context, org, name string) error
+	IsMember(ctx context.Context, org, name, user string) (bool, error)
+	// AddMember adds user to the team, which also makes them a member of
+	// the organisation. If the instance adds members by invitation, and user
+	// is not in the organisation yet, it returns an error matching
+	// ErrInvitationPending. The invitation is sent all the same.
+	AddMember(ctx context.Context, org, name, user string) error
+	RemoveMember(ctx context.Context, org, name, user string) error
+	AddRepo(ctx context.Context, org, name, owner, repo string) error
+	RemoveRepo(ctx context.Context, org, name, owner, repo string) error
+}
+
+// TeamInfo is a team with its members and repositories.
+type TeamInfo struct {
+	Team
+	Members []User `json:"members"`
+	Repos   []Repo `json:"repos"`
+	// Incomplete is nil when every part was read; see UserInfo.Incomplete.
+	Incomplete error       `json:"-"`
+	Missing    []PartError `json:"missing,omitzero"` // see UserInfo.Missing
+}
+
 // TeamPermission is a team's access level, overall or for one unit.
 type TeamPermission string
 

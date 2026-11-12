@@ -132,19 +132,19 @@ func TestIntegrationAdminRunnerScopes(t *testing.T) {
 	}
 	ids := map[string]int64{}
 	for name, scope := range scopes {
-		reg, err := c.RegisterRunner(ctx, scope, gitoperationslib.RegisterRunnerOptions{Name: "scope-" + name})
+		reg, err := c.CI().Runners().Register(ctx, scope, gitoperationslib.RegisterRunnerOptions{Name: "scope-" + name})
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 		ids[name] = reg.ID
-		t.Cleanup(func() { _ = c.DeleteRunner(context.Background(), scope, reg.ID) })
-		if _, err := c.RunnerRegistrationToken(ctx, scope); err != nil {
+		t.Cleanup(func() { _ = c.CI().Runners().Delete(context.Background(), scope, reg.ID) })
+		if _, err := c.CI().Runners().RegistrationToken(ctx, scope); err != nil {
 			t.Errorf("%s token: %v", name, err)
 		}
 	}
 	names := func(scope gitoperationslib.RunnerScope, inherited bool) []string {
 		t.Helper()
-		page, err := c.ListRunners(ctx, scope, gitoperationslib.ListRunnersOptions{Inherited: inherited})
+		page, err := c.CI().Runners().List(ctx, scope, gitoperationslib.ListRunnersOptions{Inherited: inherited})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -166,7 +166,7 @@ func TestIntegrationAdminRunnerScopes(t *testing.T) {
 		t.Errorf("a repository's inherited runners = %v", got)
 	}
 	// Each level only reaches its own.
-	if err := c.DeleteRunner(ctx, scopes["repo"], ids["org"]); !gitoperationslib.IsNotFound(err) {
+	if err := c.CI().Runners().Delete(ctx, scopes["repo"], ids["org"]); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("deleting the organisation's runner through the repository: %v", err)
 	}
 }

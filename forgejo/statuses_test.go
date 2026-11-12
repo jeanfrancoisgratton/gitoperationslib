@@ -28,14 +28,14 @@ func TestCommitStatusForgejo(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	cs, err := c.CommitStatus(ctx, "acme", "widget", "main")
+	cs, err := c.Commits().Status(ctx, "acme", "widget", "main")
 	if err != nil || cs.State != gitoperationslib.StatusFailure || len(cs.Statuses) != 2 || cs.SHA != "abc" {
 		t.Errorf("paged: %+v %v", cs, err)
 	}
-	if cs, err = c.CommitStatus(ctx, "acme", "widget", "none"); err != nil || cs.State != "" || cs.SHA != "def" {
+	if cs, err = c.Commits().Status(ctx, "acme", "widget", "none"); err != nil || cs.State != "" || cs.SHA != "def" {
 		t.Errorf("none: %+v %v", cs, err)
 	}
-	if _, err = c.CommitStatus(ctx, "acme", "widget", "gone"); !gitoperationslib.IsNotFound(err) {
+	if _, err = c.Commits().Status(ctx, "acme", "widget", "gone"); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("gone: %v", err)
 	}
 }

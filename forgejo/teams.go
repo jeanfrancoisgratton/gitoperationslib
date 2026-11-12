@@ -105,7 +105,8 @@ func teamPath(id int64, rest ...string) string {
 	return forgejoapi.Path(append([]string{"teams", strconv.FormatInt(id, 10)}, rest...)...)
 }
 
-// Teams implements gitoperationslib.Admin.
+// Teams implements gitoperationslib.Client. The API addresses teams by ID: the
+// calls taking a name look it up first, one more request or more.
 func (c *Client) Teams() gitoperationslib.Teams { return teams{c} }
 
 type teams struct{ c *Client }
@@ -124,7 +125,7 @@ func (t teams) List(ctx context.Context, org string, opts gitoperationslib.ListO
 	return page, nil
 }
 
-func (t teams) Get(ctx context.Context, id int64) (*gitoperationslib.Team, error) {
+func (t teams) getByID(ctx context.Context, id int64) (*gitoperationslib.Team, error) {
 	var out teamJSON
 	if _, err := t.c.api.Do(ctx, http.MethodGet, teamPath(id), nil, nil, &out); err != nil {
 		return nil, err
@@ -133,7 +134,7 @@ func (t teams) Get(ctx context.Context, id int64) (*gitoperationslib.Team, error
 	return &team, nil
 }
 
-func (t teams) GetByName(ctx context.Context, org, name string) (*gitoperationslib.Team, error) {
+func (t teams) Get(ctx context.Context, org, name string) (*gitoperationslib.Team, error) {
 	q := url.Values{"q": {name}, "limit": {"50"}}
 	for page := 1; ; page++ {
 		q.Set("page", strconv.Itoa(page))
@@ -184,9 +185,9 @@ func (t teams) Create(ctx context.Context, org string, opts gitoperationslib.Cre
 	return &team, nil
 }
 
-func (t teams) Edit(ctx context.Context, id int64, opts gitoperationslib.EditTeamOptions) (*gitoperationslib.Team, error) {
+func (t teams) editByID(ctx context.Context, id int64, opts gitoperationslib.EditTeamOptions) (*gitoperationslib.Team, error) {
 	const op = "teams.edit"
-	cur, err := t.Get(ctx, id)
+	cur, err := t.getByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +218,8 @@ func (t teams) Edit(ctx context.Context, id int64, opts gitoperationslib.EditTea
 	return &team, nil
 }
 
-func (t teams) Delete(ctx context.Context, id int64) error {
-	cur, err := t.Get(ctx, id)
+func (t teams) deleteByID(ctx context.Context, id int64) error {
+	cur, err := t.getByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -229,7 +230,7 @@ func (t teams) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-func (t teams) Members(ctx context.Context, id int64, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+func (t teams) membersByID(ctx context.Context, id int64, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
 	var out []userJSON
 	resp, err := t.c.api.Do(ctx, http.MethodGet, teamPath(id, "members"), forgejoapi.ListQuery(opts), nil, &out)
 	if err != nil {
@@ -238,7 +239,7 @@ func (t teams) Members(ctx context.Context, id int64, opts gitoperationslib.List
 	return toPage(resp, out, (*userJSON).toUser), nil
 }
 
-func (t teams) IsMember(ctx context.Context, id int64, user string) (bool, error) {
+func (t teams) isMemberByID(ctx context.Context, id int64, user string) (bool, error) {
 	_, err := t.c.api.Do(ctx, http.MethodGet, teamPath(id, "members", user), nil, nil, nil)
 	if gitoperationslib.IsNotFound(err) {
 		return false, nil
@@ -251,7 +252,7 @@ var teamInvitationsVersion = Version{16, 0, 0}
 
 // AddMember checks the result, as the server answers 204 for an invitation too,
 // the first time; a second attempt gets a 409.
-func (t teams) AddMember(ctx context.Context, id int64, user string) error {
+func (t teams) addMemberByID(ctx context.Context, id int64, user string) error {
 	_, err := t.c.api.Do(ctx, http.MethodPut, teamPath(id, "members", user), nil, nil, nil)
 	if err != nil {
 		return refusal.Mark(err, refusal.Rule{Status: http.StatusConflict, Fragment: "team invite already exists", Sentinel: gitoperationslib.ErrInvitationPending})
@@ -259,7 +260,7 @@ func (t teams) AddMember(ctx context.Context, id int64, user string) error {
 	if t.c.version.Compare(teamInvitationsVersion) < 0 {
 		return nil
 	}
-	member, err := t.IsMember(ctx, id, user)
+	member, err := t.isMemberByID(ctx, id, user)
 	if err != nil {
 		return fmt.Errorf("forgejo: teams.addMember: checking %s joined: %w", user, err)
 	}
@@ -269,12 +270,12 @@ func (t teams) AddMember(ctx context.Context, id int64, user string) error {
 	return nil
 }
 
-func (t teams) RemoveMember(ctx context.Context, id int64, user string) error {
+func (t teams) removeMemberByID(ctx context.Context, id int64, user string) error {
 	_, err := t.c.api.Do(ctx, http.MethodDelete, teamPath(id, "members", user), nil, nil, nil)
 	return refusal.Mark(err, refusal.Rule{Status: http.StatusInternalServerError, Fragment: "last member of owner team", Sentinel: gitoperationslib.ErrLastOwner})
 }
 
-func (t teams) Repos(ctx context.Context, id int64, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
+func (t teams) reposByID(ctx context.Context, id int64, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
 	var out []repoJSON
 	resp, err := t.c.api.Do(ctx, http.MethodGet, teamPath(id, "repos"), forgejoapi.ListQuery(opts), nil, &out)
 	if err != nil {
@@ -283,12 +284,93 @@ func (t teams) Repos(ctx context.Context, id int64, opts gitoperationslib.ListOp
 	return toPage(resp, out, (*repoJSON).toRepo), nil
 }
 
-func (t teams) AddRepo(ctx context.Context, id int64, owner, repo string) error {
+func (t teams) addRepoByID(ctx context.Context, id int64, owner, repo string) error {
 	_, err := t.c.api.Do(ctx, http.MethodPut, teamPath(id, "repos", owner, repo), nil, nil, nil)
 	return err
 }
 
-func (t teams) RemoveRepo(ctx context.Context, id int64, owner, repo string) error {
+func (t teams) removeRepoByID(ctx context.Context, id int64, owner, repo string) error {
 	_, err := t.c.api.Do(ctx, http.MethodDelete, teamPath(id, "repos", owner, repo), nil, nil, nil)
 	return err
+}
+
+// id looks a team up by name.
+func (t teams) id(ctx context.Context, org, name string) (int64, error) {
+	team, err := t.Get(ctx, org, name)
+	if err != nil {
+		return 0, err
+	}
+	return team.ID, nil
+}
+
+func (t teams) Edit(ctx context.Context, org, name string, opts gitoperationslib.EditTeamOptions) (*gitoperationslib.Team, error) {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return nil, err
+	}
+	return t.editByID(ctx, id, opts)
+}
+
+func (t teams) Delete(ctx context.Context, org, name string) error {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return err
+	}
+	return t.deleteByID(ctx, id)
+}
+
+func (t teams) Members(ctx context.Context, org, name string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.User], error) {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return gitoperationslib.Page[gitoperationslib.User]{}, err
+	}
+	return t.membersByID(ctx, id, opts)
+}
+
+func (t teams) IsMember(ctx context.Context, org, name, user string) (bool, error) {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return false, err
+	}
+	return t.isMemberByID(ctx, id, user)
+}
+
+func (t teams) AddMember(ctx context.Context, org, name, user string) error {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return err
+	}
+	return t.addMemberByID(ctx, id, user)
+}
+
+func (t teams) RemoveMember(ctx context.Context, org, name, user string) error {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return err
+	}
+	return t.removeMemberByID(ctx, id, user)
+}
+
+func (t teams) Repos(ctx context.Context, org, name string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Repo], error) {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return gitoperationslib.Page[gitoperationslib.Repo]{}, err
+	}
+	return t.reposByID(ctx, id, opts)
+}
+
+func (t teams) AddRepo(ctx context.Context, org, name, owner, repo string) error {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return err
+	}
+	return t.addRepoByID(ctx, id, owner, repo)
+}
+
+func (t teams) RemoveRepo(ctx context.Context, org, name, owner, repo string) error {
+	id, err := t.id(ctx, org, name)
+	if err != nil {
+		return err
+	}
+	return t.removeRepoByID(ctx, id, owner, repo)
 }

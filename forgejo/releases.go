@@ -117,8 +117,6 @@ func (c *Client) Releases() gitoperationslib.Releases { return releases{c} }
 
 type releases struct{ c *Client }
 
-var _ gitoperationslib.ExternalAssets = releases{}
-
 func (r releases) get(ctx context.Context, p string) (*gitoperationslib.Release, error) {
 	var out releaseJSON
 	if _, err := r.c.api.Do(ctx, http.MethodGet, p, nil, nil, &out); err != nil {

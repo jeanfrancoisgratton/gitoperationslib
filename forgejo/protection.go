@@ -163,7 +163,7 @@ func (b branchProtections) Create(ctx context.Context, owner, repo string, rule 
 	return &r, nil
 }
 
-func (b branchProtections) Update(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.BranchProtection) (*gitoperationslib.BranchProtection, error) {
+func (b branchProtections) Edit(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.BranchProtection) (*gitoperationslib.BranchProtection, error) {
 	const op = "branch_protections.update"
 	if rule.Pattern != "" && rule.Pattern != pattern {
 		return nil, gitoperationslib.NotSupported(gitoperationslib.BackendForgejo, op, "renaming a rule (delete and recreate it)")
@@ -251,7 +251,7 @@ func (t tagProtections) Create(ctx context.Context, owner, repo string, rule git
 	return &r, nil
 }
 
-func (t tagProtections) Update(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.TagProtection) (*gitoperationslib.TagProtection, error) {
+func (t tagProtections) Edit(ctx context.Context, owner, repo, pattern string, rule gitoperationslib.TagProtection) (*gitoperationslib.TagProtection, error) {
 	cur, err := t.Get(ctx, owner, repo, pattern)
 	if err != nil {
 		return nil, err

@@ -31,7 +31,7 @@ func TestListHookDeliveries(t *testing.T) {
 			w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?per_page=2&cursor=v1_2>; rel="next"`, r.Host, r.URL.Path))
 			io.WriteString(w, `[`+deliverySummary+`]`)
 		})
-		page, err := c.ListHookDeliveries(context.Background(), tt.scope, 7, gitoperationslib.ListHookDeliveriesOptions{Cursor: "v1_1", PerPage: 2})
+		page, err := c.Webhooks().ListDeliveries(context.Background(), tt.scope, 7, gitoperationslib.ListHookDeliveriesOptions{Cursor: "v1_1", PerPage: 2})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,7 +63,7 @@ func TestGetHookDelivery(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	d, err := c.GetHookDelivery(ctx, gitoperationslib.RepoHooks("acme", "widget"), 7, 9)
+	d, err := c.Webhooks().GetDelivery(ctx, gitoperationslib.RepoHooks("acme", "widget"), 7, 9)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,10 +75,10 @@ func TestGetHookDelivery(t *testing.T) {
 		t.Errorf("delivery = %+v", d)
 	}
 	// The target's answer can be empty.
-	if d, err = c.GetHookDelivery(ctx, gitoperationslib.OrgHooks("acme"), 7, 9); err != nil || d.ResponseBody != "" {
+	if d, err = c.Webhooks().GetDelivery(ctx, gitoperationslib.OrgHooks("acme"), 7, 9); err != nil || d.ResponseBody != "" {
 		t.Errorf("Get = %+v, %v", d, err)
 	}
-	if _, err := c.GetHookDelivery(ctx, gitoperationslib.RepoHooks("acme", "widget"), 7, 1); !gitoperationslib.IsNotFound(err) {
+	if _, err := c.Webhooks().GetDelivery(ctx, gitoperationslib.RepoHooks("acme", "widget"), 7, 1); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Get(unknown) = %v", err)
 	}
 }
@@ -97,13 +97,13 @@ func TestRedeliverHook(t *testing.T) {
 		io.WriteString(w, `{}`)
 	})
 	ctx := context.Background()
-	if err := c.RedeliverHook(ctx, gitoperationslib.RepoHooks("acme", "widget"), 7, 9); err != nil {
+	if err := c.Webhooks().Redeliver(ctx, gitoperationslib.RepoHooks("acme", "widget"), 7, 9); err != nil {
 		t.Error(err)
 	}
-	if err := c.RedeliverHook(ctx, gitoperationslib.OrgHooks("acme"), 7, 9); err != nil {
+	if err := c.Webhooks().Redeliver(ctx, gitoperationslib.OrgHooks("acme"), 7, 9); err != nil {
 		t.Error(err)
 	}
-	if err := c.RedeliverHook(ctx, gitoperationslib.RepoHooks("acme", "widget"), 7, 1); !gitoperationslib.IsNotFound(err) {
+	if err := c.Webhooks().Redeliver(ctx, gitoperationslib.RepoHooks("acme", "widget"), 7, 1); !gitoperationslib.IsNotFound(err) {
 		t.Errorf("Redeliver(unknown) = %v", err)
 	}
 	if got[0] != "POST /api/v3/repos/acme/widget/hooks/7/deliveries/9/attempts" || got[1] != "POST /api/v3/orgs/acme/hooks/7/deliveries/9/attempts" {
@@ -114,13 +114,13 @@ func TestRedeliverHook(t *testing.T) {
 func TestDeliveriesNeedAScope(t *testing.T) {
 	c := fakeGitHub(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("request sent: %s", r.URL) })
 	ctx := context.Background()
-	if _, err := c.ListHookDeliveries(ctx, gitoperationslib.HookScope{}, 7, gitoperationslib.ListHookDeliveriesOptions{}); err == nil {
+	if _, err := c.Webhooks().ListDeliveries(ctx, gitoperationslib.HookScope{}, 7, gitoperationslib.ListHookDeliveriesOptions{}); err == nil {
 		t.Error("List without a scope succeeded")
 	}
-	if _, err := c.GetHookDelivery(ctx, gitoperationslib.HookScope{}, 7, 9); err == nil {
+	if _, err := c.Webhooks().GetDelivery(ctx, gitoperationslib.HookScope{}, 7, 9); err == nil {
 		t.Error("Get without a scope succeeded")
 	}
-	if err := c.RedeliverHook(ctx, gitoperationslib.HookScope{}, 7, 9); err == nil {
+	if err := c.Webhooks().Redeliver(ctx, gitoperationslib.HookScope{}, 7, 9); err == nil {
 		t.Error("Redeliver without a scope succeeded")
 	}
 }

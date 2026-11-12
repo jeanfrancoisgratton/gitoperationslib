@@ -9,16 +9,16 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
 )
 
-var (
-	_ gitoperationslib.OrgLabels  = (*Client)(nil)
-	_ gitoperationslib.LabelsByID = (*Client)(nil)
-)
+var _ gitoperationslib.OrgLabels = orgLabels{}
+
+type orgLabels struct{ c *Client }
 
 func orgLabelsPath(org string) string { return forgejoapi.Path("orgs", org, "labels") }
 
-// ListOrgLabels asks who org is only after a 404, which the server answers for a
+// List asks who org is only after a 404, which the server answers for a
 // user and for a name that does not exist alike.
-func (c *Client) ListOrgLabels(ctx context.Context, org string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Label], error) {
+func (svc orgLabels) List(ctx context.Context, org string, opts gitoperationslib.ListOptions) (gitoperationslib.Page[gitoperationslib.Label], error) {
+	c := svc.c
 	var out []labelJSON
 	resp, err := c.api.Do(ctx, http.MethodGet, orgLabelsPath(org), forgejoapi.ListQuery(opts), nil, &out)
 	if gitoperationslib.IsNotFound(err) {
@@ -32,27 +32,33 @@ func (c *Client) ListOrgLabels(ctx context.Context, org string, opts gitoperatio
 	return toPage(resp, out, (*labelJSON).toLabel), nil
 }
 
-func (c *Client) GetOrgLabel(ctx context.Context, org string, id int64) (*gitoperationslib.Label, error) {
+func (svc orgLabels) Get(ctx context.Context, org string, id int64) (*gitoperationslib.Label, error) {
+	c := svc.c
 	return c.labelAt(ctx, orgLabelsPath(org), id)
 }
 
-func (c *Client) CreateOrgLabel(ctx context.Context, org string, label gitoperationslib.Label) (*gitoperationslib.Label, error) {
+func (svc orgLabels) Create(ctx context.Context, org string, label gitoperationslib.Label) (*gitoperationslib.Label, error) {
+	c := svc.c
 	return c.createLabelAt(ctx, orgLabelsPath(org), label)
 }
 
-func (c *Client) EditOrgLabel(ctx context.Context, org string, id int64, opts gitoperationslib.EditLabelOptions) (*gitoperationslib.Label, error) {
+func (svc orgLabels) Edit(ctx context.Context, org string, id int64, opts gitoperationslib.EditLabelOptions) (*gitoperationslib.Label, error) {
+	c := svc.c
 	return c.editLabelAt(ctx, orgLabelsPath(org), id, opts)
 }
 
-func (c *Client) DeleteOrgLabel(ctx context.Context, org string, id int64) error {
+func (svc orgLabels) Delete(ctx context.Context, org string, id int64) error {
+	c := svc.c
 	return c.deleteLabelAt(ctx, orgLabelsPath(org), id)
 }
 
-func (c *Client) EditLabelByID(ctx context.Context, owner, repo string, id int64, opts gitoperationslib.EditLabelOptions) (*gitoperationslib.Label, error) {
+func (l labels) EditByID(ctx context.Context, owner, repo string, id int64, opts gitoperationslib.EditLabelOptions) (*gitoperationslib.Label, error) {
+	c := l.c
 	return c.editLabelAt(ctx, repoPath(owner, repo, "labels"), id, opts)
 }
 
-func (c *Client) DeleteLabelByID(ctx context.Context, owner, repo string, id int64) error {
+func (l labels) DeleteByID(ctx context.Context, owner, repo string, id int64) error {
+	c := l.c
 	return c.deleteLabelAt(ctx, repoPath(owner, repo, "labels"), id)
 }
 

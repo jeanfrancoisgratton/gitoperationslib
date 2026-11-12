@@ -11,8 +11,6 @@ import (
 	"github.com/jeanfrancoisgratton/gitoperationslib/internal/forgejoapi"
 )
 
-var _ gitoperationslib.History = (*Client)(nil)
-
 // Commits reads commit history. Forgejo reports changed files without
 // per-file line counts, and does not detect renames.
 func (c *Client) Commits() gitoperationslib.Commits { return commits{c} }

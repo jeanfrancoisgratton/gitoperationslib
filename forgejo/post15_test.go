@@ -21,11 +21,11 @@ func TestUserSecretsListByVersion(t *testing.T) {
 		io.WriteString(w, `[{"name":"TOKEN","created_at":"2026-11-05T00:00:00Z"}]`)
 	})
 	ctx := context.Background()
-	if _, err := c.Secrets().List(ctx, gitoperationslib.UserCI(), gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) || !strings.Contains(err.Error(), "17.0.0") {
+	if _, err := c.CI().Secrets().List(ctx, gitoperationslib.UserCI(), gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) || !strings.Contains(err.Error(), "17.0.0") {
 		t.Errorf("before 17: %v", err)
 	}
 	c.version = Version{17, 0, 1}
-	page, err := c.Secrets().List(ctx, gitoperationslib.UserCI(), gitoperationslib.ListOptions{})
+	page, err := c.CI().Secrets().List(ctx, gitoperationslib.UserCI(), gitoperationslib.ListOptions{})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Name != "TOKEN" {
 		t.Errorf("on 17: %+v, %v", page, err)
 	}
@@ -42,15 +42,15 @@ func TestListUsersBy(t *testing.T) {
 	})
 	ctx := context.Background()
 	with := gitoperationslib.UserFilter{TwoFactor: gitoperationslib.Ptr(false)}
-	if _, err := c.ListUsersBy(ctx, with, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) || !strings.Contains(err.Error(), "16.0.0") {
+	if _, err := c.Users().Search(ctx, with, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) || !strings.Contains(err.Error(), "16.0.0") {
 		t.Errorf("before 16: %v", err)
 	}
 	// No filter needs no version.
-	if _, err := c.ListUsersBy(ctx, gitoperationslib.UserFilter{}, gitoperationslib.ListOptions{}); err != nil || query != "" {
+	if _, err := c.Users().Search(ctx, gitoperationslib.UserFilter{}, gitoperationslib.ListOptions{}); err != nil || query != "" {
 		t.Errorf("no filter: %v, query %q", err, query)
 	}
 	c.version = Version{16, 0, 7}
-	page, err := c.ListUsersBy(ctx, with, gitoperationslib.ListOptions{})
+	page, err := c.Users().Search(ctx, with, gitoperationslib.ListOptions{})
 	if err != nil || query != "false" || len(page.Items) != 1 {
 		t.Errorf("on 16: %+v, %v, query %q", page, err, query)
 	}
@@ -77,20 +77,20 @@ func TestAddMemberInvitation(t *testing.T) {
 	ctx := context.Background()
 
 	// Before 16 there is nothing to check.
-	if err := c.Teams().AddMember(ctx, 2, "bob"); err != nil || !slices.Equal(requests, []string{"PUT"}) {
+	if err := (teams{c}).addMemberByID(ctx, 2, "bob"); err != nil || !slices.Equal(requests, []string{"PUT"}) {
 		t.Errorf("before 16: %v, requests %v", err, requests)
 	}
 
 	c.version = Version{17, 0, 1}
-	if err := c.Teams().AddMember(ctx, 2, "bob"); !errors.Is(err, gitoperationslib.ErrInvitationPending) {
+	if err := (teams{c}).addMemberByID(ctx, 2, "bob"); !errors.Is(err, gitoperationslib.ErrInvitationPending) {
 		t.Errorf("invited: %v", err)
 	}
 	addStatus = http.StatusConflict
-	if err := c.Teams().AddMember(ctx, 2, "bob"); !errors.Is(err, gitoperationslib.ErrInvitationPending) {
+	if err := (teams{c}).addMemberByID(ctx, 2, "bob"); !errors.Is(err, gitoperationslib.ErrInvitationPending) {
 		t.Errorf("invited again: %v", err)
 	}
 	addStatus, memberStatus = http.StatusNoContent, http.StatusOK
-	if err := c.Teams().AddMember(ctx, 2, "bob"); err != nil {
+	if err := (teams{c}).addMemberByID(ctx, 2, "bob"); err != nil {
 		t.Errorf("added: %v", err)
 	}
 }
@@ -103,7 +103,7 @@ func TestPost15Fields(t *testing.T) {
 	c := fakeForgejo(t, func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"id":5,"title":"k","key":"ssh-ed25519 AAA","updated_at":"2026-11-05T00:00:00Z","verified":true}`)
 	})
-	got, err := c.SSHKeys().Get(context.Background(), 5)
+	got, err := c.Account().SSHKeys().Get(context.Background(), 5)
 	if err != nil || got.UpdatedAt.IsZero() || !got.Verified {
 		t.Errorf("key = %+v, %v", got, err)
 	}
@@ -149,23 +149,23 @@ func TestIssueLocksByVersion(t *testing.T) {
 		w.WriteHeader(status)
 	})
 	ctx := context.Background()
-	if err := c.LockIssue(ctx, "acme", "widget", 3, "why"); !errors.Is(err, gitoperationslib.ErrNotSupported) || !strings.Contains(err.Error(), "17.0.0") {
+	if err := c.Issues().Lock(ctx, "acme", "widget", 3, "why"); !errors.Is(err, gitoperationslib.ErrNotSupported) || !strings.Contains(err.Error(), "17.0.0") {
 		t.Errorf("before 17: %v", err)
 	}
-	if err := c.UnlockIssue(ctx, "acme", "widget", 3); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if err := c.Issues().Unlock(ctx, "acme", "widget", 3); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("before 17: %v", err)
 	}
 	if len(requests) != 0 {
 		t.Errorf("sent %v", requests)
 	}
 	c.version = Version{17, 0, 1}
-	if err := c.LockIssue(ctx, "acme", "widget", 3, ""); err == nil || len(requests) != 0 {
+	if err := c.Issues().Lock(ctx, "acme", "widget", 3, ""); err == nil || len(requests) != 0 {
 		t.Errorf("no reason: %v, sent %v", err, requests)
 	}
-	if err := c.LockIssue(ctx, "acme", "widget", 3, gitoperationslib.LockReasonSpam); err != nil || reason != "spam" {
+	if err := c.Issues().Lock(ctx, "acme", "widget", 3, gitoperationslib.LockReasonSpam); err != nil || reason != "spam" {
 		t.Errorf("Lock: %v, reason %q", err, reason)
 	}
-	if err := c.UnlockIssue(ctx, "acme", "widget", 3); err != nil {
+	if err := c.Issues().Unlock(ctx, "acme", "widget", 3); err != nil {
 		t.Errorf("Unlock: %v", err)
 	}
 	if want := []string{"PUT /api/v1/repos/acme/widget/issues/3/lock", "DELETE /api/v1/repos/acme/widget/issues/3/lock"}; !slices.Equal(requests, want) {
@@ -173,14 +173,14 @@ func TestIssueLocksByVersion(t *testing.T) {
 	}
 	// Already in that state.
 	status = http.StatusConflict
-	if err := c.LockIssue(ctx, "acme", "widget", 3, "why"); err != nil {
+	if err := c.Issues().Lock(ctx, "acme", "widget", 3, "why"); err != nil {
 		t.Errorf("Lock twice: %v", err)
 	}
-	if err := c.UnlockIssue(ctx, "acme", "widget", 3); err != nil {
+	if err := c.Issues().Unlock(ctx, "acme", "widget", 3); err != nil {
 		t.Errorf("Unlock twice: %v", err)
 	}
 	status = http.StatusNotFound
-	if err := c.LockIssue(ctx, "acme", "widget", 3, "why"); err == nil {
+	if err := c.Issues().Lock(ctx, "acme", "widget", 3, "why"); err == nil {
 		t.Error("a 404 was swallowed")
 	}
 }
@@ -197,11 +197,11 @@ func TestExtraLinesByVersion(t *testing.T) {
 	})
 	ctx := context.Background()
 	opts := gitoperationslib.CreateReviewCommentOptions{Path: "a.go", Body: "b", Line: 2, ExtraLines: 3}
-	if _, err := c.CreateReviewComment(ctx, "acme", "widget", 1, opts); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 1, opts); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("before 16: %v", err)
 	}
 	c.version = Version{16, 0, 7}
-	got, err := c.CreateReviewComment(ctx, "acme", "widget", 1, opts)
+	got, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 1, opts)
 	if err != nil || got.ExtraLines != 3 {
 		t.Fatalf("on 16: %+v, %v", got, err)
 	}
@@ -209,7 +209,7 @@ func TestExtraLinesByVersion(t *testing.T) {
 		t.Errorf("comment = %v", comment)
 	}
 	opts.ExtraLines = -1
-	if _, err := c.CreateReviewComment(ctx, "acme", "widget", 1, opts); err == nil {
+	if _, err := c.PullRequests().CreateReviewComment(ctx, "acme", "widget", 1, opts); err == nil {
 		t.Error("negative ExtraLines accepted")
 	}
 }
@@ -241,17 +241,17 @@ func TestTokensOf(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	if _, err := c.TokensOf("bob").List(ctx, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
+	if _, err := c.Users().Tokens("bob").List(ctx, gitoperationslib.ListOptions{}); !errors.Is(err, gitoperationslib.ErrNotSupported) {
 		t.Errorf("before 16: %v", err)
 	}
 	c.version = Version{16, 0, 7}
-	if _, err := c.TokensOf("").List(ctx, gitoperationslib.ListOptions{}); err == nil {
+	if _, err := c.Users().Tokens("").List(ctx, gitoperationslib.ListOptions{}); err == nil {
 		t.Error("no login accepted")
 	}
 	if len(requests) != 0 {
 		t.Errorf("sent %v", requests)
 	}
-	tokens := c.TokensOf("bob")
+	tokens := c.Users().Tokens("bob")
 	tok, err := tokens.Create(ctx, gitoperationslib.CreateTokenOptions{Name: "ci", Scopes: []string{"read:user"}})
 	if err != nil || tok.Secret != "abc" {
 		t.Errorf("Create = %+v, %v", tok, err)
